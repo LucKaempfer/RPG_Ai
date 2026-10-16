@@ -15,8 +15,8 @@
 | `pygame_rpg/assets.py` + `assets/` | M1: asset manager + generated placeholder art with stable names — dormant, kept for M4 |
 | `pygame_rpg/config.py` | ✅ M3: screen/FPS constants, starting stats, XP curve, `BASE_MAX_WEIGHT`, save dir |
 | `pygame_rpg/player.py` | ✅ M3: `Player` — stats, XP/level-up, equipment, JSON round-trip |
-| `pygame_rpg/items.py` | ✅ M3 (M2 partial): `Item` dataclass, 21-item starter catalog (20 weapons + potion) |
-| `pygame_rpg/savegame.py` | ✅ M3: JSON saves — `saves/<name>/character.json` + `saves/index.json`, name validation |
+| `pygame_rpg/items.py` | ✅ M3 (M2 partial): `Item` dataclass + level/tier system, 113-item catalog (20 weapon bases + 60 weapon tiers + 8 armor bases + 24 armor tiers + potion) |
+| `pygame_rpg/savegame.py` | ✅ M3: JSON saves — flat `saves/<name>.json` per character + `saves/index.json`, name validation |
 | `pygame_rpg/gui/` | ✅ M3: shared `screen.py` base + 8 screens (title, tutorial, hero maker/chooser, base, inventory, stats, level-up) |
 | `RPG_V3/main_V3.py` | Text UI reference (ported up to the Base in M3): `tutorial()`, `hero_maker()`, `hero_chooser()`, `lobby()` (stub), `inventory()`/`backpack()` (stubs), `xp_check()` |
 | `RPG_V3/assets_V3.py` | M2 reference: `WP` weapon base + 7 subclasses with unimplemented `effect()`; skeleton `Consumable`/`Armor`/`Trinket`/`Ability`/`Enemy`/`Boss` classes; level‑1 weapon catalog |
@@ -140,6 +140,21 @@ Port `RPG_V3/assets_V3.py` into a working, data-driven item system.
   referenced). Overload → movement speed penalty. Weight bar drawn in the inventory UI.
 - Inventory actions: equip / unequip / use / drop (drop spawns item sprite on the floor tile).
 
+### 4.5 Build order: six sub-milestones
+
+M2 is implemented one sub-milestone at a time, in this order:
+
+1. **Weapons, all tiers** — grow the level-1 catalog into a full multi-level weapon line
+   (stronger versions, better status effects, heavier).
+2. **Armor** — head / torso / hands / feet in tiers; defensive stats + HP.
+3. **Consumables** — more potion types, food, bombs; stackable uses.
+4. **Trinkets** — passive bonus items (extra weight capacity, more XP, etc.).
+5. **Abilities** — active skills unlocked by level (fireball, shield, heal, etc.) for battle slots.
+6. **Wiring** — new equipment slots (4 armor + 2 trinkets), equipment-reflected stats,
+   level/rarity rules, updated inventory UI, old-save compatibility.
+
+Each sub-milestone is verified with a quick headless run before the next starts.
+
 **Definition of done (M2):** full item catalog in `items.py` (weapons + armor + consumables +
 trinkets + abilities, multi-tier), equipment math unit-testable without pygame, weight system
 working.
@@ -194,8 +209,8 @@ GUI with sprites. No terminal `input()` anywhere.
 > **✅ M3 complete (16 Oct 2026).** All screens implemented: `gui/screen.py` base (shared
 > `Button`, fonts, palette, `QUIT` sentinel) + `title_screen`, `tutorial_screen`, `hero_maker`,
 > `hero_chooser`, `base_screen`, `inventory_screen`, `stats_screen`, `level_up_screen`.
-> State machine + `build_screen()` factory in `main.py`; JSON saves in
-> `saves/<name>/character.json` + `saves/index.json`. Verified headless (`SDL_VIDEODRIVER=dummy`):
+> State machine + `build_screen()` factory in `main.py`; JSON saves as flat
+> `saves/<name>.json` per character + `saves/index.json`. Verified headless (`SDL_VIDEODRIVER=dummy`):
 > 32-check end-to-end smoke test passing (new-hero and saved-hero paths, level-up banking,
 > save round-trip). Deliberate deviations: level-up triggers at `xp >= max_xp` (V3 used strict
 > `>`); kind-based slot border colors (no rarity tiers yet); `can_carry` weight gate deferred
@@ -241,13 +256,17 @@ boss. All sprite-based, HUD active.
 
 ## 7. Phase 5 — Persistence (`savegame.py`)
 
-Replace V3's text+pickle files with clean JSON under `saves/<name>/`:
-- `character.json` — stats, level, xp, upgrade counts, equipment (item_id references).
-- `inventory.json` — backpack items with charges.
+Replace V3's text+pickle files with clean JSON. **Done in M3:** one flat
+`saves/<name>.json` per character (stats, level, xp, upgrades, equipment and
+backpack, items referenced by `item_id`) plus `saves/index.json` for the hero
+list (the `saved_chars.txt` equivalent). Item references are stored by
+`item_id` — catalog is code, saves are data, so no pickle problems.
+
+**Still pending (with M4/M5):**
 - `dungeon.json` — current floor seed, room state, defeated enemies, opened chests.
-- `index.json` — the `saved_chars.txt` equivalent (hero list for the chooser screen).
-- Save triggers: leaving the Base, floor cleared, explicit *Save & Exit*, auto on quit.
-- Item references stored by `item_id` (catalog is code, saves are data → no pickle problems).
+- In-run save triggers: leaving the Base mid-run, floor cleared, explicit *Save & Exit*.
+  (Current triggers: on character creation; from the Base on Esc / Save & Exit / QUIT;
+  from the other screens only on QUIT.)
 
 ---
 
@@ -270,10 +289,14 @@ Replace V3's text+pickle files with clean JSON under `saves/<name>/`:
 | # | Milestone | Contents | Status |
 |---|-----------|----------|--------|
 | M1 | **Sprites everywhere** | Phase 1 (tileset, player/enemy/item/UI sprites, asset manager) | ✅ done |
-| M2 | **Item system** | Phase 2 (full catalog, equipment, weight, rarity) | 🚧 partial — 21-item starter catalog (20 weapons + potion); armor/trinket/ability + multi-tier pending |
+| M2 | **Item system** | Phase 2 (full catalog, equipment, weight, rarity) — six sub-milestones in build order, see §4.5 | 🚧 partial — sub-milestones 1-2 (weapons + armor, all tiers) done: 113-item catalog; next: sub-milestone 3 (consumables) |
 | M3 | **GUI up to the Base** | Phase 3 (title → tutorial → maker/chooser → Base → inventory/stats/level-up) | ✅ done (16 Oct 2026) — full GUI flow + JSON saves, 32-check end-to-end smoke test passing |
 | M4 | **Dungeon + Combat** | Phase 4 (collision, fog, loot, enemies, weapon ailments, HUD) | pending |
 | M5 | **Persistence + Polish** | Phases 5 + 6 (JSON saves, balance config, tests) | pending (JSON saves already in place) |
+
+> **Known issue from M2 sub-milestone 2:** armor items can be selected in the inventory UI
+> but cannot be equipped (slot mismatch — details and fix plan in `Handoff.md` §0).
+> Unreachable in normal play until armor drops (M4); fix folded into sub-milestone 6 (wiring).
 
 **Suggested build order:** M1 → M3 → M2 → M4 → M5.
 (Why: M3 works with a tiny starter item set; M2's full catalog then just appears in the already-
@@ -289,6 +312,6 @@ finished inventory UI. M4 needs M2's weapon effects to be meaningful.)
   turn-based). Plan assumes real-time with cooldowns — decide before M4.
 - **Base content:** does the Base get a shop or crafting later? (Out of scope for "up to the
   Base" but the hub screen is structured to host it.)
-- Keep `RPG_V2/` and `RPG_V3/` as read-only reference; all new code lives in `pygame_rpg/`.
+- Keep `RPG_V3/` as read-only reference; all new code lives in `pygame_rpg/`.
 - Environment: always use `.\venv\Scripts\python.exe -m pygame_rpg.main` (Python 3.14 +
   `pygame-ce`); add `pytest` to the venv for M5 tests.
