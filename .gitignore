@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment (venv module self-ignores; listed here for clarity)
+venv/
+
+# Runtime data
+saves/

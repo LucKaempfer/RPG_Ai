@@ -1,0 +1,16 @@
+Hello and welcome to my first ever ,,real,, Game!
+This is a Rougelike Dungeonbattler but limited to its Basics.
+You will need to type in the commands you want to take.
+The Game consists of your Base and the Dungeon.
+
+You Start at Level one with 100 health points,
+5 Attackpoints and 5 Defencepoints
+
+Your Actions will reward you with XP so you can level up.
+Every levelup you can decide to add to your health, attack or defence.
+
+During the Runs you will also gather Bloodcrystals.
+These can be used to buy you permanent Upgrades to the Game.
+
+During a run you will face a choice of rooms.
+In these Rooms there can be monsters or loot or both.
