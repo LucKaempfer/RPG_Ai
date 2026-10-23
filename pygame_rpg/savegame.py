@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 
 from .config import SAVE_DIR
-from .items import item_by_id
+from .items import CATALOG, item_by_id
 from .player import Player
 
 SAVE_ROOT = Path(SAVE_DIR)
@@ -51,12 +51,28 @@ def _write_index(names: list) -> None:
         json.dump(sorted(set(names)), f, indent=2)
 
 
+def _default_charges(item_id: str):
+    item = CATALOG.get(item_id)
+    return item.charges if item is not None else None
+
+
+def _resolve(ref):
+    """Saved item reference -> Item.  A ref is a catalog id, or
+    {"id": ..., "charges": n} for a consumable with used charges."""
+    if isinstance(ref, dict):
+        item = item_by_id(ref["id"])
+        if "charges" in ref:
+            item.charges = int(ref["charges"])
+        return item
+    return item_by_id(ref)
+
+
 def save_player(player: Player) -> Path:
     """Write the character to disk and refresh the index."""
     SAVE_ROOT.mkdir(parents=True, exist_ok=True)
     path = _path_for(player.name)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(player.to_dict(), f, indent=2)
+        json.dump(player.to_dict(_default_charges), f, indent=2)
     names = [n for n in _read_index() if n != player.name]
     names.append(player.name)
     _write_index(names)
@@ -70,13 +86,7 @@ def load_player(name: str) -> Player:
         raise FileNotFoundError(f"no save for {name!r}")
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    player = Player.from_dict(data)
-    player.inventory = [item_by_id(i) for i in data.get("inventory", [])]
-    player.equipment = {
-        slot: (item_by_id(i) if i is not None else None)
-        for slot, i in data.get("equipment", {}).items()
-    }
-    return player
+    return Player.from_dict(data, _resolve)
 
 
 def list_players() -> list:

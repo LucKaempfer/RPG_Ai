@@ -1,8 +1,8 @@
 # pygame_rpg/gui/stats_screen.py
 """Stats screen: read-only detail view of a character.
 
-Mirrors the V3 xp_check() display: each stat's current value plus how
-many times it was already raised by level-ups.  Nothing is mutated
+Mirrors the V3 xp_check() display: each stat's effective value (base +
+equipment bonus) plus how many times it was already raised by level-ups.  Nothing is mutated
 here — the player is only ever handed back to the Base.
 """
 
@@ -19,6 +19,12 @@ from .screen import (
 # Combat stats shown in the grid; hp gets its own row.
 GRID_STATS = tuple(s for s in UPGRADABLE_STATS if s != "hp")
 GRID_COLS = 3
+
+
+def _bonus_text(player, stat) -> str:
+    """" +N" for a stat's equipment bonus, or "" when there is none."""
+    bonus = player.bonus(stat)
+    return f" +{bonus}" if bonus else ""
 
 
 class StatsScreen(Screen):
@@ -73,7 +79,9 @@ class StatsScreen(Screen):
         surface.blit(xpt, xpt.get_rect(midtop=(panel.centerx, 160)))
 
         hpt = font(24).render(
-            f"HP {p.hp}   (raised {p.lvl_up_counts.get('hp', 0)}x)",
+            f"HP {p.current_hp} / {p.max_hp}   "
+            f"(base {p.hp}{_bonus_text(p, 'hp')}, "
+            f"raised {p.lvl_up_counts.get('hp', 0)}x)",
             True, TEXT_COLOR)
         surface.blit(hpt, hpt.get_rect(midtop=(panel.centerx, 205)))
 
@@ -85,15 +93,17 @@ class StatsScreen(Screen):
             label = font(24).render(stat.upper(), True, TEXT_COLOR)
             surface.blit(label, label.get_rect(midtop=(x, y)))
             val = font(20).render(
-                f"{getattr(p, stat)}   "
-                f"(raised {p.lvl_up_counts.get(stat, 0)}x)",
+                f"{p.total(stat)}   ({getattr(p, stat)}"
+                f"{_bonus_text(p, stat)}, "
+                f"raised {p.lvl_up_counts.get(stat, 0)}x)",
                 True, DIM_TEXT)
             surface.blit(val, val.get_rect(midtop=(x, y + 34)))
 
         wt = font(20).render(
             f"Weight {p.weight} / {p.max_weight}", True, DIM_TEXT)
-        surface.blit(wt, wt.get_rect(midbottom=(panel.centerx,
-                                                panel.bottom - 16)))
+        # Left of the Back button, which covers the panel's lower right.
+        surface.blit(wt, wt.get_rect(midleft=(panel.x + 24,
+                                              self.btn_back.rect.centery)))
         self.btn_back.draw(surface, hot=(self.btn_back is self.hot))
         hint = font(18).render(
             "Esc / Back: return to base", True, DIM_TEXT)

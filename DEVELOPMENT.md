@@ -13,18 +13,20 @@ Base (lobby) already runs in the GUI; the item system, dungeon and combat are ne
 ## 0. Start Here
 
 **Where we are:** M1 (sprites) and M3 (GUI up to the Base) are done. M2 (item system) is in
-progress: sub-milestones 1 (weapons, all tiers) and 2 (armor, all tiers) are done.
-`pygame_rpg/items.py` holds a **113-item catalog** (20 weapon bases + 60 weapon tiers +
-8 armor bases + 24 armor tiers + 1 potion, no duplicate ids; re-verified 23 Oct 2026).
+progress: sub-milestones 1 (weapons), 2 (armor) and 3 (consumables) are done, and the slot /
+stat / HP part of sub-milestone 6 (wiring) was pulled forward to fix the bugs found in review
+(§5). `pygame_rpg/items.py` holds a **136-item catalog** (20 weapon bases + 60 weapon tiers +
+8 armor bases + 24 armor tiers + 6 consumable bases + 18 consumable tiers, no duplicate ids).
 
-**Next task: M2 sub-milestone 3, consumables** (details in §6.1). Work in `pygame_rpg/items.py`:
+**Next task: M2 sub-milestone 4, trinkets** (details in §6.1). Work in `pygame_rpg/items.py`:
 
-1. Scope: healing and mana potions, food, bombs; a `charges` field for stackable uses.
-2. Pattern: mirror weapons/armor. Explicit level-1 entries plus a small `_tier()`-style helper
-   that generates levels 2-4; write the growth rule in a comment.
-3. Rarity (common/rare/epic/legendary) stays deferred to sub-milestone 6 (wiring).
-4. Verify headless before moving on: catalog counts, spot-checks, and an `item_by_id()`
-   round-trip for every pre-existing id (old saves must keep loading).
+1. Scope: passive bonuses (+XP gain, +loot chance, +max weight, ailment resistance).
+2. Items use `kind="trinket"`, `slot="trinket"`; the player already has two trinket slots and
+   `Player.slot_for()` puts a trinket into the first free one.
+3. Pattern: explicit level-1 entries + a `_tier()`-style helper for levels 2-4, growth rule in
+   a comment. New bonus fields need defaults so old entries and saves stay valid.
+4. Make bonuses that change derived values (e.g. `max_weight`) read through `Player.bonus()`.
+5. Verify headless before moving on (see §7 for the harness).
 
 **Standing rules**
 
@@ -47,7 +49,7 @@ meaningful.
 |---|-----------|----------|--------|
 | M1 | Sprites everywhere | Tileset, player/enemy/item/UI sprites, asset manager | ✅ done |
 | M3 | GUI up to the Base | Title → tutorial → hero maker/chooser → Base → inventory / stats / level-up, JSON saves | ✅ done (16 Oct 2026), 32-check end-to-end smoke test |
-| M2 | Item system | Full catalog, equipment slots, equipment-driven stats, weight, rarity (six sub-milestones, §6.1) | 🚧 1-2 of 6 done (weapons + armor); next: 3 consumables |
+| M2 | Item system | Full catalog, equipment slots, equipment-driven stats, weight, rarity (six sub-milestones, §6.1) | 🚧 1-3 of 6 done (weapons, armor, consumables) + slot/stat/HP wiring; next: 4 trinkets |
 | M4 | Dungeon + Combat | Collision, fog of war, loot, enemies/bosses, turn-based battles, weapon ailments, HUD | pending |
 | M5 | Persistence + Polish | Dungeon state in saves, balance config, polish, pytest suite | pending (character JSON saves already done) |
 
@@ -59,8 +61,8 @@ meaningful.
 
 Starting the game runs the full pre-adventure flow in the GUI: **title → tutorial → hero maker
 (two-stage name input + confirm) or hero chooser (paged saved list) → Base hub → inventory
-(equip / unequip / use / drop + weight bar) → stats → level-up (bank one stat at a time)**, with
-one JSON save per character. The Base's *Adventure* button is drawn disabled until M4.
+(equip / unequip / use / drop + weight bar, 7 equipment slots) → stats (base + equipment bonus)
+→ level-up (bank one stat at a time)**, with one JSON save per character. The Base's *Adventure* button is drawn disabled until M4.
 
 ### 2.2 File-by-file
 
@@ -68,9 +70,9 @@ one JSON save per character. The Base's *Adventure* button is drawn disabled unt
 |------|--------|-------|
 | `pygame_rpg/main.py` | ✅ M3 | State machine: `build_screen()` factory, per-event screen switching, global clock loop. The M1 dungeon demo loop was removed (recoverable from git, commit `d2a0ec2`). |
 | `pygame_rpg/config.py` | ✅ M3 | Screen 800×600 @ 60 FPS, starting stats, XP curve (`max_xp_for`), `BASE_MAX_WEIGHT = 50`, `SAVE_DIR`. |
-| `pygame_rpg/player.py` | ✅ M3 | `Player` dataclass: stats, XP/level-up, upgrade counts, backpack, equipment, weight, `to_dict`/`from_dict`. `EQUIP_SLOTS = ("weapon", "armor", "accessory")` (see §5). |
-| `pygame_rpg/items.py` | 🚧 M2 | `Item` dataclass; weapon/armor builders `_wp`/`_arm` + tier helpers `_tier`/`_arm_tier`; `CATALOG` (113 items); `STARTER_INVENTORY = ["sword", "potion"]`; `item_by_id()` returns a copy. |
-| `pygame_rpg/savegame.py` | ✅ M3 | `saves/<name>.json` per character + `saves/index.json`; `_safe_name()` validates names (`^[\w .-]{1,20}$`), index self-prunes missing files. |
+| `pygame_rpg/player.py` | ✅ M3 | `Player` dataclass: base stats, XP/level-up, upgrade counts, backpack, 7 equipment slots, `bonus()`/`total()`, `max_hp`/`current_hp`/`heal()`, `slot_for`/`slot_of`/`equip`/`unequip`/`drop`, `can_use`/`use`, weight, `to_dict`/`from_dict` (with old-save migration). |
+| `pygame_rpg/items.py` | 🚧 M2 | `Item` dataclass; builders `_wp`/`_arm`/`_con` + tier helpers `_tier`/`_arm_tier`/`_con_tier`; `CATALOG` (136 items); `STARTER_INVENTORY = ["sword", "potion"]`; `item_by_id()` returns a copy. |
+| `pygame_rpg/savegame.py` | ✅ M3 | `saves/<name>.json` per character + `saves/index.json`; `_safe_name()` validates names (`^[\w .-]{1,20}$`), index self-prunes missing files; `_resolve()` turns saved item refs (id or `{"id", "charges"}`) into items. |
 | `pygame_rpg/gui/screen.py` | ✅ M3 | `Screen` base class, `Button`, cached `font()`, shared palette, `QUIT` sentinel. |
 | `pygame_rpg/gui/*.py` (8 screens) | ✅ M3 | `title_screen`, `tutorial_screen`, `hero_maker`, `hero_chooser`, `base_screen`, `inventory_screen`, `stats_screen`, `level_up_screen`. |
 | `pygame_rpg/dungeon.py` | M1, dormant | Rectangular rooms + corridor linking, tileset rendering with camera offset, minimap. No wall collision yet. Kept for M4. |
@@ -84,6 +86,7 @@ one JSON save per character. The Base's *Adventure* button is drawn disabled unt
 
 * `d2a0ec2` "Baseline: M1 sprites + M3 GUI up to the Base" (16 Oct 2026).
 * `be470d0` "M2 sub-milestones 1-2: weapons + armor catalog; sync docs".
+* PR #1: `Handoff.md` + `Plan.md` merged into this file.
 * `.gitignore` covers `venv/`, `saves/`, `__pycache__/`, `*.py[cod]`.
 
 ---
@@ -146,13 +149,22 @@ tests/                 # pytest suite (M5)
 
 **`Item`** (`items.py`) is one flat dataclass for every kind:
 `id, name, kind ("weapon" | "armor" | "consumable" | "trinket"), level (min player level),
-weight (kg), ap, rap, map, dp, rdp, mdp, hp, slot, effect, heal, description`.
+weight (kg), ap, rap, map, dp, rdp, mdp, hp, slot, effect, heal, mana, damage, charges,
+combat_only, description`.
 New kinds add fields with defaults (e.g. `charges`, later `rarity`) so existing entries and
 saves stay valid. Item ids for tiers follow `<base_id>_<level>` (e.g. `sword_3`), names get a
 Roman numeral (`Sword III`).
 
-**Saves** (`saves/<name>.json`): `name, lvl, xp, hp, ap, rap, map, dp, rdp, mdp,
-lvl_up_counts, equipment {slot: item_id | null}, inventory [item_id, ...]`. The catalog is code
+**Equipment slots** (`player.EQUIP_SLOTS`): `weapon, head, torso, hands, feet, trinket1,
+trinket2`. An item's `slot` names the slot it fits; trinkets say `"trinket"` and take either
+trinket slot. Ability slots (4) arrive with sub-milestone 5.
+
+**Saves** (`saves/<name>.json`): `name, lvl, xp, hp, current_hp, ap, rap, map, dp, rdp, mdp,
+lvl_up_counts, equipment {slot: ref | null}, inventory [ref, ...]`. A `ref` is an item id, or
+`{"id": ..., "charges": n}` for a consumable with used charges.
+**Old saves keep loading:** a missing `current_hp` means full HP; legacy slot `accessory` maps
+to `trinket1`; an item in an unknown slot (e.g. the old `armor` slot) or a slot it doesn't fit
+goes back to the backpack. The catalog is code
 and saves are data, so items are always stored by id. `saves/index.json` is the hero list (the
 V3 `saved_chars.txt` equivalent).
 
@@ -163,6 +175,12 @@ close; other screens save only on window close.
 
 ## 4. Game Mechanics Reference
 
+* **Base vs effective stats:** the `Player` fields are base stats (start + level-ups) and are
+  never changed by equipment. `Player.total(stat)` = base + `Player.bonus(stat)` (sum over
+  equipped items), recomputed on every call. Combat must read `total()`.
+* **HP:** the `hp` field is base max HP. `max_hp = total("hp")` (armor adds hp). The HP the
+  hero has now is `current_hp`, capped at `max_hp` (clamped when armor comes off). Raising
+  `hp` on level-up raises `current_hp` by the same amount. Nothing damages the hero yet (M4).
 * **Stats** (from V3): `hp`, plus six combat stats `ap` (melee attack), `rap` (ranged attack;
   `config.py` comments call it "raw"), `map` (magic attack), `dp`, `rdp`, `mdp` (matching
   defences). Start: level 1, 0 XP, 100 HP, 5 in each combat stat.
@@ -184,35 +202,38 @@ close; other screens save only on window close.
   per slot (leather + iron). Profiles: head → `dp`, torso → `dp + rdp + mdp`, hands → `rdp`,
   feet → `mdp`; every piece adds small `hp`. Level 1: one stat = 1, hp 2, 1 kg (torso: all
   three = 1, hp 3, 2 kg). Tiers 2-4: each stat present +1, hp +1, weight +1 per level.
-* **Consumables:** only `potion` (Health Potion, heals 25, 1 kg) so far.
+* **Consumables** (designed from scratch): four lines, level-1 base + tiers 2-4, all 1 kg.
+  Health potion (`potion`): heal 25 × level, 1 charge. Ration (`ration`, food): heal 10 × level,
+  3 charges. Mana potion (`mana_potion`): mana 20 × level, battle only (mana arrives with
+  abilities). Bombs (`fire_bomb` → burning, `poison_bomb` → poison, `flash_bomb` → stun):
+  damage 15 + 10 per level above 1, battle only (used from the M4 battle menu).
+  *Use* in the inventory spends one charge of a healing item outside battle, is disabled at
+  full HP, and removes the item at 0 charges. Backpack rows show `x<charges>` for stacks.
 * **Starter kit:** `sword` + `potion` (V3 started empty).
 
 ---
 
 ## 5. Known Issues and Gaps
 
-Verified against the code on 23 Oct 2026. None are reachable in normal play yet (starters carry
-only `sword` + `potion`, nothing drops items), but all must be resolved by the end of M2.
+**Fixed in the bug-fix pass (after PR #1):**
 
-1. **Armor cannot be equipped.** The inventory's Equip button enables for any item with a truthy
-   `slot` (`gui/inventory_screen.py`, `_enabled_actions`), but `Player.EQUIP_SLOTS` is still
-   `("weapon", "armor", "accessory")` (`player.py`). Equipping armor raises
-   `ValueError: unknown slot 'head'`. Fix in sub-milestone 6: replace the slots with
-   `weapon, head, torso, hands, feet, trinket1, trinket2` in both `player.py` and the inventory
-   `SLOTS` tuple, and make the Equip check use the player's slot list.
-2. **Equipment does not affect stats.** Equipping only moves items between backpack and slot;
-   no stat is derived from equipment, and the stats screen shows raw stats only. M2 target:
-   *effective stat = base stat + Σ equipped item stats*, recomputed, never mutated, with the
-   stats screen showing base vs bonus.
-3. **No max HP.** `hp` is a single value and *Use* adds `heal` without a cap. Introduce
-   `max_hp` (base `hp` + armor `hp` bonus) and a separate current HP before consumables and
-   combat rely on it; keep old saves loading (current `hp` → base max HP).
-4. **Slot naming mismatch.** Items use kind `"trinket"`, the player slot is `"accessory"`.
-   Standardise on trinket slots in sub-milestone 6, and map any saved `"accessory"` entry on load.
-5. **`load_player` does not filter unknown slots.** `from_dict` filters equipment by
-   `EQUIP_SLOTS`, but `load_player` then rebuilds `equipment` from the raw save data. When the
-   slot list changes, filter (and migrate) there too.
-6. **Docs drift:** `pygame_rpg/README.md` still describes the M1 skeleton.
+1. ~~Armor cannot be equipped~~ — the player now has `weapon, head, torso, hands, feet,
+   trinket1, trinket2`; the inventory's Equip check asks `Player.slot_for()`.
+2. ~~Equipment does not affect stats~~ — `bonus()` / `total()`; Base and stats screens show
+   effective values, the stats screen also shows base + bonus; inventory diffs include HP.
+3. ~~No max HP~~ — `max_hp` + `current_hp`; healing is capped.
+4. ~~`accessory` vs `trinket` naming~~ — trinket slots everywhere, `accessory` migrated on load.
+5. ~~`load_player` does not filter unknown slots~~ — migration in `Player.from_dict()`.
+6. ~~Stats screen weight label hidden behind the Back button~~ — moved left of the button.
+
+**Still open:**
+
+* No level gate on equip yet (`item.level <= player.lvl`); part of sub-milestone 6.
+* `pygame_rpg/README.md` still describes the M1 skeleton.
+* Placeholder icons for items are generated into `pygame_rpg/assets/items/` the first time an
+  item is shown, so they appear as untracked files in `git status`. Either commit them, ignore
+  them, or generate them in memory only.
+* The stats screen grid uses 2 of its 3 columns (cosmetic).
 
 ---
 
@@ -220,20 +241,16 @@ only `sword` + `potion`, nothing drops items), but all must be resolved by the e
 
 ### 6.1 M2 — Item system (remaining sub-milestones)
 
-Done: **1. Weapons, all tiers** and **2. Armor** (§4).
+Done: **1. Weapons, all tiers**, **2. Armor** and **3. Consumables** (§4).
 
-3. **Consumables** *(next)* — healing potion tiers, mana potion, food, bombs. Add a `charges`
-   field (default 1) for stackable uses; keep the `potion` id unchanged. Design notes: mana needs
-   a mana stat or should wait for abilities; bombs only matter in combat (usable from the battle
-   menu in M4). Food effect is open (heal over time, or a temporary bonus).
-4. **Trinkets** — passive bonuses: +XP gain, +loot chance, +max weight, ailment resistance
+4. **Trinkets** *(next)* — passive bonuses: +XP gain, +loot chance, +max weight, ailment resistance
    (speed only if movement stays real-time). Two equip slots.
 5. **Abilities** — active skills unlocked by level (e.g. Fireball, Shield, Heal) with a cost and
    cooldown in turns; assigned to 4 ability slots and chosen from the battle menu.
-6. **Wiring** — new equipment slots (weapon, 4 armor, 2 trinkets, 4 ability slots),
-   equipment-driven effective stats, level gate on equip (`item.level <= player.lvl`), rarity
-   (common/rare/epic/legendary: data field, UI border colors, spawn weights), updated inventory
-   UI (stat diffs vs equipped, rarity borders), and old-save compatibility. Fixes §5 items 1-5.
+6. **Wiring** — already done: equipment slots (weapon, 4 armor, 2 trinkets), effective stats,
+   max/current HP, charges in saves, old-save migration. Remaining: 4 ability slots, level gate
+   on equip (`item.level <= player.lvl`), rarity (common/rare/epic/legendary: data field, UI
+   border colors, spawn weights), rarity borders in the inventory.
 
 **Definition of done (M2):** full multi-tier catalog (weapons, armor, consumables, trinkets,
 abilities), equipment math testable without pygame, weight system working, every old save loads.
@@ -289,7 +306,13 @@ with the HUD active.
   saved-hero route, level-up banking, save round-trip). Porting these into a `tests/` pytest suite
   is part of M5, and doing it early would make every M2 sub-milestone cheaper to verify.
 * **Quick catalog check** (no display needed):
-  `python -c "from pygame_rpg import items; print(len(items.CATALOG))"` → `113` today.
+  `python -c "from pygame_rpg import items; print(len(items.CATALOG))"` → `136` today.
+* **M2 harness** `tests/m2_smoke_test.py` (run `python tests/m2_smoke_test.py` from the repo
+  root → "m2 OK (144 checks)"): headless checks covering catalog counts and
+  every pre-existing id, armor/trinket equipping, base vs effective stats, capped healing and
+  charges, save round-trip, old-save migration, and a GUI smoke test (every screen renders,
+  equip armor and use a potion through the inventory buttons). Saves go to a temp folder; it is
+  the natural seed for the M5 pytest suite. Extend it with each sub-milestone.
 
 ---
 
@@ -317,7 +340,9 @@ with the HUD active.
 
 * **Art source:** hand-drawn vs free CC0 packs (e.g. Kenney) vs generated placeholders. Current
   assumption: placeholders now, real art later via stable filenames.
-* **Mana:** add an MP stat for mana potions and ability costs, or have abilities cost AP?
-* **Food:** what does it do (heal over time, temporary buff, weight-related)?
+* **Mana:** mana potions exist (battle only) but there is no mana pool yet. Add an MP stat with
+  abilities, or have abilities cost something else?
+* **Food:** rations are currently a weaker, multi-use heal. Make them heal over time or give a
+  temporary buff instead?
 * **Overload:** should exceeding `max_weight` block pickups only, or also slow movement?
 * **Base content:** shop or crafting later? The hub screen can host extra buttons.

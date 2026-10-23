@@ -3,15 +3,15 @@
 to the DEVELOPMENT.md M3 spec).
 
 Left:  backpack list (icon, name, count, weight) + weight bar.
-Right: equipment slots (weapon / armor / accessory) with icons, and a
-       detail panel for the selected item: description, stat diffs vs
+Right: equipment slots (weapon, head / torso / hands / feet armor,
+       two trinkets) with icons, and a detail panel for the selected item: description, stat diffs vs
        the currently equipped item (green gain / red loss) and actions.
 
 Actions per item:
-- Equip   (weapon/armor/accessory in the backpack -> its slot)
+- Equip   (weapon/armor/trinket in the backpack -> its slot)
 - Unequip (equipped item -> back to the backpack)
-- Use     (consumable: +heal HP, item consumed; new for the GUI --
-           V3 has no potion logic)
+- Use     (healing consumable outside battle: one charge, capped at
+           max HP; new for the GUI -- V3 has no potion logic)
 - Drop    (remove the item from the game)
 
 Weight is invariant under equip/unequip (Player.weight counts both
@@ -44,8 +44,9 @@ KIND_BORDER = {
     "consumable": (120, 120, 140),
 }
 
-SLOTS = ("weapon", "armor", "accessory")
-STATS6 = ("ap", "rap", "map", "dp", "rdp", "mdp")
+from ..player import EQUIP_SLOTS as SLOTS
+DIFF_STATS = ("hp", "ap", "rap", "map", "dp", "rdp", "mdp")
+SLOT_LABELS = {"trinket1": "trinket", "trinket2": "trinket"}
 
 ROW_H = 36
 VISIBLE_ROWS = 10
@@ -68,9 +69,10 @@ class InventoryScreen(Screen):
         self.equip_panel = pygame.Rect(470, 64, 306, 200)
         self.detail_panel = pygame.Rect(470, 276, 306, 240)
 
-        # Equipment slot boxes (fixed positions).
+        # Equipment slot boxes: 4 on the first row, 3 on the second.
         self.slot_rects = [
-            pygame.Rect(492 + i * 99, 108, 64, 64) for i in range(3)
+            pygame.Rect(486 + (i % 4) * 72, 96 + (i // 4) * 80, 56, 56)
+            for i in range(len(SLOTS))
         ]
 
         self.btn_back = Button("Back", (24, 548, 140, 40), size=22)
@@ -99,12 +101,12 @@ class InventoryScreen(Screen):
         sel = self.selected
         if sel in self.player.inventory:
             acts = {self.btn_drop}
-            if sel.slot:
+            if self.player.slot_for(sel) is not None:
                 acts.add(self.btn_equip)
-            if sel.kind == "consumable" and sel.heal > 0:
+            if self.player.can_use(sel):
                 acts.add(self.btn_use)
             return acts
-        if sel.slot and self.player.equipment.get(sel.slot) is sel:
+        if self.player.slot_of(sel) is not None:
             return {self.btn_unequip, self.btn_drop}
         return set()
 
@@ -125,28 +127,22 @@ class InventoryScreen(Screen):
 
     # -- mutations -------------------------------------------------------
     def _equip(self):
-        sel = self.selected
-        self.player.equip(sel.slot, sel)
+        self.player.equip(self.selected)
         self.selected = None
 
     def _unequip(self):
-        sel = self.selected
-        self.player.equipment[sel.slot] = None
-        self.player.inventory.append(sel)
+        self.player.unequip(self.player.slot_of(self.selected))
         self.selected = None
 
     def _use(self):
         sel = self.selected
-        self.player.hp += sel.heal
-        self.player.inventory.remove(sel)
-        self.selected = None
+        self.player.use(sel)
+        # Keep a stack selected while it still has charges.
+        if sel not in self.player.inventory:
+            self.selected = None
 
     def _drop(self):
-        sel = self.selected
-        if sel in self.player.inventory:
-            self.player.inventory.remove(sel)
-        elif sel.slot and self.player.equipment.get(sel.slot) is sel:
-            self.player.equipment[sel.slot] = None
+        self.player.drop(self.selected)
         self.selected = None
 
     # -- Screen hooks ------------------------------------------------------
@@ -213,13 +209,14 @@ class InventoryScreen(Screen):
         selected item is the one currently equipped in that slot.
         """
         sel = self.selected
-        if sel is None or not sel.slot:
+        if sel is None or self.player.slot_of(sel) is not None:
             return []
-        cur = self.player.equipment.get(sel.slot)
-        if cur is sel:
+        slot = self.player.slot_for(sel)
+        if slot is None:
             return []
+        cur = self.player.equipment.get(slot)
         rows = []
-        for stat in STATS6:
+        for stat in DIFF_STATS:
             old, new = getattr(cur, stat, 0), getattr(sel, stat, 0)
             if old or new:
                 rows.append((stat, old, new))
@@ -248,7 +245,9 @@ class InventoryScreen(Screen):
                          width=2, border_radius=8)
         head = font(22).render("Backpack", True, TEXT_COLOR)
         surface.blit(head, (36, 70))
-        wt = font(18).render(f"{p.weight} / {p.max_weight} kg", True, DIM_TEXT)
+        wt = font(18).render(
+            f"{p.weight} / {p.max_weight} kg    HP {p.current_hp} / {p.max_hp}",
+            True, DIM_TEXT)
         surface.blit(wt, wt.get_rect(
             midbottom=(self.backpack.centerx, self.backpack.bottom - 10)))
 
@@ -268,8 +267,9 @@ class InventoryScreen(Screen):
             nm = font(20).render(item.name, True,
                                  TEXT_COLOR if is_sel else DIM_TEXT)
             surface.blit(nm, (r.x + 38, r.y + 6))
+            uses = f" · x{item.charges}" if item.charges > 1 else ""
             tag = font(16).render(
-                f"{item.kind} · {item.weight} kg", True, DIM_TEXT)
+                f"{item.kind} · {item.weight} kg{uses}", True, DIM_TEXT)
             surface.blit(tag, tag.get_rect(midright=(r.right - 8, r.centery)))
 
         # Equipment panel.
@@ -297,8 +297,9 @@ class InventoryScreen(Screen):
                                  width=2, border_radius=6)
             if item is not None:
                 cx, cy = box.center
-                surface.blit(self._icon(item, 40), (cx - 20, cy - 20))
-            label = font(16).render(SLOTS[i], True, DIM_TEXT)
+                surface.blit(self._icon(item, 36), (cx - 18, cy - 18))
+            label = font(16).render(
+                SLOT_LABELS.get(SLOTS[i], SLOTS[i]), True, DIM_TEXT)
             surface.blit(label, label.get_rect(
                 midtop=(box.centerx, box.bottom + 3)))
 
@@ -327,7 +328,7 @@ class InventoryScreen(Screen):
                     f"{stat.upper():>3}  {old} -> {new}", True, color)
                 surface.blit(txt, (500, y))
                 y += 22
-            if sel.slot and p.equipment.get(sel.slot) is sel:
+            if p.slot_of(sel) is not None:
                 eq = font(18).render("Currently equipped.", True, GOOD)
                 surface.blit(eq, (500, y))
 
