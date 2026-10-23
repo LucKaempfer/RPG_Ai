@@ -6,7 +6,7 @@ pending level-ups are counted but not banked, so nothing is lost if
 the player wanders off before resolving them.  The actual level-up
 (banking XP and picking stats) happens on the level-up screen.
 
-Buttons: Inventory, View Stats, Adventure (Phase 5, disabled),
+Buttons: Inventory, View Stats, Adventure (M4, disabled),
 Save & Exit.  Escape auto-saves and returns to the title screen.
 """
 

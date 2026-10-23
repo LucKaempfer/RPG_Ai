@@ -2,7 +2,7 @@
 
 Weapons: level-1 bases ported from RPG_V3/assets_V3.py, plus grown
 levels 2-4 tiers (V3 has no level-2+ data, so the growth is a design
-decision per Plan.md §4.2).
+decision; see DEVELOPMENT.md §4).
 
 Armor: designed from scratch (V3 holds only an empty `class Armor:`),
 head / torso / hands / feet, level-1 bases plus grown levels 2-4.
@@ -76,8 +76,8 @@ WEAPONS = [
 ]
 
 # --- Higher weapon tiers (levels 2-4, grown from the level-1 bases) ---
-# V3 has no level-2+ data, so these are a design decision (Plan.md
-# §4.2): per level above 1, each attack stat the weapon has (ap/rap/map)
+# V3 has no level-2+ data, so these are a design decision (DEVELOPMENT.md
+# §4): per level above 1, each attack stat the weapon has (ap/rap/map)
 # and dp grow by +1, and weight = level. A stat a weapon lacks stays 0.
 # Better ailment chance/duration is keyed off `level` in combat.py (M4).
 _ROMAN = {2: "II", 3: "III", 4: "IV"}
@@ -103,9 +103,9 @@ WEAPON_TIERS = [
 ]
 
 # --- Armor (designed from scratch; V3 has no armor data) ---
-# Slots: head / torso / hands / feet, four levels each (Plan.md §4.3:
+# Slots: head / torso / hands / feet, four levels each (DEVELOPMENT.md §4:
 # dp/rdp/mdp scaling + small hp bonus; tiers per level; weight matters).
-# Slot stat profile (design decision, Plan.md §4.2/§4.3):
+# Slot stat profile (design decision, DEVELOPMENT.md §4):
 #   head  -> dp            (physical defence)
 #   torso -> dp + rdp + mdp (the main piece, all defensive stats)
 #   hands -> rdp           (raw defence)

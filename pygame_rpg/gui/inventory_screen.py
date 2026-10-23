@@ -1,6 +1,6 @@
 # pygame_rpg/gui/inventory_screen.py
 """Inventory screen (port of the V3 inventory() + backpack() stubs, built
-to the Plan.md Phase 3 spec).
+to the DEVELOPMENT.md M3 spec).
 
 Left:  backpack list (icon, name, count, weight) + weight bar.
 Right: equipment slots (weapon / armor / accessory) with icons, and a
@@ -16,7 +16,7 @@ Actions per item:
 
 Weight is invariant under equip/unequip (Player.weight counts both
 backpack and equipment), so nothing here can exceed max_weight; the
-weight gate (can_carry) applies once Phase 4 adds pickups.
+weight gate (can_carry) applies once M4 adds pickups.
 
 Esc / Back -> back to the Base.  Window close saves, then quits.
 """
