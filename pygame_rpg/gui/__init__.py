@@ -1,5 +1,5 @@
 # pygame_rpg/gui/__init__.py
-"""GUI screens + shared widgets (Phase 3 of Plan.md).
+"""GUI screens + shared widgets (M3 in DEVELOPMENT.md).
 
 Screens never reference each other directly.  ``handle_event`` returns a
 transition request (a screen name, a ``(name, kwargs)`` pair, or the

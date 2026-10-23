@@ -10,7 +10,7 @@ sentinel, a screen name string, or a ``(name, kwargs)`` tuple) and
 this state machine performs the actual swap.
 
 The M1 dungeon demo loop is kept in git history; ``dungeon.py`` and
-``assets.py`` stay available for the Phase 5 adventure.
+``assets.py`` stay available for the M4 adventure.
 """
 
 import pygame
