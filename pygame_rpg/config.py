@@ -40,3 +40,9 @@ BASE_MAX_WEIGHT = 50
 
 # --- Saves ---
 SAVE_DIR = "saves"
+
+# --- Rarity (M2 wiring; loot rolls in M4) ---
+# Relative spawn weights for a loot roll.  A rarity with no matching
+# item falls back to the next more common one.
+RARITIES = ("common", "rare", "epic", "legendary")
+RARITY_WEIGHTS = {"common": 70, "rare": 22, "epic": 7, "legendary": 1}

@@ -27,6 +27,8 @@ magic poison/fire/electric -> poison/burning/electrocuted.
 """
 from dataclasses import dataclass
 
+from .config import RARITIES, RARITY_WEIGHTS
+
 # --- Data ---
 
 @dataclass
@@ -427,6 +429,38 @@ CATALOG = {i.id: i for i in (WEAPONS + WEAPON_TIERS + ARMOR + ARMOR_TIERS
 # Default equipment handed out by the hero maker (V3 starts heroes empty;
 # the GUI gives a basic weapon, one potion and a first ability).
 STARTER_INVENTORY = ["sword", "potion", "fireball"]
+
+
+# --- Rarity ---
+# Rarity follows the tier (DEVELOPMENT.md §6.1): levels 1-2 common,
+# level 3 rare, level 4 epic.  It drives the inventory border colour
+# and loot spawn weights only; stat size comes from the tier rules
+# above.  Legendary is reserved for hand-placed items (boss drops, M4),
+# so no catalog item uses it yet.
+RARITY_BY_LEVEL = {1: "common", 2: "common", 3: "rare", 4: "epic"}
+
+for _item in CATALOG.values():
+    _item.rarity = RARITY_BY_LEVEL.get(_item.level, "common")
+
+
+def roll_rarity(rng) -> str:
+    """Pick a rarity by RARITY_WEIGHTS; ``rng`` is a random.Random."""
+    return rng.choices(RARITIES,
+                       weights=[RARITY_WEIGHTS[r] for r in RARITIES])[0]
+
+
+def roll_loot(rng, max_level: int = 4, kinds=None) -> Item:
+    """Roll one loot item (a copy): pick a rarity, then a random catalog
+    item of that rarity up to ``max_level`` (and of ``kinds``, if given).
+    Falls back to more common rarities when none match."""
+    rarity = roll_rarity(rng)
+    for r in RARITIES[RARITIES.index(rarity)::-1]:
+        pool = [i for i in CATALOG.values()
+                if i.rarity == r and i.level <= max_level
+                and (kinds is None or i.kind in kinds)]
+        if pool:
+            return item_by_id(rng.choice(pool).id)
+    raise ValueError("no loot matches")
 
 
 def item_by_id(item_id: str) -> Item:
