@@ -12,7 +12,8 @@ or keyboard (Up / Down / Enter, Esc).
 
 When the fight ends the menu becomes one Continue button:
 won / fled -> back to the same dungeon floor (``resume``); lost -> the
-hero is carried back to the Base and rests (full HP / MP).
+hero is carried back to the Base and rests (full HP / MP); the run
+is over (its save is deleted).
 """
 
 import random
@@ -25,7 +26,7 @@ from ..assets import (
 )
 from ..combat import Battle, ONGOING, WON, LOST, FLED
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
-from ..savegame import save_player
+from ..savegame import save_player, delete_run
 from .screen import (
     QUIT, Screen, Button, font,
     BG_COLOR, PANEL_COLOR, TEXT_COLOR, DIM_TEXT, GOLD, BORDER_COLOR,
@@ -146,8 +147,10 @@ class BattleScreen(Screen):
     def _leave(self):
         b = self.battle
         if b.state == LOST:
+            # Defeat ends the run; the hero wakes up rested in the Base.
             self.player.rest()
             save_player(self.player)
+            delete_run(self.player.name)
             return ("base", {"player": self.player})
         self.dungeon.battle_over(b)
         return ("resume", {"screen": self.dungeon})

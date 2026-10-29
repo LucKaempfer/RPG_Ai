@@ -75,6 +75,11 @@ class Enemy:
         return self.hp > 0
 
 
+def cell_of(enemy):
+    """Tile the enemy stands on."""
+    return (int(enemy.x // TILE_SIZE), int(enemy.y // TILE_SIZE))
+
+
 def make_enemy(etype: EnemyType, floor: int, boss=False) -> Enemy:
     up = floor - 1
     hp = round(etype.hp * (1 + HP_GROWTH * up))

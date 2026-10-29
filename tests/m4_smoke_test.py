@@ -75,6 +75,7 @@ ok([r.rect for r in a.rooms] == [r.rect for r in b.rooms] and a.room_map.keys() 
 from pygame_rpg.main import build_screen
 from pygame_rpg.gui.dungeon_screen import DungeonScreen, WALK_SPEED
 from pygame_rpg.gui.base_screen import BaseScreen
+from pygame_rpg.gui.screen import QUIT
 
 hero = Player(name="Walker")
 ds = build_screen("dungeon", screen, {"player": hero, "seed": 3})
@@ -126,6 +127,7 @@ cx, cy = ds.camera()
 ok(0 <= cx and 0 <= cy, "camera clamped")
 
 # Transitions: Base Adventure -> dungeon; Esc -> Base (saved).
+S.delete_run(hero.name)
 base = BaseScreen(screen, hero)
 r = base.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1,
                                          pos=base.btn_adventure.rect.center))
@@ -329,9 +331,63 @@ ok(bl.battle.state == C.LOST, "defeat")
 bl._build_buttons(); bl.draw(screen)
 r = press(bl, pygame.K_RETURN)
 ok(r == ("base", {"player": loser}) and loser.current_hp == loser.max_hp, "back to the Base, rested")
-# Esc from the dungeon rests too.
-loser.current_hp = 10
-r = press(dl, pygame.K_ESCAPE)
-ok(r[0] == "base" and loser.current_hp == loser.max_hp, "Esc rests")
+ok(S.load_run("Loser") is None, "defeat ends the run")
+
+# --- Run saves (M5) ---
+runner = kit("sword_2", lvl=2); runner.name = "Saver"
+d1 = DungeonScreen(screen, runner, seed=11)
+ok(S.load_run("Saver")["seed"] == 11 and S.load_run("Saver")["floor"] == 1, "run saved on entering a floor")
+victim = next(e for e in d1.enemies if not e.boss)
+bt = BattleScreen(screen, runner, victim, d1, rng=random.Random(3))
+victim.hp = 1; bt.battle.attack(); bt._leave()
+d1.chests[0][1] = True
+d1.stairs = E.boss_room(d1.dungeon).rect.center
+d1.x, d1.y = victim.x, victim.y           # where the beaten enemy stood
+d1._mark_visited()
+runner.current_hp = 33
+r = press(d1, pygame.K_ESCAPE)
+ok(r == ("base", {"player": runner}) and runner.current_hp == 33, "Esc keeps the run and the HP")
+saved = S.load_run("Saver")
+import json; json.dumps(saved)
+ok(saved["beaten"] and saved["stairs"] and saved["chests"][0], "beaten enemy, stairs, chest recorded")
+
+hb = BaseScreen(screen, S.load_player("Saver"))
+ok(hb.btn_adventure.label == "Continue (Floor 1)" and hb.btn_new_run in hb._active_buttons(),
+   "Base offers Continue + New Adventure")
+hb.draw(screen)
+r = hb.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=hb.btn_adventure.rect.center))
+ok(r[0] == "dungeon" and r[1]["run"] == saved, "Continue passes the run")
+d2 = build_screen(r[0], screen, r[1])
+ok(d2.seed == 11 and d2.floor == 1 and (d2.x, d2.y) == (d1.x, d1.y), "same floor, same spot")
+vi = d1.all_enemies.index(victim)
+ok(len(d2.enemies) == len(d1.enemies) and not d2.all_enemies[vi].alive
+   and all(e.alive for e in d2.enemies), "beaten enemy stays beaten")
+ok([o for _, o in d2.chests] == [o for _, o in d1.chests] and d2.stairs == d1.stairs, "chests + stairs restored")
+ok(d2.seen >= d1.seen and len(d2.visited) == len(d1.visited)
+   and d2.dungeon.visited_corridors == d1.dungeon.visited_corridors, "fog + minimap restored")
+ok(d2.player.current_hp == 33, "HP carried over")
+d2.draw(screen)
+ok(d2.step(0, 0, 1 / 60) is None, "no instant fight on load")
+
+hb = BaseScreen(screen, d2.player)
+r = hb.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=hb.btn_new_run.rect.center))
+ok(r == ("dungeon", {"player": d2.player}) and S.load_run("Saver") is None
+   and d2.player.current_hp == d2.player.max_hp, "New Adventure drops the run and rests")
+d3 = build_screen(r[0], screen, r[1])
+ok(d3.floor == 1 and S.load_run("Saver")["seed"] == d3.seed, "new run saved")
+# Stairs save the next floor.
+d3.enemies = [e for e in d3.enemies if not e.boss]
+d3.stairs = E.boss_room(d3.dungeon).rect.center
+d3.x, d3.y = d3._centre(d3.stairs)
+r = d3.step(0, 0, 1 / 60)
+d4 = build_screen(r[0], screen, r[1])
+ok(S.load_run("Saver")["floor"] == 2 and S.load_run("Saver")["seed"] == d4.seed, "next floor saved")
+# Window close saves too; a broken file means no run.
+ok(d4.handle_event(pygame.event.Event(pygame.QUIT)) is QUIT and S.load_run("Saver")["floor"] == 2, "quit saves the run")
+(tmp / "runs" / "Saver.json").write_text("{broken")
+ok(S.load_run("Saver") is None and BaseScreen(screen, d4.player).btn_adventure.label == "Adventure",
+   "broken run file is ignored")
+ok(S.list_players().count("Saver") == 1 and "runs" not in S.list_players(), "runs don't show as heroes")
+S.delete_player("Saver"); ok(not (tmp / "runs" / "Saver.json").exists(), "deleting a hero deletes its run")
 
 print(f"m4 OK ({checks} checks)")
