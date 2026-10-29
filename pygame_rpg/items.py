@@ -11,6 +11,10 @@ Consumables: designed from scratch (V3 holds only an empty
 `class Consumable:`): health potions, food, mana potions and bombs,
 level-1 bases plus grown levels 2-4.  `charges` = uses per item.
 
+Trinkets: passive bonus items — extra weight capacity, XP gain, loot
+chance, movement speed, and one-ailment wards.  Level-1 bases plus grown
+levels 2-4; they take either of the 2 trinket slots.
+
 V3 weapon constructor: WP(name, lvl, ap, rap, map, dp, rdp, mdp, kg).
 Weapon effects: melee_sharp/range_sharp -> bleeding, *_dull -> stun,
 magic poison/fire/electric -> poison/burning/electrocuted.
@@ -24,6 +28,9 @@ class Item:
     id: str
     name: str
     kind: str            # "weapon" | "consumable" | "armor" | "trinket"
+                         # | "ability"
+    rarity: str = "common"  # common/rare/epic/legendary: UI border color
+                            # + spawn weights (M4); never stat magnitude
     level: int = 1       # player level gate (min level to equip)
     weight: int = 0      # kg
     # Stat bonuses (weapons apply these while equipped).
@@ -41,6 +48,13 @@ class Item:
     damage: int = 0      # consumables: bomb damage dealt in battle (M4)
     charges: int = 0     # consumables: uses left; the item is gone at 0
     combat_only: bool = False  # consumables: only usable in battle (M4)
+    # Trinket passive bonuses (applied while equipped):
+    bonus_weight: int = 0   # trinkets: flat kg added to max_weight
+    xp_bonus: int = 0       # trinkets: % bonus to XP gained (10 = +10%)
+    loot_bonus: int = 0     # trinkets: % bonus to loot drop chance
+    speed_bonus: int = 0    # trinkets: % bonus to movement speed
+    resist: str = ""        # trinkets: ailment resisted (bleeding/stun/
+                            # poison/burning/electrocuted)
     description: str = ""
 
 
@@ -229,9 +243,92 @@ CONSUMABLE_TIERS = [
     for level in (2, 3, 4)
 ]
 
+# --- Trinkets (designed from scratch; V3 has no trinket data) ---
+# Plan.md §4.3/§4.5: passive bonuses while equipped, 2 equipment slots
+# (wired in sub-milestone 6). One trinket carries one kind of bonus:
+# flat +kg to max_weight, +% XP gained, +% loot drop chance, +% movement
+# speed, or a ward resisting one ailment. Two strength steps per bonus
+# kind (5 and 10 at level 1) so the two slots can be mixed; the five
+# wards cover the five weapon ailments (bleeding/stun/poison/burning/
+# electrocuted). Trinkets weigh 0 kg — small wearable items that do not
+# burden the backpack.
+def _trinket(id_, name, bonus_weight=0, xp_bonus=0, loot_bonus=0,
+             speed_bonus=0, resist="", level=1, desc=""):
+    """Trinket builder. Weight is always 0 kg (small wearable items)."""
+    return Item(
+        id=id_, name=name, kind="trinket", level=level, weight=0,
+        slot="trinket",
+        bonus_weight=bonus_weight, xp_bonus=xp_bonus,
+        loot_bonus=loot_bonus, speed_bonus=speed_bonus, resist=resist,
+        description=desc,
+    )
+
+
+TRINKETS = [
+    # weight capacity (flat +kg to max_weight)
+    _trinket("weight_belt", "Weight Belt", bonus_weight=2,
+             desc="Holding it lets you carry 2 kg more."),
+    _trinket("iron_belt", "Iron Belt", bonus_weight=4,
+             desc="Holding it lets you carry 4 kg more."),
+    # XP gain (+% XP from defeats)
+    _trinket("wisdom_amulet", "Wisdom Amulet", xp_bonus=10,
+             desc="Gains 10% more XP from defeats."),
+    _trinket("scholar_coin", "Scholar's Coin", xp_bonus=5,
+             desc="Gains 5% more XP from defeats."),
+    # loot (+% loot drop chance)
+    _trinket("greed_ring", "Greed Ring", loot_bonus=10,
+             desc="10% better loot drop chance."),
+    _trinket("fortune_charm", "Fortune Charm", loot_bonus=5,
+             desc="5% better loot drop chance."),
+    # speed (+% movement speed)
+    _trinket("haste_scarf", "Haste Scarf", speed_bonus=10,
+             desc="Moves 10% faster."),
+    _trinket("swift_feather", "Swift Feather", speed_bonus=5,
+             desc="Moves 5% faster."),
+    # wards (resist one ailment; strength scales with level in combat.py)
+    _trinket("bleed_ward", "Bleed Ward", resist="bleeding",
+             desc="Resists bleeding."),
+    _trinket("stun_ward", "Stun Ward", resist="stun",
+             desc="Resists stun."),
+    _trinket("poison_ward", "Poison Ward", resist="poison",
+             desc="Resists poison."),
+    _trinket("burn_ward", "Burn Ward", resist="burning",
+             desc="Resists burning."),
+    _trinket("shock_ward", "Shock Ward", resist="electrocuted",
+             desc="Resists electrocution."),
+]
+
+# Higher trinket tiers (levels 2-4, grown from the level-1 bases): per
+# level above 1, the flat bonus grows by +1 kg (bonus_weight) and each
+# percentage bonus grows by +5 points (xp/loot/speed). Wards keep their
+# resist ailment; the resistance strength scales with the trinket's level
+# in combat.py (M4), mirroring how weapon ailment chance/duration is
+# keyed off level. Trinket weight stays 0 kg at every tier.
+def _trinket_tier(base: Item, level: int) -> Item:
+    """Grow a level-1 trinket base into a higher-level tier."""
+    up = level - 1
+    return _trinket(
+        f"{base.id}_{level}",
+        f"{base.name} {_ROMAN[level]}",
+        bonus_weight=base.bonus_weight + (up if base.bonus_weight else 0),
+        xp_bonus=base.xp_bonus + (5 * up if base.xp_bonus else 0),
+        loot_bonus=base.loot_bonus + (5 * up if base.loot_bonus else 0),
+        speed_bonus=base.speed_bonus + (5 * up if base.speed_bonus else 0),
+        resist=base.resist,
+        level=level,
+    )
+
+
+TRINKET_TIERS = [
+    _trinket_tier(base, level)
+    for base in TRINKETS
+    for level in (2, 3, 4)
+]
+
 # --- Full catalog: id -> Item ---
 CATALOG = {i.id: i for i in (WEAPONS + WEAPON_TIERS + ARMOR + ARMOR_TIERS
-                             + CONSUMABLES + CONSUMABLE_TIERS)}
+                             + CONSUMABLES + CONSUMABLE_TIERS
+                             + TRINKETS + TRINKET_TIERS)}
 
 # Default equipment handed out by the hero maker (V3 starts heroes empty;
 # the GUI gives a basic weapon and one potion).

@@ -120,7 +120,10 @@ class Player:
     # --- Weight / equipment ---
     @property
     def max_weight(self) -> int:
-        return BASE_MAX_WEIGHT
+        """Base carry limit plus equipped trinkets' bonus_weight."""
+        return BASE_MAX_WEIGHT + sum(
+            getattr(i, "bonus_weight", 0)
+            for i in self.equipment.values() if i is not None)
 
     @property
     def weight(self) -> int:
