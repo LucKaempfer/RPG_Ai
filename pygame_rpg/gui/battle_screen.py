@@ -5,9 +5,11 @@ Top right: the enemy (sprite x4, HP bar, ailments).  Left: the hero
 (back view x4, HP / MP bars, ailments, shield).  Bottom left: the
 battle log.  Bottom right: the menu.
 
-Menu: Attack / Abilities / Items / Run.  Abilities and Items open a
-list (the 4 ability slots with MP cost and cooldown; the backpack's
-battle consumables); Back or Esc returns to the main menu.  Mouse
+Menu: Attack / Abilities / Items / Run.  Attack opens the attack styles
+(Strike / Slash / Bash / Heavy), Abilities the 4 ability slots with MP
+cost and cooldown, Items the backpack's battle consumables; Back or Esc
+returns to the main menu.  Every damaging entry shows the damage it
+would deal now, and the hero panel shows the enemy's next hit.  Mouse
 or keyboard (Up / Down / Enter, Esc).
 
 When the fight ends the menu becomes one Continue button:
@@ -24,7 +26,7 @@ from ..assets import (
     AssetManager, HERO_COLS, HERO_ROWS, HERO_IDLE_COLS, HERO_DIR_UP,
     ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, ENEMY_HURT, ENEMY_DEATH,
 )
-from ..combat import Battle, ONGOING, WON, LOST, FLED
+from ..combat import Battle, STYLES, ONGOING, WON, LOST, FLED
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from ..savegame import save_player, delete_run
 from .effects import Particles
@@ -96,12 +98,21 @@ class BattleScreen(Screen):
         b = self.battle
         if b.state != ONGOING:
             return [("Continue", ("continue",), True)]
+        if self.mode == "attack":
+            rows = []
+            for key, st in STYLES.items():
+                lo, hi = b.attack_preview(key)
+                rows.append((f"{st.name} {lo}-{hi}  ({st.note})",
+                             ("attack", key), True))
+            return rows + [("Back", ("back",), True)]
         if self.mode == "abilities":
             rows = []
             for a in self.player.equipped_abilities():
                 cd = b.cooldowns.get(a.id)
                 tag = f"wait {cd}" if cd else f"{a.mp_cost} MP"
-                rows.append((f"{a.name}  ({tag})", ("cast", a), b.can_cast(a)))
+                dmg = b.cast_preview(a)
+                hit = f" {dmg[0]}-{dmg[1]}" if dmg else ""
+                rows.append((f"{a.name}{hit}  ({tag})", ("cast", a), b.can_cast(a)))
             return rows + [("Back", ("back",), True)]
         if self.mode == "items":
             rows = []
@@ -110,8 +121,9 @@ class BattleScreen(Screen):
                 rows.append((f"{item.name}{uses}", ("use", item),
                              b.can_use(item)))
             return rows + [("Back", ("back",), True)]
+        lo, hi = b.attack_preview()
         return [
-            ("Attack", ("attack",), True),
+            (f"Attack  ({lo}-{hi})", ("mode", "attack"), True),
             ("Abilities", ("mode", "abilities"),
              bool(self.player.equipped_abilities())),
             ("Items", ("mode", "items"), bool(b.battle_items())),
@@ -140,7 +152,8 @@ class BattleScreen(Screen):
         elif kind == "back":
             self.mode, self.focus = "main", 0
         elif kind == "attack":
-            b.attack()
+            b.attack(action[1] if len(action) > 1 else "strike")
+            self.mode = "main"
         elif kind == "cast":
             b.cast(action[1])
             self.mode = "main"
@@ -272,6 +285,10 @@ class BattleScreen(Screen):
         _bar(surface, (220, 306, 170, 10), p.current_mp, p.max_mp, MP_COLOR)
         surface.blit(font(18).render(f"MP {p.current_mp}/{p.max_mp}", True, DIM_TEXT),
                      (396, 302))
+        if b.state == ONGOING:
+            lo, hi = b.incoming_preview()
+            surface.blit(font(18).render(f"Next enemy hit: {lo}-{hi}", True, BAD),
+                         (220, 346))
         shield = (f"shield +{b.guard} ({b.guard_turns})",) if b.guard else ()
         self._statuses(surface, b.statuses, (220, 326), shield)
 

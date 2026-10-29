@@ -17,7 +17,7 @@ to the title screen.
 import pygame
 
 from ..assets import AssetManager, HERO_COLS, HERO_ROWS
-from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, max_xp_for
+from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, RUN_VERSION, max_xp_for
 from ..savegame import save_player, load_run, delete_run
 from .effects import menu_key
 from .screen import (
@@ -58,6 +58,11 @@ class BaseScreen(Screen):
         self.portrait = pygame.transform.scale(frame, (128, 128))
 
         self.run = load_run(player.name)
+        if self.run is not None and self.run.get("version") != RUN_VERSION:
+            # Saved by an older dungeon generator: the seed no longer
+            # builds the same floor, so the run can't be continued.
+            delete_run(player.name)
+            self.run = None
         x, w = 420, 340
         self.btn_inventory = Button("Inventory", (x, 100, w, 48))
         self.btn_stats = Button("View Stats", (x, 158, w, 48))

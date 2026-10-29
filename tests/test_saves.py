@@ -52,3 +52,13 @@ def test_runs_are_not_heroes(saves):
     assert S.list_players() == ["Ada"]
     S.delete_player("Ada")
     assert S.load_run("Ada") is None
+
+
+def test_old_run_version_is_dropped(saves):
+    import pygame
+    from pygame_rpg.gui.base_screen import BaseScreen
+    pygame.init()
+    screen = pygame.display.set_mode((800, 600))
+    S.save_run("Ada", {"floor": 3, "seed": 1})          # no version: old
+    assert BaseScreen(screen, Player(name="Ada")).run is None
+    assert S.load_run("Ada") is None

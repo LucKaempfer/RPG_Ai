@@ -5,9 +5,11 @@
 position, movement with wall collision, the walk animation, the camera,
 fog of war, and what stands on the floor:
 
-* enemies (``enemies.py``): bumping into one opens the battle screen;
-  this screen object is kept and resumed afterwards, so the floor
-  survives the fight.  After a win, pending level-ups open the level-up
+* enemies (``enemies.py``): stepping into a room where enemies stand
+  starts a battle with the nearest one, then the next, until the room
+  is clear, so no fight can be walked around.  Fleeing puts the hero
+  back outside the room's nearest door.  This screen object is kept and
+  resumed after each battle, so the floor survives the fight.  After a win, pending level-ups open the level-up
   screen right away (the stat pick happens mid-run).
 * chests: walking into one opens it and rolls loot into the backpack.
 * stairs: appear in the boss's room once the boss is beaten; stepping
@@ -17,6 +19,7 @@ The run is saved (``savegame.save_run``) on entering a floor, after
 every battle, on Esc and on window close: floor, seed, beaten enemies,
 opened chests, stairs, fog and the hero's spot.  Enemy and chest
 placement follow the seed, so the save only records what changed.
+I opens the inventory (equip, use potions) and comes back to the floor.
 Esc returns to the Base *without* resting; the Base's Continue picks
 the run up again, New Adventure (or a defeat) ends it.
 """
@@ -31,9 +34,9 @@ from ..assets import (
     ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, TILE_STAIRS_DOWN,
 )
 from ..combat import WON, FLED
-from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, CHESTS_PER_FLOOR
+from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, CHESTS_PER_FLOOR, RUN_VERSION
 from ..dungeon import Dungeon, TILE_SIZE, DUNGEON_WIDTH, DUNGEON_HEIGHT
-from ..enemies import place_enemies, boss_room, BOSS_TYPE
+from ..enemies import place_enemies, boss_room, cell_of, BOSS_TYPE
 from ..items import roll_loot
 from ..savegame import save_player, save_run
 from .base_screen import pending_levels
@@ -48,7 +51,7 @@ WALK_SPEED = 160
 HITBOX = 20
 # Seconds per walk/idle animation frame.
 FRAME_TIME = 0.12
-# Centre distance at which the hero touches an enemy or a chest.
+# Centre distance at which the hero touches a chest.
 TOUCH = 24
 # How far (in tiles) the hero sees into corridors; rooms light up whole.
 SIGHT = 2
@@ -83,7 +86,6 @@ class DungeonScreen(Screen):
         self.all_enemies = list(self.enemies)   # placement order, for saves
         self.chests = self._place_chests()   # [cell, opened]
         self.stairs = None                   # cell, once the boss is beaten
-        self.ignore = None      # enemy just fled from: no re-bump until apart
         self.check_levels = False
         self.banner_t = BANNER_TIME
         self.fx = Particles()
@@ -108,6 +110,7 @@ class DungeonScreen(Screen):
         """What a run save needs on top of the seed (JSON-ready)."""
         rooms = self.dungeon.rooms
         return {
+            "version": RUN_VERSION,
             "floor": self.floor, "seed": self.seed,
             "x": self.x, "y": self.y, "facing": self.facing,
             "beaten": [i for i, e in enumerate(self.all_enemies)
@@ -244,15 +247,15 @@ class DungeonScreen(Screen):
         return (max(0, min(max_x, cx)), max(0, min(max_y, cy)))
 
     # -- encounters ------------------------------------------------------
-    def touching_enemy(self):
-        """The enemy the hero bumps into, if any (ignoring the one just
-        fled from until the hero has stepped away)."""
-        if self.ignore is not None and not self._near(self.ignore.x, self.ignore.y):
-            self.ignore = None
-        for e in self.enemies:
-            if e.alive and e is not self.ignore and self._near(e.x, e.y):
-                return e
-        return None
+    def room_enemy(self):
+        """The enemy to fight now: the nearest living one in the room the
+        hero stands in (None in corridors and cleared rooms)."""
+        room = self.dungeon.get_room_at(self.cell())
+        if room is None:
+            return None
+        here = [e for e in self.enemies if e.alive and room.contains(cell_of(e))]
+        return min(here, default=None,
+                   key=lambda e: (e.x - self.x) ** 2 + (e.y - self.y) ** 2)
 
     def battle_over(self, battle) -> None:
         """Called by the battle screen before it resumes this floor."""
@@ -266,7 +269,12 @@ class DungeonScreen(Screen):
                 self.hud.say("Stairs down have appeared!")
             self.check_levels = True
         elif battle.state == FLED:
-            self.ignore = battle.enemy
+            # Back out through the nearest door; the room stays hostile.
+            room = self.dungeon.get_room_at(self.cell())
+            if room is not None:
+                out = self.dungeon.door_outside(room, self.cell())
+                self.x, self.y = self._centre(out)
+                self.hud.say(f"You escaped from the {battle.enemy.name}.")
         self.save_run()
 
     def _open_chests(self):
@@ -289,6 +297,8 @@ class DungeonScreen(Screen):
             save_player(self.player)
             self.save_run()
             return QUIT
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_i:
+            return ("inventory", {"player": self.player, "return_to": self})
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             save_player(self.player)
             self.save_run()
@@ -309,7 +319,7 @@ class DungeonScreen(Screen):
                 return ("level_up", {"player": self.player, "return_to": self})
         self.move(dx, dy, dt)
         self._open_chests()
-        enemy = self.touching_enemy()
+        enemy = self.room_enemy()
         if enemy is not None:
             self.moving = False
             return ("battle", {"player": self.player, "enemy": enemy,
@@ -374,6 +384,6 @@ class DungeonScreen(Screen):
             surface, self.visited, (SCREEN_WIDTH - mm_w - 10, 10),
             self.cell(), scale=MINIMAP_SCALE)
         hint = font(18).render(
-            "Arrows / WASD: move    Esc: Base (run is kept)", True, DIM_TEXT)
+            "Arrows / WASD: move    I: inventory    Esc: Base (run is kept)", True, DIM_TEXT)
         surface.blit(hint, hint.get_rect(bottomright=(
             SCREEN_WIDTH - 12, SCREEN_HEIGHT - 10)))

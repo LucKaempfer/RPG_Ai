@@ -54,7 +54,8 @@ def build_screen(name, display, kwargs=None):
         if name == "base":
             return BaseScreen(display, player)
         if name == "inventory":
-            return InventoryScreen(display, player)
+            return InventoryScreen(display, player,
+                                   return_to=kwargs.get("return_to"))
         if name == "stats":
             return StatsScreen(display, player)
         if name == "battle":

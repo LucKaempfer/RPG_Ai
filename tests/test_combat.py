@@ -114,3 +114,49 @@ def test_defeat():
     p.current_hp = 1
     C.Battle(p, e, FixedRng()).attack()
     assert p.current_hp == 0
+
+
+@pytest.mark.parametrize("style", list(C.STYLES))
+def test_preview_matches_the_hit(style):
+    p, e = hero("sword"), tough()
+    b = C.Battle(p, e, FixedRng())            # no variance, never misses
+    lo, hi = b.attack_preview(style)
+    assert lo <= hi
+    b.attack(style)
+    assert lo <= e.max_hp - e.hp <= hi
+
+
+def test_styles_trade_damage_for_ailments():
+    dmg = {}
+    for style in C.STYLES:
+        p, e = hero("sword"), tough()
+        C.Battle(p, e, FixedRng()).attack(style)
+        dmg[style] = e.max_hp - e.hp
+    assert dmg["slash"] < dmg["strike"] < dmg["heavy"]
+    assert dmg["bash"] < dmg["strike"]
+    p, e = hero("sword"), tough()
+    C.Battle(p, e, FixedRng(roll=50.0)).attack("slash")     # 25 + 30 > 50
+    assert "bleeding" in e.statuses
+    p, e = hero("sword"), tough()
+    C.Battle(p, e, FixedRng(roll=50.0)).attack("strike")    # 25 < 50
+    assert not e.statuses
+
+
+def test_heavy_can_miss():
+    p, e = hero("sword"), tough()
+    C.Battle(p, e, FixedRng(roll=0.0)).attack("heavy")
+    assert e.hp == e.max_hp
+
+
+def test_incoming_preview_and_cast_preview():
+    p, e = hero("sword", "fireball", "shield"), tough()
+    b = C.Battle(p, e, FixedRng())
+    lo, hi = b.incoming_preview()
+    b.attack()
+    assert lo <= p.max_hp - p.current_hp <= hi
+    fb, sh = p.equipment["ability1"], p.equipment["ability2"]
+    assert b.cast_preview(sh) is None
+    lo, hi = b.cast_preview(fb)
+    hp = e.hp
+    b.cast(fb)
+    assert lo <= hp - e.hp <= hi              # roll 99.9: no burning tick

@@ -40,6 +40,9 @@ BASE_MAX_WEIGHT = 50
 
 # --- Saves ---
 SAVE_DIR = "saves"
+# Bumped whenever the same seed would build a different floor; run saves
+# from another version are dropped (the hero just starts a new run).
+RUN_VERSION = 2
 
 # --- Rarity (M2 wiring; loot rolls in M4) ---
 # Relative spawn weights for a loot roll.  A rarity with no matching

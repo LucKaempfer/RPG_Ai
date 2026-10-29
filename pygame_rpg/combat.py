@@ -21,6 +21,15 @@ damage over time, and stun / electrocuted skip that turn.  Weapon and
 ability tiers raise the chance (+5 per level above 1, abilities +20);
 a ward trinket cuts the chance by 25% per ward level (level 4 = immune).
 
+Attack styles (``STYLES``) trade damage for ailments: Strike is the plain
+hit with the weapon's own ailment; Slash cuts for less but makes the
+target bleed more often; Bash hits a bit softer with a good stun chance;
+Heavy hits hardest but can miss and causes no ailment.
+
+Previews: ``attack_preview`` / ``cast_preview`` give the min-max damage an
+action would deal right now, ``incoming_preview`` the enemy's next hit
+on the hero (shown by the battle screen before you choose).
+
 Winning adds XP to ``player.xp`` (trinket xp bonus applied).  Levels are
 *not* banked here: the Base's level-up screen still lets the player pick
 stats, exactly as before.  Loot comes from ``items.roll_loot``.
@@ -57,6 +66,23 @@ AFFLICTED = {"bleeding": "bleeding", "poison": "poisoned", "burning": "burning",
              "stun": "stunned", "electrocuted": "electrocuted"}
 
 # Tuning numbers (chances, powers, recovery) live in config.py.
+
+@dataclass(frozen=True)
+class AttackStyle:
+    name: str
+    mult: float          # damage multiplier
+    effect: str = None   # ailment it causes; None = the weapon's own
+    chance: int = 0      # extra ailment chance (%)
+    miss: int = 0        # chance to miss (%)
+    note: str = ""       # one-line description for the menu
+
+
+STYLES = {
+    "strike": AttackStyle("Strike", 1.0, note="weapon ailment"),
+    "slash": AttackStyle("Slash", 0.75, "bleeding", 30, note="more bleeding"),
+    "bash": AttackStyle("Bash", 0.8, "stun", 15, note="may stun"),
+    "heavy": AttackStyle("Heavy", 1.35, "", 0, 25, note="25% miss"),
+}
 
 STAT_FOR = {"melee": "ap", "ranged": "rap", "magic": "map"}
 DEFENSE_FOR = {"melee": "dp", "ranged": "rdp", "magic": "mdp"}
@@ -133,8 +159,15 @@ class Battle:
                 del statuses[name]
         return skip
 
-    def _hit_enemy(self, out, stat, power, effect, chance_bonus, what):
-        dmg = max(1, round(self._vary(self.player.total(stat) + power))
+    def _hit_range(self, stat, power, mult=1.0):
+        base = self.player.total(stat) + power
+        lo, hi = DAMAGE_VARIANCE
+        return tuple(max(1, round(base * v * mult) - self.enemy.defense)
+                     for v in (lo, hi))
+
+    def _hit_enemy(self, out, stat, power, effect, chance_bonus, what,
+                   mult=1.0):
+        dmg = max(1, round(self._vary(self.player.total(stat) + power) * mult)
                   - self.enemy.defense)
         self.enemy.hp = max(0, self.enemy.hp - dmg)
         self._say(out, f"{what} hits the {self.enemy.name} for {dmg}.")
@@ -212,21 +245,52 @@ class Battle:
         self.state = LOST
         self._say(out, "You collapse...")
 
+    # -- previews ----------------------------------------------------------------
+    def _weapon(self):
+        """(stat, power, ailment, chance bonus, label) of the hero's weapon."""
+        weapon = self.player.equipment.get("weapon")
+        stat = STAT_FOR[weapon_type(weapon)]
+        if weapon is None:
+            return stat, UNARMED_POWER, "", 0, "Your fist"
+        return (stat, WEAPON_POWER_BASE + WEAPON_POWER_PER_LEVEL * weapon.level,
+                weapon.effect, LEVEL_CHANCE_BONUS * (weapon.level - 1),
+                f"Your {weapon.name}")
+
+    def attack_preview(self, style="strike"):
+        """(min, max) damage of an attack in ``style`` right now."""
+        stat, power, *_ = self._weapon()
+        return self._hit_range(stat, power, STYLES[style].mult)
+
+    def cast_preview(self, ability):
+        """(min, max) damage of ``ability``; None if it deals none."""
+        if not ability.damage:
+            return None
+        return self._hit_range(STAT_FOR[ability.attack_type], ability.damage // 2)
+
+    def incoming_preview(self):
+        """(min, max) damage of the enemy's next hit on the hero."""
+        e = self.enemy
+        defense = self.player.total(DEFENSE_FOR[e.type.attack_type]) + self.guard
+        lo, hi = DAMAGE_VARIANCE
+        return tuple(max(1, round(ENEMY_HIT_MULT * e.attack * v) - defense)
+                     for v in (lo, hi))
+
     # -- hero actions ----------------------------------------------------------
-    def attack(self) -> list:
+    def attack(self, style="strike") -> list:
         out = []
         if self.state != ONGOING or not self._start_hero_turn(out):
             return out
-        weapon = self.player.equipment.get("weapon")
-        if weapon is None:
-            power, effect, bonus, what = UNARMED_POWER, "", 0, "Your fist"
+        st = STYLES[style]
+        stat, power, effect, bonus, what = self._weapon()
+        if st.effect is not None:
+            effect = st.effect
+        if style != "strike":
+            what = f"{what} ({st.name})"
+        if st.miss and self.rng.uniform(0, 100) < st.miss:
+            self._say(out, f"{what} misses!")
         else:
-            power = WEAPON_POWER_BASE + WEAPON_POWER_PER_LEVEL * weapon.level
-            effect = weapon.effect
-            bonus = LEVEL_CHANCE_BONUS * (weapon.level - 1)
-            what = f"Your {weapon.name}"
-        self._hit_enemy(out, STAT_FOR[weapon_type(weapon)], power, effect,
-                        bonus, what)
+            self._hit_enemy(out, stat, power, effect, bonus + st.chance, what,
+                            st.mult)
         self._end_hero_turn(out)
         return out
 
