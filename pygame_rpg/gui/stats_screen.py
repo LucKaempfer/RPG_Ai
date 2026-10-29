@@ -81,7 +81,8 @@ class StatsScreen(Screen):
         hpt = font(24).render(
             f"HP {p.current_hp} / {p.max_hp}   "
             f"(base {p.hp}{_bonus_text(p, 'hp')}, "
-            f"raised {p.lvl_up_counts.get('hp', 0)}x)",
+            f"raised {p.lvl_up_counts.get('hp', 0)}x)"
+            f"     MP {p.current_mp} / {p.max_mp}",
             True, TEXT_COLOR)
         surface.blit(hpt, hpt.get_rect(midtop=(panel.centerx, 205)))
 

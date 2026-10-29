@@ -20,7 +20,7 @@ from .screen import (
     BG_COLOR, PANEL_COLOR, TEXT_COLOR, DIM_TEXT, GOLD, BORDER_COLOR,
 )
 
-STATS = ("hp", "ap", "rap", "map", "dp", "rdp", "mdp")
+STATS = ("hp", "ap", "rap", "map", "mp", "dp", "rdp", "mdp")
 
 
 def pending_levels(player) -> int:
@@ -135,6 +135,7 @@ class BaseScreen(Screen):
             col, row = divmod(i, 4)
             label = font(20).render(stat.upper(), True, DIM_TEXT)
             shown = (f"{p.current_hp}/{p.max_hp}" if stat == "hp"
+                     else f"{p.current_mp}/{p.max_mp}" if stat == "mp"
                      else str(p.total(stat)))
             value = font(20).render(shown, True, TEXT_COLOR)
             x = cx - 60 + col * 120

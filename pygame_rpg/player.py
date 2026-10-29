@@ -8,20 +8,26 @@ The stat fields are *base* stats (starting values + level-ups).
 Equipment never mutates them: ``total(stat)`` = base + the sum over
 equipped items, recomputed on every call.  ``hp`` is the base max HP;
 the HP the hero currently has is ``current_hp`` (capped at ``max_hp``).
+MP works the same way: ``max_mp`` grows with level, ``current_mp`` is
+what is left to cast abilities with.
 """
 from dataclasses import dataclass, field
 
 from .config import (
     START_LEVEL, START_XP, START_HP, START_AP, START_RAP, START_MAP,
-    START_DP, START_RDP, START_MDP,
+    START_DP, START_RDP, START_MDP, START_MP, MP_PER_LEVEL,
     XP_PER_LEVEL, LEVEL_UP_BONUS, BASE_MAX_WEIGHT, max_xp_for,
 )
 
 # Equipment slots a character can fill.  Items carry the slot they fit
-# (``Item.slot``); trinkets say "trinket" and take either trinket slot.
-EQUIP_SLOTS = ("weapon", "head", "torso", "hands", "feet",
-               "trinket1", "trinket2")
+# (``Item.slot``); trinkets say "trinket" and take either trinket slot,
+# abilities say "ability" and take any of the four ability slots.
 TRINKET_SLOTS = ("trinket1", "trinket2")
+ABILITY_SLOTS = ("ability1", "ability2", "ability3", "ability4")
+EQUIP_SLOTS = ("weapon", "head", "torso", "hands", "feet",
+               *TRINKET_SLOTS, *ABILITY_SLOTS)
+# Item.slot values that stand for a group of slots.
+SLOT_GROUPS = {"trinket": TRINKET_SLOTS, "ability": ABILITY_SLOTS}
 
 # Slot names used by saves written before the M2 wiring.  "accessory"
 # becomes the first trinket slot; anything else unknown (e.g. the old
@@ -56,6 +62,8 @@ class Player:
     equipment: dict = field(default_factory=dict)
     # HP the hero has right now; None = full (resolved to max_hp).
     current_hp: int = None
+    # MP left for abilities; None = full (resolved to max_mp).
+    current_mp: int = None
 
     def __post_init__(self):
         for slot in EQUIP_SLOTS:
@@ -64,6 +72,8 @@ class Player:
             self.lvl_up_counts.setdefault(stat, 0)
         if self.current_hp is None:
             self.current_hp = self.max_hp
+        if self.current_mp is None:
+            self.current_mp = self.max_mp
 
     # --- Derived stats (base + equipment) ---
     def bonus(self, stat: str) -> int:
@@ -89,6 +99,34 @@ class Player:
     def _clamp_hp(self) -> None:
         self.current_hp = max(0, min(self.current_hp, self.max_hp))
 
+    # --- MP (ability casts, M4 battle menu) ---
+    @property
+    def max_mp(self) -> int:
+        return START_MP + MP_PER_LEVEL * (self.lvl - 1)
+
+    def restore_mp(self, amount: int) -> int:
+        """Restore up to ``amount`` MP (capped at max_mp); returns the
+        MP actually restored."""
+        before = self.current_mp
+        self.current_mp = min(self.max_mp, self.current_mp + amount)
+        return self.current_mp - before
+
+    def can_cast(self, ability) -> bool:
+        """Enough MP for ``ability`` and it sits in an ability slot.
+        Cooldowns are battle state and live in combat.py (M4)."""
+        return (self.slot_of(ability) in ABILITY_SLOTS
+                and self.current_mp >= ability.mp_cost)
+
+    def spend_mp(self, ability) -> None:
+        if not self.can_cast(ability):
+            raise ValueError(f"cannot cast {getattr(ability, 'id', ability)!r}")
+        self.current_mp -= ability.mp_cost
+
+    def equipped_abilities(self) -> list:
+        """Abilities in slot order (the battle menu's 4 entries)."""
+        return [self.equipment[s] for s in ABILITY_SLOTS
+                if self.equipment[s] is not None]
+
     # --- XP / level-up (V3 xp_check) ---
     @property
     def max_xp(self) -> int:
@@ -104,6 +142,7 @@ class Player:
         while self.xp >= self.max_xp:
             self.xp -= self.max_xp
             self.lvl += 1
+            self.current_mp += MP_PER_LEVEL
             ups += 1
         return ups
 
@@ -120,7 +159,10 @@ class Player:
     # --- Weight / equipment ---
     @property
     def max_weight(self) -> int:
-        return BASE_MAX_WEIGHT
+        """Base carry limit plus equipped trinkets' bonus_weight."""
+        return BASE_MAX_WEIGHT + sum(
+            getattr(i, "bonus_weight", 0)
+            for i in self.equipment.values() if i is not None)
 
     @property
     def weight(self) -> int:
@@ -137,15 +179,21 @@ class Player:
 
     def slot_for(self, item):
         """The slot ``item`` would go into, or None if it can't be
-        equipped.  Trinkets take the first free trinket slot (the first
-        one when both are full)."""
+        equipped.  Grouped slots (trinkets, abilities) take the first
+        free one, or the first one when all are full."""
         slot = getattr(item, "slot", "")
-        if slot == "trinket":
-            for s in TRINKET_SLOTS:
+        if slot in SLOT_GROUPS:
+            group = SLOT_GROUPS[slot]
+            for s in group:
                 if self.equipment[s] is None:
                     return s
-            return TRINKET_SLOTS[0]
+            return group[0]
         return slot if slot in EQUIP_SLOTS else None
+
+    def can_equip(self, item) -> bool:
+        """Item has a slot and the hero meets its level gate."""
+        return (self.slot_for(item) is not None
+                and getattr(item, "level", 1) <= self.lvl)
 
     def slot_of(self, item):
         """The slot ``item`` is equipped in (identity check), or None."""
@@ -164,6 +212,8 @@ class Player:
             slot = self.slot_for(item)
         if slot not in EQUIP_SLOTS:
             raise ValueError(f"unknown slot {slot!r}")
+        if getattr(item, "level", 1) > self.lvl:
+            raise ValueError(f"{item.id!r} needs level {item.level}")
         if item not in self.inventory:
             raise ValueError("item is not in the backpack")
         self.inventory.remove(item)
@@ -232,6 +282,7 @@ class Player:
             "xp": self.xp,
             "hp": self.hp,
             "current_hp": self.current_hp,
+            "current_mp": self.current_mp,
             "ap": self.ap,
             "rap": self.rap,
             "map": self.map,
@@ -251,7 +302,8 @@ class Player:
 
         Migrates saves from before the M2 wiring: legacy slot names are
         renamed, and items in unknown slots or in a slot they don't fit
-        go back to the backpack.  A missing ``current_hp`` means full HP.
+        go back to the backpack.  A missing ``current_hp`` /
+        ``current_mp`` means full HP / MP.
         """
         p = cls(
             name=data.get("name", ""),
@@ -272,7 +324,7 @@ class Player:
                 continue
             item = resolve(r)
             slot = LEGACY_SLOTS.get(slot, slot)
-            fits = (slot in TRINKET_SLOTS and item.slot == "trinket"
+            fits = (slot in SLOT_GROUPS.get(item.slot, ())
                     or slot in EQUIP_SLOTS and item.slot == slot)
             if fits and p.equipment[slot] is None:
                 p.equipment[slot] = item
@@ -281,4 +333,7 @@ class Player:
         saved_hp = data.get("current_hp")
         p.current_hp = p.max_hp if saved_hp is None else saved_hp
         p._clamp_hp()
+        saved_mp = data.get("current_mp")
+        p.current_mp = (p.max_mp if saved_mp is None
+                        else max(0, min(saved_mp, p.max_mp)))
         return p

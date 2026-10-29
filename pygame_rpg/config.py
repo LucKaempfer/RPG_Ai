@@ -20,6 +20,8 @@ START_MAP = 5    # magic attack points
 START_DP = 5     # defence points
 START_RDP = 5    # raw defence points
 START_MDP = 5    # magic defence points
+START_MP = 20    # magic points: the pool abilities cast from
+MP_PER_LEVEL = 5 # max MP grows by this much per level above 1
 
 # --- XP / level-up ---
 # V3 xp_check: max_xp = lvl * 100; each level-up the player

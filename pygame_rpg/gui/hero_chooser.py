@@ -81,9 +81,9 @@ class HeroChooserScreen(Screen):
         return ("base", {"player": player})
 
     def _hover(self, pos):
-        buttons = self.rows + (
+        buttons = self.rows + [
             self.btn_back, self.btn_next, self.btn_cancel, self.btn_new,
-        )
+        ]
         for btn in buttons:
             if btn.rect.collidepoint(pos):
                 return btn

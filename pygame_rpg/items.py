@@ -11,6 +11,16 @@ Consumables: designed from scratch (V3 holds only an empty
 `class Consumable:`): health potions, food, mana potions and bombs,
 level-1 bases plus grown levels 2-4.  `charges` = uses per item.
 
+Trinkets: passive bonus items — extra weight capacity, XP gain, loot
+chance, movement speed, and one-ailment wards.  Level-1 bases plus grown
+levels 2-4; they take either of the 2 trinket slots.
+
+Abilities: designed from scratch (V3 holds only an empty
+`class Ability:`): active battle skills that cost MP and have a
+cooldown in turns.  Learned abilities sit in the backpack like items
+and are assigned to the 4 ability slots; the level gate unlocks the
+stronger tiers.
+
 V3 weapon constructor: WP(name, lvl, ap, rap, map, dp, rdp, mdp, kg).
 Weapon effects: melee_sharp/range_sharp -> bleeding, *_dull -> stun,
 magic poison/fire/electric -> poison/burning/electrocuted.
@@ -24,6 +34,9 @@ class Item:
     id: str
     name: str
     kind: str            # "weapon" | "consumable" | "armor" | "trinket"
+                         # | "ability"
+    rarity: str = "common"  # common/rare/epic/legendary: UI border color
+                            # + spawn weights (M4); never stat magnitude
     level: int = 1       # player level gate (min level to equip)
     weight: int = 0      # kg
     # Stat bonuses (weapons apply these while equipped).
@@ -41,6 +54,20 @@ class Item:
     damage: int = 0      # consumables: bomb damage dealt in battle (M4)
     charges: int = 0     # consumables: uses left; the item is gone at 0
     combat_only: bool = False  # consumables: only usable in battle (M4)
+    # Trinket passive bonuses (applied while equipped):
+    bonus_weight: int = 0   # trinkets: flat kg added to max_weight
+    xp_bonus: int = 0       # trinkets: % bonus to XP gained (10 = +10%)
+    loot_bonus: int = 0     # trinkets: % bonus to loot drop chance
+    speed_bonus: int = 0    # trinkets: % bonus to movement speed
+    resist: str = ""        # trinkets: ailment resisted (bleeding/stun/
+                            # poison/burning/electrocuted)
+    # Ability data (used by the M4 battle menu):
+    attack_type: str = ""   # abilities: "melee" | "ranged" | "magic" | ""
+                            # (support); picks ap/rap/map vs dp/rdp/mdp
+    mp_cost: int = 0        # abilities: MP spent per cast
+    cooldown: int = 0       # abilities: turns before it can be cast again
+    guard: int = 0          # abilities: + to dp/rdp/mdp while active
+    duration: int = 0       # abilities: turns a guard/effect lasts
     description: str = ""
 
 
@@ -229,13 +256,177 @@ CONSUMABLE_TIERS = [
     for level in (2, 3, 4)
 ]
 
+# --- Trinkets (designed from scratch; V3 has no trinket data) ---
+# DEVELOPMENT.md §6.1: passive bonuses while equipped, 2 equipment slots
+# (wired in sub-milestone 6). One trinket carries one kind of bonus:
+# flat +kg to max_weight, +% XP gained, +% loot drop chance, +% movement
+# speed, or a ward resisting one ailment. Two strength steps per bonus
+# kind (5 and 10 at level 1) so the two slots can be mixed; the five
+# wards cover the five weapon ailments (bleeding/stun/poison/burning/
+# electrocuted). Trinkets weigh 0 kg — small wearable items that do not
+# burden the backpack.
+def _trinket(id_, name, bonus_weight=0, xp_bonus=0, loot_bonus=0,
+             speed_bonus=0, resist="", level=1, desc=""):
+    """Trinket builder. Weight is always 0 kg (small wearable items).
+    Without ``desc`` the description is derived from the bonus."""
+    if not desc:
+        desc = (f"Holding it lets you carry {bonus_weight} kg more." if bonus_weight
+                else f"Gains {xp_bonus}% more XP from defeats." if xp_bonus
+                else f"{loot_bonus}% better loot drop chance." if loot_bonus
+                else f"Moves {speed_bonus}% faster." if speed_bonus
+                else f"Resists {resist}." if resist else "")
+    return Item(
+        id=id_, name=name, kind="trinket", level=level, weight=0,
+        slot="trinket",
+        bonus_weight=bonus_weight, xp_bonus=xp_bonus,
+        loot_bonus=loot_bonus, speed_bonus=speed_bonus, resist=resist,
+        description=desc,
+    )
+
+
+TRINKETS = [
+    # weight capacity (flat +kg to max_weight)
+    _trinket("weight_belt", "Weight Belt", bonus_weight=2,
+             desc="Holding it lets you carry 2 kg more."),
+    _trinket("iron_belt", "Iron Belt", bonus_weight=4,
+             desc="Holding it lets you carry 4 kg more."),
+    # XP gain (+% XP from defeats)
+    _trinket("wisdom_amulet", "Wisdom Amulet", xp_bonus=10,
+             desc="Gains 10% more XP from defeats."),
+    _trinket("scholar_coin", "Scholar's Coin", xp_bonus=5,
+             desc="Gains 5% more XP from defeats."),
+    # loot (+% loot drop chance)
+    _trinket("greed_ring", "Greed Ring", loot_bonus=10,
+             desc="10% better loot drop chance."),
+    _trinket("fortune_charm", "Fortune Charm", loot_bonus=5,
+             desc="5% better loot drop chance."),
+    # speed (+% movement speed)
+    _trinket("haste_scarf", "Haste Scarf", speed_bonus=10,
+             desc="Moves 10% faster."),
+    _trinket("swift_feather", "Swift Feather", speed_bonus=5,
+             desc="Moves 5% faster."),
+    # wards (resist one ailment; strength scales with level in combat.py)
+    _trinket("bleed_ward", "Bleed Ward", resist="bleeding",
+             desc="Resists bleeding."),
+    _trinket("stun_ward", "Stun Ward", resist="stun",
+             desc="Resists stun."),
+    _trinket("poison_ward", "Poison Ward", resist="poison",
+             desc="Resists poison."),
+    _trinket("burn_ward", "Burn Ward", resist="burning",
+             desc="Resists burning."),
+    _trinket("shock_ward", "Shock Ward", resist="electrocuted",
+             desc="Resists electrocution."),
+]
+
+# Higher trinket tiers (levels 2-4, grown from the level-1 bases): per
+# level above 1, the flat bonus grows by +1 kg (bonus_weight) and each
+# percentage bonus grows by +5 points (xp/loot/speed). Wards keep their
+# resist ailment; the resistance strength scales with the trinket's level
+# in combat.py (M4), mirroring how weapon ailment chance/duration is
+# keyed off level. Trinket weight stays 0 kg at every tier.
+def _trinket_tier(base: Item, level: int) -> Item:
+    """Grow a level-1 trinket base into a higher-level tier."""
+    up = level - 1
+    return _trinket(
+        f"{base.id}_{level}",
+        f"{base.name} {_ROMAN[level]}",
+        bonus_weight=base.bonus_weight + (up if base.bonus_weight else 0),
+        xp_bonus=base.xp_bonus + (5 * up if base.xp_bonus else 0),
+        loot_bonus=base.loot_bonus + (5 * up if base.loot_bonus else 0),
+        speed_bonus=base.speed_bonus + (5 * up if base.speed_bonus else 0),
+        resist=base.resist,
+        level=level,
+    )
+
+
+TRINKET_TIERS = [
+    _trinket_tier(base, level)
+    for base in TRINKETS
+    for level in (2, 3, 4)
+]
+
+# --- Abilities (designed from scratch; V3 has no ability data) ---
+# Active battle skills, cast from the battle menu (M4) out of the 4
+# ability slots.  They weigh 0 kg (learned, not carried) and are used
+# up by nothing: the cost is MP (`mp_cost`) and a cooldown in turns.
+# Level-1 bases:
+#   fireball        magic,  20 dmg + burning,       4 MP, cooldown 2
+#   chain_lightning magic,  15 dmg + electrocuted,  5 MP, cooldown 2
+#   power_strike    melee,  15 dmg + stun,          4 MP, cooldown 3
+#   piercing_shot   ranged, 15 dmg + bleeding,      4 MP, cooldown 2
+#   heal            support, restores 25 HP,        6 MP, cooldown 3
+#   shield          support, +3 dp/rdp/mdp 3 turns, 5 MP, cooldown 4
+# Damage is added to the caster's matching attack stat in combat.py.
+def _ab(id_, name, attack_type="", damage=0, effect="", heal=0, guard=0,
+        duration=0, mp_cost=0, cooldown=0, level=1):
+    """Ability builder. The description is derived from the effect."""
+    if damage:
+        desc = f"{attack_type.capitalize()}: {damage} damage" + (
+            f" + {effect}" if effect else "")
+    elif heal:
+        desc = f"Restores {heal} HP"
+    else:
+        desc = f"+{guard} DP/RDP/MDP for {duration} turns"
+    desc += f". {mp_cost} MP, cooldown {cooldown}."
+    return Item(
+        id=id_, name=name, kind="ability", level=level, weight=0,
+        slot="ability", attack_type=attack_type, damage=damage,
+        effect=effect, heal=heal, guard=guard, duration=duration,
+        mp_cost=mp_cost, cooldown=cooldown, description=desc,
+    )
+
+
+ABILITIES = [
+    _ab("fireball", "Fireball", "magic", damage=20, effect="burning",
+        mp_cost=4, cooldown=2),
+    _ab("chain_lightning", "Chain Lightning", "magic", damage=15,
+        effect="electrocuted", mp_cost=5, cooldown=2),
+    _ab("power_strike", "Power Strike", "melee", damage=15, effect="stun",
+        mp_cost=4, cooldown=3),
+    _ab("piercing_shot", "Piercing Shot", "ranged", damage=15,
+        effect="bleeding", mp_cost=4, cooldown=2),
+    _ab("heal", "Heal", heal=25, mp_cost=6, cooldown=3),
+    _ab("shield", "Shield", guard=3, duration=3, mp_cost=5, cooldown=4),
+]
+
+
+# Higher ability tiers (levels 2-4, grown from the level-1 bases): per
+# level above 1, damage +10, heal +15, guard +2, and MP cost +2.
+# Effect, duration and cooldown stay the same.  The level gate is what
+# "unlocked by level" means: Fireball III needs player level 3.
+def _ab_tier(base: Item, level: int) -> Item:
+    """Grow a level-1 ability base into a higher-level tier."""
+    up = level - 1
+    return _ab(
+        f"{base.id}_{level}",
+        f"{base.name} {_ROMAN[level]}",
+        attack_type=base.attack_type,
+        damage=base.damage + 10 * up if base.damage else 0,
+        effect=base.effect,
+        heal=base.heal + 15 * up if base.heal else 0,
+        guard=base.guard + 2 * up if base.guard else 0,
+        duration=base.duration,
+        mp_cost=base.mp_cost + 2 * up,
+        cooldown=base.cooldown,
+        level=level,
+    )
+
+
+ABILITY_TIERS = [
+    _ab_tier(base, level)
+    for base in ABILITIES
+    for level in (2, 3, 4)
+]
+
 # --- Full catalog: id -> Item ---
 CATALOG = {i.id: i for i in (WEAPONS + WEAPON_TIERS + ARMOR + ARMOR_TIERS
-                             + CONSUMABLES + CONSUMABLE_TIERS)}
+                             + CONSUMABLES + CONSUMABLE_TIERS
+                             + TRINKETS + TRINKET_TIERS
+                             + ABILITIES + ABILITY_TIERS)}
 
 # Default equipment handed out by the hero maker (V3 starts heroes empty;
-# the GUI gives a basic weapon and one potion).
-STARTER_INVENTORY = ["sword", "potion"]
+# the GUI gives a basic weapon, one potion and a first ability).
+STARTER_INVENTORY = ["sword", "potion", "fireball"]
 
 
 def item_by_id(item_id: str) -> Item:
