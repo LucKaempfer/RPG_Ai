@@ -22,11 +22,12 @@ import pygame
 
 from ..assets import (
     AssetManager, HERO_COLS, HERO_ROWS, HERO_IDLE_COLS, HERO_DIR_UP,
-    ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, ENEMY_HURT,
+    ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, ENEMY_HURT, ENEMY_DEATH,
 )
 from ..combat import Battle, ONGOING, WON, LOST, FLED
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from ..savegame import save_player, delete_run
+from .effects import Particles
 from .screen import (
     QUIT, Screen, Button, font,
     BG_COLOR, PANEL_COLOR, TEXT_COLOR, DIM_TEXT, GOLD, BORDER_COLOR,
@@ -41,6 +42,7 @@ HURT_TIME = 0.35   # seconds a side shows it was hit (enemy hurt frames,
                    # hero red flash + shake)
 SHAKE = 6          # pixels the hero sprite jolts when hit
 POP_TIME = 1.0     # seconds a damage / heal number floats up
+END_TIME = 0.8     # seconds the victory / defeat animation plays
 
 MENU = ("Attack", "Abilities", "Items", "Run")
 
@@ -71,6 +73,8 @@ class BattleScreen(Screen):
         self.hurt_t = 0.0
         self.hero_hurt_t = 0.0
         self.pops = []      # [text, color, x, y, age]: floating numbers
+        self.fx = Particles()
+        self.end_t = None   # seconds since the fight ended (animations)
         self.panel_log = pygame.Rect(24, 404, 470, 176)
         self.panel_menu = pygame.Rect(510, 404, 266, 176)
 
@@ -154,6 +158,11 @@ class BattleScreen(Screen):
             self._pop(f"-{lost}", BAD, 134, 200)
         elif lost < 0:
             self._pop(f"+{-lost}", GOOD, 134, 200)
+        if b.state != ONGOING and self.end_t is None:
+            self.end_t = 0.0
+            if b.state == WON:
+                self.fx.burst(590, 270, GOLD, count=28, speed=180)
+                self.fx.burst(590, 270, (255, 255, 255), count=12, speed=120)
         self._build_buttons()
         return None
 
@@ -204,6 +213,9 @@ class BattleScreen(Screen):
         for pop in self.pops:
             pop[4] += dt
         self.pops = [p for p in self.pops if p[4] < POP_TIME]
+        self.fx.update(dt)
+        if self.end_t is not None:
+            self.end_t += dt
 
     # -- drawing -------------------------------------------------------------
     def _statuses(self, surface, statuses, pos, extra=()):
@@ -220,7 +232,12 @@ class BattleScreen(Screen):
 
         # Enemy (top right).
         frames = ENEMY_HURT if self.hurt_t > 0 else ENEMY_IDLE
-        frame = self.enemy_frames[frames[blink]] if e.alive else None
+        frame = self.enemy_frames[frames[blink]]
+        if not e.alive:
+            # Death frames, fading out over END_TIME.
+            t = min(1.0, (self.end_t or 0.0) / END_TIME)
+            frame = self.enemy_frames[ENEMY_DEATH[0 if t < 0.5 else 1]].copy()
+            frame.set_alpha(int(255 * (1 - 0.6 * t)))
         ex = 590
         if frame is not None:
             surface.blit(frame, frame.get_rect(midbottom=(ex, 330)))
@@ -239,7 +256,14 @@ class BattleScreen(Screen):
             hero_img = hero_img.copy()
             hero_img.fill((110, 0, 0), special_flags=pygame.BLEND_RGB_ADD)
             hx += SHAKE if int(self.hero_hurt_t * 40) % 2 else -SHAKE
-        surface.blit(hero_img, (hx, 220))
+        hy = 220
+        if b.state == LOST:
+            # Collapse: tip over and fade.
+            t = min(1.0, (self.end_t or 0.0) / END_TIME)
+            hero_img = pygame.transform.rotate(hero_img, -80 * t)
+            hero_img.set_alpha(int(255 * (1 - 0.5 * t)))
+            hy += int(40 * t)
+        surface.blit(hero_img, (hx, hy))
         name = font(26).render(p.name, True, TEXT_COLOR)
         surface.blit(name, (220, 250))
         _bar(surface, (220, 284, 170, 14), p.current_hp, p.max_hp, HP_COLOR)
@@ -273,6 +297,7 @@ class BattleScreen(Screen):
                 txt = font(btn.font_size).render(btn.label, True, (95, 95, 110))
                 surface.blit(txt, txt.get_rect(center=btn.rect.center))
 
+        self.fx.draw(surface)
         for text, color, x, y, age in self.pops:
             img = font(28).render(text, True, color)
             img.set_alpha(int(255 * (1 - age / POP_TIME)))
