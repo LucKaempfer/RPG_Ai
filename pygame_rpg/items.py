@@ -7,6 +7,10 @@ decision; see DEVELOPMENT.md §4).
 Armor: designed from scratch (V3 holds only an empty `class Armor:`),
 head / torso / hands / feet, level-1 bases plus grown levels 2-4.
 
+Consumables: designed from scratch (V3 holds only an empty
+`class Consumable:`): health potions, food, mana potions and bombs,
+level-1 bases plus grown levels 2-4.  `charges` = uses per item.
+
 V3 weapon constructor: WP(name, lvl, ap, rap, map, dp, rdp, mdp, kg).
 Weapon effects: melee_sharp/range_sharp -> bleeding, *_dull -> stun,
 magic poison/fire/electric -> poison/burning/electrocuted.
@@ -33,6 +37,10 @@ class Item:
     slot: str = ""       # equipment slot (weapons: "weapon")
     effect: str = ""     # status effect applied in combat
     heal: int = 0        # consumables: HP restored on use
+    mana: int = 0        # consumables: mana restored (abilities, M2 step 5)
+    damage: int = 0      # consumables: bomb damage dealt in battle (M4)
+    charges: int = 0     # consumables: uses left; the item is gone at 0
+    combat_only: bool = False  # consumables: only usable in battle (M4)
     description: str = ""
 
 
@@ -160,14 +168,70 @@ ARMOR_TIERS = [
     for level in (2, 3, 4)
 ]
 
-# --- Consumables ---
+# --- Consumables (designed from scratch; V3 has no consumable data) ---
+# Four lines, each a level-1 base plus grown levels 2-4:
+#   health potion -> heal 25 x level, 1 charge          (usable anywhere)
+#   ration (food) -> heal 10 x level, 3 charges         (usable anywhere)
+#   mana potion   -> mana 20 x level, 1 charge          (battle only)
+#   bombs         -> damage 15 + 10 per level above 1, 1 charge, plus an
+#                    ailment (fire -> burning, poison -> poison,
+#                    flash -> stun)                     (battle only)
+# Weight stays at the base weight (1 kg) for every tier.
+def _con(id_, name, heal=0, mana=0, damage=0, effect="", charges=1,
+         combat_only=False, level=1, weight=1):
+    """Consumable builder. The description is derived from the effect."""
+    parts = []
+    if heal:
+        parts.append(f"Restores {heal} HP")
+    if mana:
+        parts.append(f"Restores {mana} mana")
+    if damage:
+        parts.append(f"Deals {damage} damage" + (f" + {effect}" if effect else ""))
+    desc = ", ".join(parts) + "."
+    if charges > 1:
+        desc += f" {charges} uses."
+    if combat_only:
+        desc += " Battle only."
+    return Item(
+        id=id_, name=name, kind="consumable", level=level, weight=weight,
+        heal=heal, mana=mana, damage=damage, effect=effect,
+        charges=charges, combat_only=combat_only, description=desc,
+    )
+
+
 CONSUMABLES = [
-    Item(id="potion", name="Health Potion", kind="consumable", weight=1,
-         heal=25, description="Restores 25 HP."),
+    _con("potion", "Health Potion", heal=25),
+    _con("ration", "Ration", heal=10, charges=3),
+    _con("mana_potion", "Mana Potion", mana=20, combat_only=True),
+    _con("fire_bomb", "Fire Bomb", damage=15, effect="burning", combat_only=True),
+    _con("poison_bomb", "Poison Bomb", damage=15, effect="poison", combat_only=True),
+    _con("flash_bomb", "Flash Bomb", damage=15, effect="stun", combat_only=True),
+]
+
+
+def _con_tier(base: Item, level: int) -> Item:
+    """Grow a level-1 consumable base into a higher-level tier."""
+    up = level - 1
+    return _con(
+        f"{base.id}_{level}",
+        f"{base.name} {_ROMAN[level]}",
+        heal=base.heal * level,
+        mana=base.mana * level,
+        damage=base.damage + 10 * up if base.damage else 0,
+        effect=base.effect, charges=base.charges,
+        combat_only=base.combat_only, level=level, weight=base.weight,
+    )
+
+
+CONSUMABLE_TIERS = [
+    _con_tier(base, level)
+    for base in CONSUMABLES
+    for level in (2, 3, 4)
 ]
 
 # --- Full catalog: id -> Item ---
-CATALOG = {i.id: i for i in WEAPONS + WEAPON_TIERS + ARMOR + ARMOR_TIERS + CONSUMABLES}
+CATALOG = {i.id: i for i in (WEAPONS + WEAPON_TIERS + ARMOR + ARMOR_TIERS
+                             + CONSUMABLES + CONSUMABLE_TIERS)}
 
 # Default equipment handed out by the hero maker (V3 starts heroes empty;
 # the GUI gives a basic weapon and one potion).

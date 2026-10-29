@@ -134,7 +134,9 @@ class BaseScreen(Screen):
         for i, stat in enumerate(STATS):
             col, row = divmod(i, 4)
             label = font(20).render(stat.upper(), True, DIM_TEXT)
-            value = font(20).render(str(getattr(p, stat)), True, TEXT_COLOR)
+            shown = (f"{p.current_hp}/{p.max_hp}" if stat == "hp"
+                     else str(p.total(stat)))
+            value = font(20).render(shown, True, TEXT_COLOR)
             x = cx - 60 + col * 120
             surface.blit(label, label.get_rect(midright=(x, y0 + row * rowh)))
             surface.blit(value, value.get_rect(
