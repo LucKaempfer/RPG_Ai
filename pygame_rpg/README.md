@@ -22,5 +22,6 @@ python -m pytest
 * Dungeon: arrows / WASD to walk, bump into an enemy to fight, Esc returns to the Base (the run
   is kept: *Continue (Floor N)*).
 * Battle: Attack / Abilities / Items / Run.
+* M: mute / unmute sound (effects and the sewer ambience).
 
 Everything else (architecture, rules, numbers, roadmap) is in `DEVELOPMENT.md` at the repo root.

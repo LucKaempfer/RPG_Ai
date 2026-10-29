@@ -28,6 +28,7 @@ import random
 
 import pygame
 
+from .. import audio
 from ..assets import (
     AssetManager, HERO_COLS, HERO_ROWS, HERO_IDLE_COLS, HERO_WALK_COLS,
     HERO_DIR_DOWN, HERO_DIR_UP, HERO_DIR_LEFT, HERO_DIR_RIGHT,
@@ -53,6 +54,8 @@ HITBOX = 20
 FRAME_TIME = 0.12
 # Centre distance at which the hero touches a chest.
 TOUCH = 24
+# Pixels walked per footstep sound.
+STRIDE = 34
 # How far (in tiles) the hero sees.  Walls block the view (line of
 # sight); what was seen stays on the map but is drawn dimmed.
 SIGHT = 8
@@ -83,6 +86,7 @@ def _light_mask():
 
 class DungeonScreen(Screen):
     name = "dungeon"
+    ambience = "sewer"
 
     def __init__(self, screen, player, floor=1, seed=None, run=None):
         """``run``: a dict from ``to_run()`` (a saved run) to restore;
@@ -101,6 +105,7 @@ class DungeonScreen(Screen):
         self.facing = HERO_DIR_DOWN
         self.moving = False
         self.anim_t = 0.0
+        self.stride = 0.0   # pixels walked since the last footstep sound
         self.visited = []
         self.seen = set()
         self.visible = set()                 # in line of sight right now
@@ -230,17 +235,31 @@ class DungeonScreen(Screen):
         if dx and dy:  # same speed diagonally
             dx, dy = dx * 0.7071, dy * 0.7071
         step = self.speed * dt
+        old = (self.x, self.y)
         nx = self.x + dx * step
         if self._fits(nx, self.y):
             self.x = nx
         ny = self.y + dy * step
         if self._fits(self.x, ny):
             self.y = ny
+        self._footsteps(old)
         if abs(dx) >= abs(dy):
             self.facing = HERO_DIR_RIGHT if dx > 0 else HERO_DIR_LEFT
         else:
             self.facing = HERO_DIR_DOWN if dy > 0 else HERO_DIR_UP
         self._mark_visited()
+
+    def _footsteps(self, old):
+        """Splash every STRIDE pixels walked; a door creaks when the
+        hero steps onto its tile."""
+        self.stride += abs(self.x - old[0]) + abs(self.y - old[1])
+        if self.stride >= STRIDE:
+            self.stride -= STRIDE
+            audio.play("step", volume=0.6)
+        doors = self.dungeon.door_tiles
+        before = (int(old[0] // TILE_SIZE), int(old[1] // TILE_SIZE))
+        if self.cell() in doors and before != self.cell():
+            audio.play("door", volume=0.7)
 
     def _mark_visited(self):
         cell = self.cell()
@@ -302,6 +321,7 @@ class DungeonScreen(Screen):
             cell, opened = chest
             if not opened and self._near(*self._centre(cell)):
                 chest[1] = True
+                audio.play("chest")
                 self.fx.burst(*self._centre(cell), (240, 200, 90), count=22)
                 item = roll_loot(self.dungeon.rng,
                                  max_level=min(4, self.floor + 1))
@@ -342,10 +362,12 @@ class DungeonScreen(Screen):
         enemy = self.room_enemy()
         if enemy is not None:
             self.moving = False
+            audio.play("encounter")
             return ("battle", {"player": self.player, "enemy": enemy,
                                "dungeon": self})
         if self.stairs is not None and self.cell() == self.stairs:
             save_player(self.player)
+            audio.play("stairs")
             return ("dungeon", {"player": self.player, "floor": self.floor + 1})
         return None
 

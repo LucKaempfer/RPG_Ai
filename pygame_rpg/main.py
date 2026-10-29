@@ -16,11 +16,15 @@ its floor while a battle or level-up screen is shown).
 
 ``dungeon.py`` and ``assets.py`` (the M1 crawler) back the M4
 adventure in ``gui/dungeon_screen.py``.
+
+Sound: ``audio.py`` synthesises every effect at start-up; screens call
+``audio.play`` for their actions and declare an ``ambience`` (the loop
+played while they are shown).  M toggles mute.
 """
 
 import pygame
 
-from . import config
+from . import audio, config
 from .gui.screen import QUIT
 from .gui.title_screen import TitleScreen
 from .gui.tutorial_screen import TutorialScreen
@@ -72,7 +76,9 @@ def build_screen(name, display, kwargs=None):
 
 
 def main():
+    audio.pre_init()
     pygame.init()
+    audio.init()
     screen = pygame.display.set_mode(
         (config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
     )
@@ -94,6 +100,11 @@ def main():
 
     while True:
         for event in pygame.event.get():
+            # M mutes everywhere except while typing a hero name.
+            if (event.type == pygame.KEYDOWN and event.key == pygame.K_m
+                    and current.name != "hero_maker"):
+                audio.toggle_mute()
+                continue
             nxt = switch(current.handle_event(event))
             if nxt is QUIT:
                 pygame.quit()
@@ -106,6 +117,8 @@ def main():
             pygame.quit()
             return
         current = nxt or current
+        audio.set_ambience(current.ambience)
+        audio.update(dt)
         current.draw(screen)
         pygame.display.flip()
 

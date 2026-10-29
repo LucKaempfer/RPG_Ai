@@ -77,6 +77,11 @@ VISIBLE_ROWS = 10
 class InventoryScreen(Screen):
     name = "inventory"
 
+    @property
+    def ambience(self):
+        """Keep the dungeon's ambience going when opened from a floor."""
+        return getattr(self.return_to, "ambience", None)
+
     def __init__(self, screen, player, return_to=None):
         super().__init__(screen)
         self.player = player

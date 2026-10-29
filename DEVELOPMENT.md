@@ -104,6 +104,7 @@ wake up rested in the Base.
 | `pygame_rpg/gui/hud.py` | ✅ M4 | `Hud`: floor, level, weapon icon, HP / MP / XP bars, fading message log (`say()`). |
 | `pygame_rpg/assets.py` + `assets/` | M1, in use | `AssetManager`: loads PNGs, slices sheets, and generates + saves placeholder art for missing files (tileset, hero sheet, slime, sword/potion icons, panel). Used by GUI screens for icons/portrait. |
 | `pygame_rpg/README.md` | ✅ M5 | Short player-facing readme: install, run, test, controls; points here. |
+| `pygame_rpg/audio.py` | ✅ M5 | All sound, synthesised in plain Python at start-up on a background thread (no audio files, nothing to license): `_RECIPES` maps names to small synth functions (tones, filtered noise, echo). `play(name, delay, volume)` (a name with numbered variants such as `step0..2` picks one at random), `set_ambience("sewer" / None)` (looping water + scattered drips, pipe groans, rat squeaks via `_SCATTER`), `update(dt)` from the main loop, `toggle_mute()` (M; not on the hero-name screen). Every call is a no-op if the mixer can't start. Screens set an `ambience` class attribute; inventory and level-up inherit it from `return_to`. Volumes: `SFX_VOLUME` / `AMBIENT_VOLUME` in `config.py`. |
 | `pygame_rpg/gui/effects.py` | ✅ M5 | `Particles` (burst / update / draw sparks) and `menu_key()` (Up / Down / Enter for button lists). |
 | `RPG_V3/main_V3.py` | reference | Text UI: `tutorial()`, `hero_maker()`, `hero_chooser()`, `lobby()` (stub), `inventory()`/`backpack()` (stubs), `xp_check()`. Ported up to the Base. |
 | `RPG_V3/assets_V3.py` | reference | `WP` weapon base + 7 subclasses with unimplemented `effect()`; empty `Consumable`/`Armor`/`Trinket`/`Ability`/`Enemy`/`Boss` classes; level-1 weapon catalog. |
@@ -141,6 +142,7 @@ pygame_rpg/
 ├── dungeon.py         # seeded floor generation, walkability, rendering, fog, minimap
 ├── enemies.py         # enemy types, per-floor scaling, boss room, placement
 ├── combat.py          # turn-based battle rules: damage, ailments, cooldowns, XP, loot
+├── audio.py           # synthesised sound effects + sewer ambience, play()/set_ambience()
 ├── gui/
 │   ├── screen.py      # Screen base, Button, fonts, palette, QUIT
 │   ├── title_screen.py, tutorial_screen.py, hero_maker.py, hero_chooser.py
@@ -398,9 +400,11 @@ with the HUD active.
   `AILMENTS` stay next to their data (`items.py`, `combat.py`). Play-testing is still open.
 * **Polish** — ✅ damage numbers, hero hit flash + shake, floor banner, victory burst + enemy
   death frames, defeat collapse, chest sparks, level-up fanfare, title logo with embers,
-  distinct enemy placeholder shapes, keyboard navigation (title, Base, level-up). Open: real
-  art, sound.
-* **Tests** — ✅ `python -m pytest` (73 tests, incl. `test_gui.py`; `pytest.ini` limits collection to `test_*.py`). Open: split the two smoke scripts into real
+  distinct enemy placeholder shapes, keyboard navigation (title, Base, level-up), sound
+  (`audio.py`: footsteps, doors, chests, encounter, the four attack styles, misses, hits,
+  spells, potions, bombs, ailments, run, victory, defeat, level-up, stairs, menu clicks, and
+  the looping sewer ambience). Open: real art.
+* **Tests** — ✅ `python -m pytest` (117 tests, incl. `test_gui.py` and `test_audio.py`; `pytest.ini` limits collection to `test_*.py`). Open: split the two smoke scripts into real
   pytest functions over time; level-up banking has coverage only in the smoke script.
 
 ---
