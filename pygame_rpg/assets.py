@@ -12,7 +12,7 @@ Layouts (all frames are 32x32 pixels):
 
 * ``tileset.png``          10 x 1 grid, one tile per index (see TILE_*);
   the original stone set, kept for real art / other screens
-* ``sewer/tiles.png``      16 x 1 grid, the dungeon's sewer set (SEWER_*)
+* ``sewer/tiles_v2.png``   20 x 1 grid, the dungeon's sewer set (SEWER_*)
 * ``player/hero_sheet.png`` 8 x 4 grid
     columns: 0-1 idle, 2-5 walk, 6-7 attack
     rows:    0 down, 1 up, 2 left, 3 right
@@ -55,8 +55,11 @@ TILESET_COLS, TILESET_ROWS = 10, 1
 (SEWER_FLOOR, SEWER_FLOOR_CRACK, SEWER_FLOOR_MOSS, SEWER_FLOOR_PUDDLE,
  SEWER_FLOOR_DRAIN, SEWER_WALL, SEWER_WALL_STAIN, SEWER_WALL_PIPE,
  SEWER_WALL_MOSS, SEWER_GRATE, SEWER_WALKWAY, SEWER_GATE, SEWER_MANHOLE,
- SEWER_SLUDGE, SEWER_WALL_DARK, SEWER_FLOOR_BONES) = range(16)
-SEWER_COLS, SEWER_ROWS = 16, 1
+ SEWER_SLUDGE, SEWER_WALL_DARK, SEWER_FLOOR_BONES,
+ # Doorways: floor with a thin iron gate along the side the corridor
+ # leaves from (N = corridor above the door cell, and so on).
+ SEWER_GATE_N, SEWER_GATE_S, SEWER_GATE_W, SEWER_GATE_E) = range(20)
+SEWER_COLS, SEWER_ROWS = 20, 1
 
 # ---------------------------------------------------------------------------
 # Hero sheet layout: 8 x 4 grid.
@@ -134,7 +137,7 @@ class AssetManager:
         """Dispatch to the right generator for a missing file."""
         if name == "tileset.png":
             return _gen_tileset()
-        if name == "sewer/tiles.png":
+        if name == "sewer/tiles_v2.png":
             return _gen_sewer_tiles()
         if name == "player/hero_sheet.png":
             return _gen_hero_sheet()
@@ -324,6 +327,22 @@ def _gen_sewer_tiles() -> pygame.Surface:
     for y in (5, 26):
         pygame.draw.line(surf, rust_dark, (r.x, r.y + y), (r.right - 1, r.y + y), 3)
     pygame.draw.rect(surf, rust_dark, r, 2)
+
+    # Doorways: flagstone floor with a thin gate on one edge.  Drawn once
+    # for the top edge, then rotated for the other three.
+    gate = pygame.Surface((FRAME_SIZE, FRAME_SIZE), pygame.SRCALPHA)
+    _sewer_floor(gate, gate.get_rect(), rng)
+    pygame.draw.rect(gate, (16, 18, 16), (0, 0, 32, 8))                 # shadowed gap
+    for x in range(6, 27, 4):
+        pygame.draw.line(gate, rust, (x, 1), (x, 6), 2)                 # bars
+    pygame.draw.line(gate, rust_dark, (0, 1), (31, 1), 2)               # top rail
+    pygame.draw.line(gate, rust_dark, (0, 6), (31, 6), 2)               # bottom rail
+    for x in (0, 27):
+        pygame.draw.rect(gate, (88, 92, 86), (x, 0, 5, 9))              # stone posts
+        pygame.draw.rect(gate, (60, 64, 58), (x, 0, 5, 9), 1)
+    for idx, angle in ((SEWER_GATE_N, 0), (SEWER_GATE_W, 90),
+                       (SEWER_GATE_S, 180), (SEWER_GATE_E, -90)):
+        surf.blit(pygame.transform.rotate(gate, angle), cell(idx))
 
     # Stairs down: an open manhole with a ladder.
     r = cell(SEWER_MANHOLE)
