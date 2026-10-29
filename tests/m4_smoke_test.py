@@ -275,19 +275,29 @@ click_res = lu.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1,
 ok(click_res == ("resume", {"screen": ds}) and hero.lvl == 3, "level banked, back to the floor")
 ok(ds.step(0, 0, 1 / 60) is None, "no second level-up prompt")
 
-# Fleeing: no instant re-bump.
+# Room entry: stepping through a door into a room with enemies starts the
+# fight at once (no walking around them); fleeing puts the hero outside.
 other = next((e for e in ds.enemies if not e.boss), None)
 if other is not None:
-    ds.x, ds.y = other.x - 2 * TILE_SIZE, other.y
-    if not ds._fits(ds.x, ds.y):
-        ds.x, ds.y = other.x, other.y - 2 * TILE_SIZE
-    r = walk_to(ds, other.x, other.y)
-    fb_ = BattleScreen(screen, hero, other, ds, rng=random.Random(0))
+    room = ds.dungeon.get_room_at(E.cell_of(other))
+    door = room.doors[0]
+    out = ds.dungeon.door_outside(room, door)
+    ds.x, ds.y = ds._centre(out)
+    ok(ds.step(0, 0, 1 / 60) is None, "outside the room: no fight")
+    r = walk_to(ds, *ds._centre(door))
+    ok(r is not None and r[0] == "battle" and ds.dungeon.get_room_at(ds.cell()) is room
+       and r[1]["enemy"] in ds.enemies and room.contains(E.cell_of(r[1]["enemy"])),
+       "entering the room starts the fight")
+    foe = r[1]["enemy"]
+    fb_ = BattleScreen(screen, hero, foe, ds, rng=random.Random(0))
     while fb_.battle.state == C.ONGOING:
-        fb_.battle.run(); other.hp = other.max_hp; hero.current_hp = hero.max_hp
+        fb_.battle.run(); foe.hp = foe.max_hp; hero.current_hp = hero.max_hp
     ok(fb_.battle.state == C.FLED, "fled")
     fb_._leave()
-    ok(ds.step(0, 0, 1 / 60) is None and ds.ignore is other, "no re-bump right after fleeing")
+    ok(ds.dungeon.get_room_at(ds.cell()) is None and ds.step(0, 0, 1 / 60) is None,
+       "fleeing puts the hero back outside")
+    r = walk_to(ds, *ds._centre(door))
+    ok(r is not None and r[0] == "battle", "the room stays hostile")
 
 # Chest.
 cell, _ = ds.chests[0]

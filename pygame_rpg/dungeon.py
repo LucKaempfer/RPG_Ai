@@ -3,14 +3,18 @@
 
 This module creates a set of rectangular rooms connected by corridors.
 Each room has a unique ID, a Pygame Rect that defines its position in world space,
-and a list of doors.  Doors are simply world coordinates that lie on a
-room's wall.  Each door is linked to a door in another room, forming a graph.
+and a list of doors.  Rooms keep ROOM_GAP free tiles between them; each
+corridor leaves one room through a door on the wall facing its target,
+is routed around every other room (never along a room's wall), and
+enters the target through a door.  Corridors link each room to the
+nearest earlier one, so the rooms form a tree and all are reachable.
 
 The dungeon is rendered tile‑by‑tile with a single tile size
 (`TILE_SIZE`).  The minimap shows visited rooms and walked corridors.
 Room and corridor cells are walkable; everything else is wall.
 """
 
+import heapq
 import random
 import pygame
 from typing import List, Tuple, Dict, Optional
@@ -28,6 +32,11 @@ DUNGEON_HEIGHT = 60  # in tiles
 MAX_ROOM_SIZE = 10   # max width/height in tiles
 MIN_ROOM_SIZE = 4
 NUM_ROOMS = 15
+# Free tiles kept between rooms: room walls stay solid and a corridor
+# (with wall on both sides) fits through every gap.
+ROOM_GAP = 3
+# Extra cost of a corridor bend, so routes stay mostly straight.
+TURN_COST = 3
 
 class Room:
     """Represents a rectangular room in world coordinates."""
@@ -70,11 +79,12 @@ class Dungeon:
             attempts += 1
             w = rng.randint(MIN_ROOM_SIZE, MAX_ROOM_SIZE)
             h = rng.randint(MIN_ROOM_SIZE, MAX_ROOM_SIZE)
-            x = rng.randint(1, DUNGEON_WIDTH - w - 1)
-            y = rng.randint(1, DUNGEON_HEIGHT - h - 1)
+            x = rng.randint(2, DUNGEON_WIDTH - w - 2)
+            y = rng.randint(2, DUNGEON_HEIGHT - h - 2)
             new_rect = pygame.Rect(x, y, w, h)
-            if any(new_rect.colliderect(r.rect) for r in self.rooms):
-                continue  # overlap, try again
+            spaced = new_rect.inflate(2 * ROOM_GAP, 2 * ROOM_GAP)
+            if any(spaced.colliderect(r.rect) for r in self.rooms):
+                continue  # overlap or too close, try again
             room = Room(len(self.rooms), new_rect)
             self.rooms.append(room)
             # Map each tile to this room for quick lookup
@@ -82,21 +92,95 @@ class Dungeon:
                 for ry in range(new_rect.top, new_rect.bottom):
                     self.room_map[(rx, ry)] = room
 
-        self._connect_rooms()
-        self._add_doors()
-
-    def _add_doors(self):
-        """A door is a room cell next to a corridor cell: the spot where a
-        corridor leaves the room."""
         self.door_tiles = set()
-        for (x, y), room in self.room_map.items():
-            if room is None:
+        # Rooms plus a one-tile ring around them: corridors never enter
+        # it (except at their own door), so they can't run along a room
+        # and open its wall.
+        self._reserved = set()
+        for room in self.rooms:
+            r = room.rect.inflate(2, 2)
+            self._reserved.update((x, y) for x in range(r.left, r.right)
+                                  for y in range(r.top, r.bottom))
+        self._connect_rooms()
+
+    def _door_options(self, room, target):
+        """(door cell, outside cell) pairs on ``room``'s walls, the side
+        facing ``target`` first.  Doors sit in line with the target's
+        centre where possible and never on a corner."""
+        r = room.rect
+        tx, ty = target.rect.center
+        dx, dy = tx - r.centerx, ty - r.centery
+        y = min(max(ty, r.top + 1), r.bottom - 2)
+        x = min(max(tx, r.left + 1), r.right - 2)
+        sides = {
+            "E": ((r.right - 1, y), (r.right, y)),
+            "W": ((r.left, y), (r.left - 1, y)),
+            "S": ((x, r.bottom - 1), (x, r.bottom)),
+            "N": ((x, r.top), (x, r.top - 1)),
+        }
+        # One door per wall: a wall that has a door already reuses it.
+        for door in room.doors:
+            k = ("E" if door[0] == r.right - 1 else "W" if door[0] == r.left
+                 else "S" if door[1] == r.bottom - 1 else "N")
+            out = {"E": (1, 0), "W": (-1, 0), "S": (0, 1), "N": (0, -1)}[k]
+            sides[k] = (door, (door[0] + out[0], door[1] + out[1]))
+        horiz = ("E" if dx > 0 else "W", "S" if dy > 0 else "N")
+        order = horiz if abs(dx) >= abs(dy) else horiz[::-1]
+        rest = [k for k in "ESWN" if k not in order]
+        return [sides[k] for k in (*order, *rest)]
+
+    def _route(self, start, goal):
+        """Corridor cells from ``start`` to ``goal`` (both outside cells)
+        avoiding rooms and their ring; A* with a bend penalty.  None if
+        there is no way through."""
+        def free(c):
+            return (c == goal or (1 <= c[0] < DUNGEON_WIDTH - 1
+                                  and 1 <= c[1] < DUNGEON_HEIGHT - 1
+                                  and c not in self._reserved))
+        dirs = ((1, 0), (-1, 0), (0, 1), (0, -1))
+        h = lambda c: abs(c[0] - goal[0]) + abs(c[1] - goal[1])
+        todo = [(h(start), 0, start, None)]
+        came, best = {}, {(start, None): 0}
+        while todo:
+            _, cost, cell, d = heapq.heappop(todo)
+            if cell == goal:
+                path = [cell]
+                key = (cell, d)
+                while key in came:
+                    key = came[key]
+                    path.append(key[0])
+                return path[::-1]
+            if cost > best.get((cell, d), cost):
                 continue
-            for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
-                if n in self.room_map and self.room_map[n] is None:
-                    room.add_door((x, y))
-                    self.door_tiles.add((x, y))
-                    break
+            for nd in dirs:
+                n = (cell[0] + nd[0], cell[1] + nd[1])
+                if not free(n):
+                    continue
+                c = cost + 1 + (TURN_COST if d is not None and nd != d else 0)
+                if c < best.get((n, nd), 1 << 30):
+                    best[(n, nd)] = c
+                    came[(n, nd)] = (cell, d)
+                    heapq.heappush(todo, (c + h(n), c, n, nd))
+        return None
+
+    def _link(self, a, b) -> None:
+        """One corridor from a door in ``a`` to a door in ``b``."""
+        for door_a, out_a in self._door_options(a, b):
+            for door_b, out_b in self._door_options(b, a):
+                path = self._route(out_a, out_b)
+                if path is None:
+                    continue
+                for cell in path:
+                    self.room_map.setdefault(cell, None)
+                for room, door in ((a, door_a), (b, door_b)):
+                    if door not in self.door_tiles:
+                        room.add_door(door)
+                        self.door_tiles.add(door)
+                a.connect(door_a, b)
+                b.connect(door_b, a)
+                return
+        # Boxed in (very rare): straight corridor between the centres.
+        self._create_corridor(a.rect.center, b.rect.center)
 
     def _connect_rooms(self):
         """Connect each room to the nearest *earlier* room by a corridor.
@@ -112,15 +196,15 @@ class Dungeon:
                 self.rooms[:i],
                 key=lambda r: self._distance(room.rect.center, r.rect.center),
             )
-            # Create corridor between centers
-            self._create_corridor(room.rect.center, nearest.rect.center)
+            self._link(room, nearest)
 
     @staticmethod
     def _distance(p1: Tuple[int, int], p2: Tuple[int, int]) -> float:
         return ((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2) ** 0.5
 
     def _create_corridor(self, start: Tuple[int, int], end: Tuple[int, int]):
-        """Carve a straight horizontal‑then‑vertical corridor between two points."""
+        """Carve a straight horizontal-then-vertical corridor between two
+        points (fallback when ``_link`` finds no route)."""
         x1, y1 = start
         x2, y2 = end
         # Corridor cells map to None; cells already inside a room keep
@@ -132,6 +216,19 @@ class Dungeon:
 
     def get_room_at(self, world_pos: Tuple[int, int]) -> Optional[Room]:
         return self.room_map.get(world_pos)
+
+    def door_outside(self, room: Room, near: Tuple[int, int]) -> Tuple[int, int]:
+        """The corridor cell just outside the door of ``room`` closest to
+        cell ``near`` (where a hero who flees ends up)."""
+        best = None
+        for door in room.doors:
+            for d in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                out = (door[0] + d[0], door[1] + d[1])
+                if out in self.room_map and self.room_map[out] is None:
+                    dist = abs(door[0] - near[0]) + abs(door[1] - near[1])
+                    if best is None or dist < best[0]:
+                        best = (dist, out)
+        return best[1] if best else room.rect.center
 
     def is_walkable(self, cell: Tuple[int, int]) -> bool:
         """Room and corridor cells are floor; everything else is wall."""

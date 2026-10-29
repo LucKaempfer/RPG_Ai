@@ -26,6 +26,11 @@ The full loop: Base → Adventure → walk a fogged floor → bump an enemy → 
 XP / loot → level up mid-run → chests → beat the boss → stairs to a harder floor. Esc returns to
 the Base with the run kept; defeat ends the run.
 
+**Play-test round 1 (done, PR #8):** single doors with corridors routed around rooms, fights
+start on entering an occupied room, inventory from the dungeon (I), damage previews, attack
+styles. Run saves carry `RUN_VERSION` (config); older runs are dropped because the same seed now
+builds a different floor.
+
 **Next steps (beyond the milestones):**
 
 1. **Play-test the balance on the real machine.** The numbers in `config.py` (Balance section)
@@ -86,7 +91,7 @@ wake up rested in the Base.
 | `pygame_rpg/savegame.py` | ✅ M5 | `saves/<name>.json` per character + `saves/index.json`; runs in `saves/runs/<name>.json` (`save_run` / `load_run` / `delete_run`; a broken run file reads as no run); `_safe_name()` validates names (`^[\w .-]{1,20}$`), index self-prunes missing files; `_resolve()` turns saved item refs (id or `{"id", "charges"}`) into items. |
 | `pygame_rpg/gui/screen.py` | ✅ M3 | `Screen` base class, `Button`, cached `font()`, shared palette, `QUIT` sentinel. |
 | `pygame_rpg/gui/*.py` (8 screens) | ✅ M3 | `title_screen`, `tutorial_screen`, `hero_maker`, `hero_chooser`, `base_screen`, `inventory_screen`, `stats_screen`, `level_up_screen` (takes `return_to`: resume a dungeon floor instead of the Base). |
-| `pygame_rpg/dungeon.py` | ✅ M4 | Seeded generation (private `rng`, same seed = same floor): non-overlapping rooms, corridors linked as a tree so every room is reachable, doors where corridors leave rooms. `is_walkable()`, `spawn_point()`, tileset rendering with camera offset and fog (`seen` cells + their walls; `overrides` for the stairs tile), minimap of visited rooms + walked corridors. |
+| `pygame_rpg/dungeon.py` | ✅ M4 | Seeded generation (private `rng`, same seed = same floor): rooms with `ROOM_GAP` free tiles between them; each room links to the nearest earlier one (a tree, so all are reachable) by an A*-routed corridor from a door on the wall facing the target to a door on the target, never entering another room or the ring around it, so walls stay solid and every door is a single tile (one door per wall, reused). `door_outside()` gives the corridor cell outside a door. `is_walkable()`, `spawn_point()`, tileset rendering with camera offset and fog (`seen` cells + their walls; `overrides` for the stairs tile), minimap of visited rooms + walked corridors. |
 | `pygame_rpg/enemies.py` | ✅ M4 | `EnemyType` (frozen data) for slime, bat, goblin, skeleton + `BOSS_TYPE`; `make_enemy()` scales per floor; `boss_room()` (farthest from room 0); `place_enemies()` with the dungeon's rng. |
 | `pygame_rpg/combat.py` | ✅ M4 | `Battle`: pure rules, no drawing. `attack()`, `cast()`, `use_item()`, `run()`, ailments (`AILMENTS`), cooldowns, Shield guard, wards, XP + loot on win. |
 | `pygame_rpg/gui/dungeon_screen.py` | ✅ M4 | `DungeonScreen(player, floor, seed)`: `move()` with axis-separated wall collision (20 px hitbox), trinket speed bonus, walk/idle animation, clamped camera, fog (`seen`), enemies, chests, stairs, HUD + minimap. Saves the run (`to_run()` / `save_run()`) on floor entry, after each battle, on Esc and on quit; `run=` restores one. `step(dx, dy, dt)` is one frame and returns a transition (battle on bump, level-up after a win, next floor on the stairs); tests drive it directly. `battle_over()` is called by the battle screen. Esc saves → Base (no rest). Floor banner on arrival. |
@@ -109,6 +114,8 @@ wake up rested in the Base.
 * PRs #3 / #4: abilities, rarity (M2 done). PR #5: M4 (dungeon screen, enemies, combat, HUD).
 * PR #6: M5 run saves, pytest suite, balance in `config.py`, battle feedback.
 * PR #7: M5 polish (effects, keyboard menus, enemy shapes, title logo); M5 done.
+* PR #8: play-test round 1 (door generation, room-entry battles, inventory in the dungeon,
+  damage previews, attack styles).
 * `.gitignore` covers `venv/`, `saves/`, `__pycache__/`, `*.py[cod]`.
 
 ---
@@ -145,7 +152,7 @@ pygame_rpg/
 ```
 tests/
 ├── conftest.py            # headless pygame, repo on sys.path, `saves` temp-folder fixture
-├── test_combat.py         # damage formulas, ailments, stun, wards, cooldowns, win / lose
+├── test_combat.py         # damage formulas, styles, previews, ailments, wards, cooldowns, win / lose
 ├── test_dungeon.py        # no overlap, connectivity, seeding, boss + entrance rules
 ├── test_saves.py          # player + run round trips, migration, broken run file
 ├── test_gui.py            # keyboard menus, particles, battle end animations, enemy sheets
@@ -199,7 +206,7 @@ goes back to the backpack. The catalog is code
 and saves are data, so items are always stored by id. `saves/index.json` is the hero list (the
 V3 `saved_chars.txt` equivalent).
 
-**Run saves** (`saves/runs/<name>.json`, M5): `floor, seed, x, y, facing, beaten` (indices into
+**Run saves** (`saves/runs/<name>.json`, M5): `version` (`RUN_VERSION`; a mismatch drops the run), `floor, seed, x, y, facing, beaten` (indices into
 the seeded enemy placement), `chests` (opened flags), `stairs`, `seen` (fog cells), `visited`
 (room indices), `corridors` (minimap). The seed rebuilds the floor, enemies and chests; the save
 only records what changed. Chest loot after a reload is rolled fresh.
@@ -265,7 +272,9 @@ close / Adventure; in the dungeon on floor entry, after each battle, on Esc and 
 **Combat (M4, `combat.py` / `enemies.py`).** Design calls made without V3 guidance; tune after
 play-testing.
 
-* **Flow:** bump an enemy (24 px) → battle. Each hero action (Attack / ability / item / Run) is
+* **Flow:** stepping into a room where enemies stand starts a battle with the nearest one at
+  once, then the next, until the room is clear (play-test round 1: bumping let you walk around
+  enemies). Each hero action (Attack / ability / item / Run) is
   followed by the enemy's turn. Ailments tick at the start of the afflicted side's turn; ability
   cooldowns and the Shield count down at the end of each round (cooldown 2 = usable again two
   turns after the cast).
@@ -274,6 +283,12 @@ play-testing.
   `total()`). Weapon power = 4 + 2 × level (unarmed 2); ability power = `damage` ÷ 2; bombs deal
   `damage` flat. Enemy hit = 2 × attack × 0.85-1.15 − hero `dp` / `rdp` / `mdp` (by enemy attack type)
   − Shield guard, minimum 1.
+* **Attack styles** (`combat.STYLES`, chosen under *Attack*): Strike ×1.0 with the weapon's own
+  ailment; Slash ×0.75, causes bleeding at +30 %; Bash ×0.8, causes stun at +15 %; Heavy ×1.35,
+  no ailment, 25 % miss. The style's ailment replaces the weapon's.
+* **Previews:** every attack style and damaging ability shows its min-max damage against this
+  enemy, and the hero panel shows the enemy's next hit (`attack_preview`, `cast_preview`,
+  `incoming_preview`).
 * **Ailments** (`AILMENTS`, chance % / turns / damage per turn): bleeding 25/3/3, poison 30/3/3,
   burning 25/2/5, stun 20/1 (skip turn), electrocuted 20/1/2 (skip). +5 % per weapon or ability
   level above 1, abilities +20 %, bombs a flat 60 %.
@@ -286,9 +301,11 @@ play-testing.
   screen if levels are pending and returns to the same floor. The hero recovers 10 % max HP and
   5 MP. Loot: 50 % (+ loot bonus) for normal enemies, always for the boss, rolled with
   `roll_loot(max_level = floor + 1, boss + 2)`, skipped if too heavy.
-* **Run:** 60 %, never from the boss. The enemy you fled from does not re-trigger until you step
-  away.
+* **Run:** 60 %, never from the boss. Fleeing puts the hero in the corridor outside the room's
+  nearest door; the room stays hostile.
 * **Defeat:** "You collapse" → back to the Base with full HP / MP, nothing lost but the run.
+* **Inventory mid-run:** I in the dungeon opens the inventory (equip, use potions); Esc / Back
+  returns to the floor.
 * **Leaving and resting:** Esc keeps the run and does *not* heal, so Esc-and-Continue is no free
   heal; use potions from the inventory. Starting a new adventure (first one or *New Adventure*)
   rests the hero.
@@ -375,7 +392,7 @@ with the HUD active.
   death frames, defeat collapse, chest sparks, level-up fanfare, title logo with embers,
   distinct enemy placeholder shapes, keyboard navigation (title, Base, level-up). Open: real
   art, sound.
-* **Tests** — ✅ `python -m pytest` (65 tests, incl. `test_gui.py`). Open: split the two smoke scripts into real
+* **Tests** — ✅ `python -m pytest` (73 tests, incl. `test_gui.py`; `pytest.ini` limits collection to `test_*.py`). Open: split the two smoke scripts into real
   pytest functions over time; level-up banking has coverage only in the smoke script.
 
 ---

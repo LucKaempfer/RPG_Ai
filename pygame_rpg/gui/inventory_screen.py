@@ -19,7 +19,8 @@ Weight is invariant under equip/unequip (Player.weight counts both
 backpack and equipment), so nothing here can exceed max_weight; the
 weight gate (can_carry) applies once M4 adds pickups.
 
-Esc / Back -> back to the Base.  Window close saves, then quits.
+Esc / Back -> back to the Base, or to the dungeon floor in ``return_to``
+when opened mid-run (I in the dungeon).  Window close saves, then quits.
 """
 
 import pygame
@@ -76,9 +77,11 @@ VISIBLE_ROWS = 10
 class InventoryScreen(Screen):
     name = "inventory"
 
-    def __init__(self, screen, player):
+    def __init__(self, screen, player, return_to=None):
         super().__init__(screen)
         self.player = player
+        # Screen to resume on Back / Esc (a dungeon floor); None = Base.
+        self.return_to = return_to
         self.selected = None
         self.hot = None
         self.scroll = 0
@@ -163,6 +166,12 @@ class InventoryScreen(Screen):
         if sel not in self.player.inventory:
             self.selected = None
 
+    def _leave(self):
+        if self.return_to is not None:
+            save_player(self.player)
+            return ("resume", {"screen": self.return_to})
+        return ("base", {"player": self.player})
+
     def _drop(self):
         self.player.drop(self.selected)
         self.selected = None
@@ -190,7 +199,7 @@ class InventoryScreen(Screen):
                         self.selected = (
                             None if self.selected is item else item)
                 elif val is self.btn_back:
-                    return ("base", {"player": self.player})
+                    return self._leave()
                 elif val is self.btn_equip:
                     self._equip()
                 elif val is self.btn_unequip:
@@ -205,7 +214,7 @@ class InventoryScreen(Screen):
                 self.scroll = max(0, min(max_scroll, self.scroll + step))
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                return ("base", {"player": self.player})
+                return self._leave()
             elif event.key in (pygame.K_UP, pygame.K_DOWN):
                 step = -1 if event.key == pygame.K_UP else 1
                 max_scroll = max(0,
@@ -378,5 +387,6 @@ class InventoryScreen(Screen):
         self.btn_back.draw(surface, hot=(self.btn_back is hot_btn))
 
         hint = font(16).render(
-            "Esc: back to base    wheel / Up Down: scroll", True, DIM_TEXT)
+            "Esc: back to " + ("the dungeon" if self.return_to else "base")
+            + "    wheel / Up Down: scroll", True, DIM_TEXT)
         surface.blit(hint, (24, 522))
