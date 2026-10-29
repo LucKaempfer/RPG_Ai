@@ -18,6 +18,7 @@ Layouts (all frames are 32x32 pixels):
     0-1 idle, 2-3 attack, 4-5 hurt, 6-7 death
 * ``items/<key>.png``      single 32x32 icon
 * ``ui/<name>.png``        single UI sprite
+* ``objects/chest.png``    2 x 1 grid: 0 closed, 1 open
 """
 
 import math
@@ -127,6 +128,8 @@ class AssetManager:
             return _gen_enemy_sheet(name.rsplit("/", 1)[-1].removesuffix(".png"))
         if name.startswith("items/"):
             return _gen_item_icon(name.rsplit("/", 1)[-1].removesuffix(".png"))
+        if name == "objects/chest.png":
+            return _gen_chest()
         if name.startswith("ui/"):
             return _gen_ui(name.rsplit("/", 1)[-1].removesuffix(".png"))
         raise FileNotFoundError(f"no generator for asset: {name}")
@@ -257,7 +260,7 @@ ENEMY_COLORS = {
     "skeleton": ((220, 220, 210), (170, 170, 160)),
     "boss": ((200, 70, 60), (150, 40, 35)),
 }
-_DEFAULT_ENEMY = (160, 160, 160, 120, 120, 120)
+_DEFAULT_ENEMY = ((160, 160, 160), (120, 120, 120))
 
 # Placeholder tint per item key.
 ITEM_COLORS = {
@@ -306,6 +309,25 @@ def _gen_item_icon(key: str) -> pygame.Surface:
     pygame.draw.rect(surf, (30, 30, 35, 255), (1, 1, 30, 30), border_radius=6)
     pygame.draw.rect(surf, (*color, 255), (5, 5, 22, 22), border_radius=4)
     pygame.draw.line(surf, (255, 255, 255, 120), (8, 9), (13, 9), 2)  # sheen
+    return surf
+
+
+def _gen_chest() -> pygame.Surface:
+    """Two 32x32 frames: closed chest, open chest."""
+    surf = _new_sheet(2, 1)
+    wood, dark, gold = (150, 95, 45), (95, 60, 30), (230, 190, 90)
+    for col in range(2):
+        px = col * FRAME_SIZE
+        pygame.draw.rect(surf, wood, (px + 5, 14, 22, 13), border_radius=2)
+        pygame.draw.rect(surf, dark, (px + 5, 14, 22, 13), 2, border_radius=2)
+        if col == 0:   # closed lid + lock
+            pygame.draw.rect(surf, wood, (px + 5, 8, 22, 8), border_radius=3)
+            pygame.draw.rect(surf, dark, (px + 5, 8, 22, 8), 2, border_radius=3)
+            pygame.draw.rect(surf, gold, (px + 14, 13, 4, 5))
+        else:          # lid flipped back, dark inside
+            pygame.draw.rect(surf, dark, (px + 7, 15, 18, 5))
+            pygame.draw.rect(surf, wood, (px + 5, 4, 22, 6), border_radius=3)
+            pygame.draw.rect(surf, dark, (px + 5, 4, 22, 6), 2, border_radius=3)
     return surf
 
 

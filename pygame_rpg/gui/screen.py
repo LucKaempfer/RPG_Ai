@@ -70,7 +70,8 @@ class Screen:
         return None
 
     def handle_update(self, dt):
-        """Per-frame logic (timers, animations).  Default: nothing."""
+        """Per-frame logic (timers, animations).  May return a transition
+        request like ``handle_event``.  Default: nothing."""
 
     def draw(self, surface):
         """Draw the screen.  Subclasses must override."""

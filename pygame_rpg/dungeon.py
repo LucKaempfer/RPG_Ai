@@ -173,8 +173,15 @@ class Dungeon:
             )
         return self._tile_frames
 
-    def render(self, surface: pygame.Surface, camera_offset: Tuple[int, int]):
-        """Render the visible part of the dungeon to the main surface."""
+    def render(self, surface: pygame.Surface, camera_offset: Tuple[int, int],
+               seen: Optional[set] = None,
+               overrides: Optional[Dict[Tuple[int, int], int]] = None):
+        """Render the visible part of the dungeon to the main surface.
+
+        ``seen`` (fog of war): when given, only seen floor cells and the
+        walls touching them are drawn; the rest stays black.
+        ``overrides`` maps cells to a tile index drawn instead (stairs).
+        """
         offset_x, offset_y = camera_offset
         tiles = self._tiles()
         surf_w, surf_h = surface.get_size()
@@ -185,7 +192,14 @@ class Dungeon:
         for x in range(x0, x1):
             for y in range(y0, y1):
                 cell = (x, y)
-                if self.room_map.get(cell) is not None:
+                if seen is not None and cell not in seen and not (
+                        cell not in self.room_map and any(
+                            (x + dx, y + dy) in seen
+                            for dx in (-1, 0, 1) for dy in (-1, 0, 1))):
+                    continue
+                if overrides and cell in overrides:
+                    tile = overrides[cell]
+                elif self.room_map.get(cell) is not None:
                     tile = TILE_DOOR if cell in self.door_tiles else TILE_FLOOR
                 elif cell in self.room_map:
                     tile = TILE_CORRIDOR

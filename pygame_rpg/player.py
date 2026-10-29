@@ -111,6 +111,11 @@ class Player:
         self.current_mp = min(self.max_mp, self.current_mp + amount)
         return self.current_mp - before
 
+    def rest(self) -> None:
+        """Full HP and MP (back at the Base after a run)."""
+        self.current_hp = self.max_hp
+        self.current_mp = self.max_mp
+
     def can_cast(self, ability) -> bool:
         """Enough MP for ``ability`` and it sits in an ability slot.
         Cooldowns are battle state and live in combat.py (M4)."""

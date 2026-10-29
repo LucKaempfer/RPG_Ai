@@ -135,4 +135,203 @@ ds = DungeonScreen(screen, hero, seed=1)
 r = ds.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE))
 ok(r == ("base", {"player": hero}), "Esc returns to the Base")
 base.draw(screen)
+
+# --- Enemies ---
+from pygame_rpg import enemies as E, combat as C
+from pygame_rpg.gui.battle_screen import BattleScreen
+from pygame_rpg.gui.level_up_screen import LevelUpScreen
+for seed in range(20):
+    d = Dungeon(); d.generate(seed)
+    es = E.place_enemies(d, 1)
+    bosses = [e for e in es if e.boss]
+    lair = E.boss_room(d)
+    ok(len(bosses) == 1 and lair.contains((int(bosses[0].x // TILE_SIZE), int(bosses[0].y // TILE_SIZE))),
+       f"seed {seed}: one boss in the lair")
+    cells = [(int(e.x // TILE_SIZE), int(e.y // TILE_SIZE)) for e in es]
+    ok(len(set(cells)) == len(cells) and all(d.is_walkable(c) for c in cells), f"seed {seed}: enemies on free floor")
+    ok(not any(d.rooms[0].contains(c) for c in cells), f"seed {seed}: entrance empty")
+d1, d2 = Dungeon(), Dungeon(); d1.generate(9); d2.generate(9)
+ok([(e.name, e.x, e.y) for e in E.place_enemies(d1, 2)] == [(e.name, e.x, e.y) for e in E.place_enemies(d2, 2)],
+   "placement follows the seed")
+s1, s3 = E.make_enemy(E.ENEMY_TYPES["slime"], 1), E.make_enemy(E.ENEMY_TYPES["slime"], 3)
+ok(s3.max_hp > s1.max_hp and s3.attack == s1.attack + 2 and s3.xp > s1.xp, "floor scaling")
+ok(all(t.min_floor <= 1 for t in E.ENEMY_TYPES.values() if t.name in ("Slime", "Bat")), "floor-1 pool")
+
+# --- Combat rules ---
+def kit(*ids, lvl=1):
+    p = Player(name="K", lvl=lvl)
+    for i in ids:
+        it = I.item_by_id(i); p.inventory.append(it)
+        if it.slot:
+            p.equip(it)
+    return p
+ok(C.weapon_type(None) == "melee" and C.weapon_type(I.item_by_id("bow")) == "ranged"
+   and C.weapon_type(I.item_by_id("fiery_wand")) == "magic" and C.weapon_type(I.item_by_id("dagger")) == "melee",
+   "weapon types")
+p = kit("sword", "fireball", "heal", "shield")
+e = E.make_enemy(E.ENEMY_TYPES["skeleton"], 1)
+b = C.Battle(p, e, random.Random(1))
+hp0 = e.hp; b.attack(); ok(e.hp < hp0 and p.current_hp < p.max_hp, "attack + enemy reply")
+fb = p.equipment["ability1"]
+mp0 = p.current_mp; b.cast(fb)
+ok(p.current_mp == mp0 - fb.mp_cost and not b.can_cast(fb), "cast spends MP, cooldown blocks")
+e.hp = e.max_hp = 999; p.current_hp = p.max_hp
+b.attack(); ok(b.can_cast(fb), "ready again 2 turns after the cast (cooldown 2)")
+p2 = kit("sword", "heal", "shield")
+b2 = C.Battle(p2, E.make_enemy(E.ENEMY_TYPES["slime"], 1), random.Random(2))
+ok(not b2.can_cast(p2.equipment["ability1"]), "heal blocked at full HP")
+b2.cast(p2.equipment["ability2"]); ok(b2.guard == 3, "shield guards")
+p3 = kit("sword"); bomb = I.item_by_id("fire_bomb"); mana = I.item_by_id("mana_potion"); p3.inventory += [bomb, mana]
+e3 = E.make_enemy(E.ENEMY_TYPES["skeleton"], 1); b3 = C.Battle(p3, e3, random.Random(3))
+ok(bomb in b3.battle_items() and not b3.can_use(mana), "bombs usable, mana blocked at full MP")
+hp0 = e3.hp; b3.use_item(bomb)
+ok(e3.hp <= hp0 - bomb.damage and bomb not in p3.inventory, "bomb: flat damage, charge used")
+boss = E.make_enemy(E.BOSS_TYPE, 1, boss=True)
+b4 = C.Battle(kit("sword"), boss, random.Random(4)); b4.run()
+ok(b4.state == C.ONGOING and "can't run" in b4.log[-1], "no running from the boss")
+fled = 0
+for sd in range(30):
+    bb = C.Battle(kit("sword"), E.make_enemy(E.ENEMY_TYPES["slime"], 1), random.Random(sd)); bb.run()
+    fled += bb.state == C.FLED
+ok(10 < fled < 30, "running works sometimes")
+# Stun skips the enemy's turn.
+p5 = kit("sword"); e5 = E.make_enemy(E.ENEMY_TYPES["skeleton"], 1); e5.hp = 999; e5.max_hp = 999
+b5 = C.Battle(p5, e5, random.Random(5)); e5.statuses["stun"] = 1; b5.attack()
+ok(p5.current_hp == p5.max_hp and "can't move" in " ".join(b5.log), "stun skips a turn")
+# Wards: poison ward IV makes the hero immune to the slime's poison.
+hits = {}
+for ward in (None, "poison_ward_4"):
+    n = 0
+    for sd in range(60):
+        pw = kit("sword", lvl=4) if ward is None else kit("sword", ward, lvl=4)
+        pw.ap = 1
+        sl = E.make_enemy(E.ENEMY_TYPES["slime"], 1); sl.hp = sl.max_hp = 999
+        bw = C.Battle(pw, sl, random.Random(sd))
+        for _ in range(3):
+            bw.attack()
+        n += "poison" in bw.statuses or any("You take" in l and "poison" in l for l in bw.log)
+    hits[ward] = n
+ok(hits[None] > 10 and hits["poison_ward_4"] == 0, "ward blocks its ailment")
+# Winning: XP (+ trinket bonus), recovery, loot respects weight.
+p6 = kit("sword", "wisdom_amulet", lvl=2); p6.current_hp = 50
+e6 = E.make_enemy(E.ENEMY_TYPES["bat"], 1); e6.hp = 1
+b6 = C.Battle(p6, e6, random.Random(6)); b6.attack()
+ok(b6.state == C.WON and b6.xp_gained == round(18 * 1.1) and p6.xp == b6.xp_gained, "XP with bonus")
+ok(p6.current_hp == 50 + p6.max_hp // 10, "post-fight recovery")
+p7 = kit("sword"); p7.inventory += [I.item_by_id("chainmail_4")] * 10   # 50 kg: full
+e7 = E.make_enemy(E.BOSS_TYPE, 1, boss=True); e7.hp = 1
+b7 = C.Battle(p7, e7, random.Random(7)); n_inv = len(p7.inventory); b7.attack()
+ok(b7.state == C.WON and len(p7.inventory) == n_inv and "too heavy" in b7.log[-1], "loot respects weight")
+p8 = kit("sword"); e8 = E.make_enemy(E.BOSS_TYPE, 1, boss=True); e8.hp = e8.max_hp = 999
+b8 = C.Battle(p8, e8, random.Random(8))
+for _ in range(100):
+    b8.attack()
+ok(b8.state == C.LOST and p8.current_hp == 0, "hero can lose")
+
+# --- Encounter loop through the screens ---
+def press(scr, key):
+    return scr.handle_event(pygame.event.Event(pygame.KEYDOWN, key=key))
+def walk_to(ds, tx, ty, limit=4000):
+    for _ in range(limit):
+        ddx, ddy = tx - ds.x, ty - ds.y
+        r = ds.step((ddx > 2) - (ddx < -2), (ddy > 2) - (ddy < -2), 1 / 120)
+        if r is not None:
+            return r
+    return None
+
+hero = kit("sword_2", "fireball", lvl=2); hero.name = "Runner"
+ds = DungeonScreen(screen, hero, seed=3)
+target = next(e for e in ds.enemies if not e.boss)
+# Teleport next to it on its row so the last steps bump into it.
+ds.x, ds.y = target.x - 2 * TILE_SIZE, target.y
+if not ds._fits(ds.x, ds.y):
+    ds.x, ds.y = target.x, target.y - 2 * TILE_SIZE
+r = walk_to(ds, target.x, target.y)
+ok(r is not None and r[0] == "battle" and r[1]["enemy"] is target, "bump starts a battle")
+bs = build_screen("battle", screen, r[1]); ok(isinstance(bs, BattleScreen), "battle screen built")
+bs.draw(screen)
+hero.xp = hero.max_xp - 1                     # next win levels up
+for _ in range(60):
+    if bs.battle.state != C.ONGOING:
+        break
+    target.hp = min(target.hp, 1)
+    res = press(bs, pygame.K_RETURN)          # focus 0 = Attack
+ok(bs.battle.state == C.WON, "won through the menu")
+bs.draw(screen)
+res = press(bs, pygame.K_RETURN)              # Continue
+ok(res[0] == "resume" and res[1]["screen"] is ds,
+   "Continue resumes the same floor")
+ok(target not in ds.enemies, "beaten enemy removed")
+r = ds.step(0, 0, 1 / 60)
+ok(r is not None and r[0] == "level_up" and r[1]["return_to"] is ds, "mid-run level-up")
+lu = build_screen(r[0], screen, r[1]); lu.draw(screen)
+click_res = lu.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1,
+                                               pos=lu.stat_buttons["ap"].rect.center))
+ok(click_res == ("resume", {"screen": ds}) and hero.lvl == 3, "level banked, back to the floor")
+ok(ds.step(0, 0, 1 / 60) is None, "no second level-up prompt")
+
+# Fleeing: no instant re-bump.
+other = next((e for e in ds.enemies if not e.boss), None)
+if other is not None:
+    ds.x, ds.y = other.x - 2 * TILE_SIZE, other.y
+    if not ds._fits(ds.x, ds.y):
+        ds.x, ds.y = other.x, other.y - 2 * TILE_SIZE
+    r = walk_to(ds, other.x, other.y)
+    fb_ = BattleScreen(screen, hero, other, ds, rng=random.Random(0))
+    while fb_.battle.state == C.ONGOING:
+        fb_.battle.run(); other.hp = other.max_hp; hero.current_hp = hero.max_hp
+    ok(fb_.battle.state == C.FLED, "fled")
+    fb_._leave()
+    ok(ds.step(0, 0, 1 / 60) is None and ds.ignore is other, "no re-bump right after fleeing")
+
+# Chest.
+cell, _ = ds.chests[0]
+n_inv = len(hero.inventory)
+ds.x, ds.y = ds._centre(cell)
+ds.step(0, 0, 1 / 60)
+ok(ds.chests[0][1] and len(hero.inventory) == n_inv + 1, "chest opened, loot in backpack")
+
+# Boss -> stairs -> floor 2.
+bossy = next(e for e in ds.enemies if e.boss)
+ds.x, ds.y = bossy.x - TILE_SIZE, bossy.y
+r = walk_to(ds, bossy.x, bossy.y)
+ok(r is not None and r[1]["enemy"] is bossy, "boss fight")
+bb = BattleScreen(screen, hero, bossy, ds, rng=random.Random(1))
+bossy.hp = 1; hero.current_hp = hero.max_hp
+bb.battle.attack()
+ok(bb.battle.state == C.WON, "boss beaten")
+bb._leave()
+ok(ds.stairs == E.boss_room(ds.dungeon).rect.center, "stairs appear")
+ds.draw(screen)
+ds.x, ds.y = ds._centre(ds.stairs)
+ds.check_levels = False
+r = ds.step(0, 0, 1 / 60)
+ok(r == ("dungeon", {"player": hero, "floor": 2}), "stairs lead down")
+f2 = build_screen(r[0], screen, r[1])
+ok(f2.floor == 2 and all(e.floor == 2 for e in f2.enemies), "floor 2 enemies scale")
+f2.draw(screen)
+
+# Fog of war: an unseen far corner stays black.
+f2.draw(screen)
+far = max(f2.dungeon.rooms, key=lambda rm: abs(rm.rect.centerx - f2.x / TILE_SIZE) + abs(rm.rect.centery - f2.y / TILE_SIZE))
+ok(far.rect.center not in f2.seen, "far room unseen at start")
+
+# Defeat -> Base, rested.
+loser = kit("sword"); loser.name = "Loser"
+dl = DungeonScreen(screen, loser, seed=5)
+bl = BattleScreen(screen, loser, next(e for e in dl.enemies if e.boss), dl, rng=random.Random(2))
+bl.enemy.hp = bl.enemy.max_hp = 999
+for _ in range(200):
+    if bl.battle.state != C.ONGOING:
+        break
+    bl.battle.attack()
+ok(bl.battle.state == C.LOST, "defeat")
+bl._build_buttons(); bl.draw(screen)
+r = press(bl, pygame.K_RETURN)
+ok(r == ("base", {"player": loser}) and loser.current_hp == loser.max_hp, "back to the Base, rested")
+# Esc from the dungeon rests too.
+loser.current_hp = 10
+r = press(dl, pygame.K_ESCAPE)
+ok(r[0] == "base" and loser.current_hp == loser.max_hp, "Esc rests")
+
 print(f"m4 OK ({checks} checks)")
