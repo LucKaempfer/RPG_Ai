@@ -10,7 +10,9 @@ filenames and it is picked up automatically.
 
 Layouts (all frames are 32x32 pixels):
 
-* ``tileset.png``          10 x 1 grid, one tile per index (see TILE_*)
+* ``tileset.png``          10 x 1 grid, one tile per index (see TILE_*);
+  the original stone set, kept for real art / other screens
+* ``sewer/tiles.png``      16 x 1 grid, the dungeon's sewer set (SEWER_*)
 * ``player/hero_sheet.png`` 8 x 4 grid
     columns: 0-1 idle, 2-5 walk, 6-7 attack
     rows:    0 down, 1 up, 2 left, 3 right
@@ -47,6 +49,16 @@ TILE_WATER = 9
 TILESET_COLS, TILESET_ROWS = 10, 1
 
 # ---------------------------------------------------------------------------
+# Sewer tileset (the dungeon look): 16 x 1 grid, index == SEWER_* constant.
+# Variants are picked per cell by dungeon.py (deterministic per position).
+# ---------------------------------------------------------------------------
+(SEWER_FLOOR, SEWER_FLOOR_CRACK, SEWER_FLOOR_MOSS, SEWER_FLOOR_PUDDLE,
+ SEWER_FLOOR_DRAIN, SEWER_WALL, SEWER_WALL_STAIN, SEWER_WALL_PIPE,
+ SEWER_WALL_MOSS, SEWER_GRATE, SEWER_WALKWAY, SEWER_GATE, SEWER_MANHOLE,
+ SEWER_SLUDGE, SEWER_WALL_DARK, SEWER_FLOOR_BONES) = range(16)
+SEWER_COLS, SEWER_ROWS = 16, 1
+
+# ---------------------------------------------------------------------------
 # Hero sheet layout: 8 x 4 grid.
 # ---------------------------------------------------------------------------
 HERO_COLS, HERO_ROWS = 8, 4
@@ -65,7 +77,7 @@ ENEMY_HURT = (4, 5)
 ENEMY_DEATH = (6, 7)
 
 # Names of the enemies the game can spawn (one sheet file each).
-ENEMY_NAMES = ("slime", "goblin", "bat", "skeleton", "boss")
+ENEMY_NAMES = ("slime", "goblin", "bat", "rat", "skeleton", "rat_king")
 
 
 class AssetManager:
@@ -122,6 +134,8 @@ class AssetManager:
         """Dispatch to the right generator for a missing file."""
         if name == "tileset.png":
             return _gen_tileset()
+        if name == "sewer/tiles.png":
+            return _gen_sewer_tiles()
         if name == "player/hero_sheet.png":
             return _gen_hero_sheet()
         if name.startswith("enemies/"):
@@ -205,6 +219,130 @@ def _gen_tileset() -> pygame.Surface:
     return surf
 
 
+def _sewer_floor(surf, r, rng):
+    """Mossy flagstones: grey-green slabs with dark joints."""
+    surf.fill((58, 64, 56), r)
+    for (x, y, w, h) in ((0, 0, 15, 15), (16, 0, 16, 11), (0, 16, 11, 16),
+                         (12, 16, 20, 16), (16, 12, 16, 3)):
+        shade = rng.randint(-6, 6)
+        pygame.draw.rect(surf, (62 + shade, 68 + shade, 58 + shade),
+                         (r.x + x + 1, r.y + y + 1, w - 2, h - 2))
+    for _ in range(6):
+        pygame.draw.circle(surf, (48, 54, 46),
+                           (r.x + rng.randint(2, 29), r.y + rng.randint(2, 29)), 1)
+
+
+def _sewer_wall(surf, r, rng, base=(64, 72, 62), mortar=(36, 42, 36)):
+    """Slimy bricks: staggered courses, dark mortar, a lighter top lip."""
+    surf.fill(mortar, r)
+    for row in range(4):
+        off = 0 if row % 2 else 8
+        for col in range(-1, 3):
+            x = col * 16 + off
+            shade = rng.randint(-8, 8)
+            pygame.draw.rect(surf, tuple(max(0, c + shade) for c in base),
+                             (r.x + max(0, x) + 1, r.y + row * 8 + 1,
+                              min(15, 32 - max(0, x)) - 1 if x >= 0 else 15 + x - 1, 6))
+    pygame.draw.line(surf, tuple(c + 18 for c in base), (r.x, r.y), (r.right - 1, r.y), 1)
+
+
+def _gen_sewer_tiles() -> pygame.Surface:
+    import random
+    rng = random.Random(7)              # same art on every machine
+    surf = _new_sheet(SEWER_COLS, SEWER_ROWS)
+    cell = lambda i: pygame.Rect(i * FRAME_SIZE, 0, FRAME_SIZE, FRAME_SIZE)
+    slime, slime_dark = (96, 150, 60), (60, 104, 40)
+    rust, rust_dark = (140, 82, 44), (92, 52, 30)
+
+    for i in (SEWER_FLOOR, SEWER_FLOOR_CRACK, SEWER_FLOOR_MOSS,
+              SEWER_FLOOR_PUDDLE, SEWER_FLOOR_DRAIN, SEWER_FLOOR_BONES):
+        _sewer_floor(surf, cell(i), rng)
+    r = cell(SEWER_FLOOR_CRACK)
+    pygame.draw.lines(surf, (34, 38, 32), False,
+                      [(r.x + 5, r.y + 4), (r.x + 12, r.y + 13), (r.x + 10, r.y + 20),
+                       (r.x + 19, r.y + 27)], 2)
+    r = cell(SEWER_FLOOR_MOSS)
+    for (x, y, rad) in ((8, 9, 6), (14, 13, 5), (22, 22, 7), (6, 25, 4)):
+        pygame.draw.circle(surf, slime_dark, (r.x + x, r.y + y), rad)
+        pygame.draw.circle(surf, slime, (r.x + x - 1, r.y + y - 1), rad - 2)
+    r = cell(SEWER_FLOOR_PUDDLE)
+    pygame.draw.ellipse(surf, (44, 66, 50), (r.x + 4, r.y + 8, 24, 16))
+    pygame.draw.ellipse(surf, (62, 92, 66), (r.x + 7, r.y + 11, 18, 10))
+    pygame.draw.line(surf, (120, 160, 120), (r.x + 11, r.y + 13), (r.x + 16, r.y + 13), 1)
+    r = cell(SEWER_FLOOR_DRAIN)
+    pygame.draw.circle(surf, (30, 32, 30), r.center, 11)
+    pygame.draw.circle(surf, (96, 100, 96), r.center, 11, 2)
+    for dx in (-6, -2, 2, 6):
+        pygame.draw.line(surf, (96, 100, 96), (r.centerx + dx, r.centery - 9),
+                         (r.centerx + dx, r.centery + 9), 2)
+    r = cell(SEWER_FLOOR_BONES)
+    bone = (214, 206, 186)
+    pygame.draw.line(surf, bone, (r.x + 7, r.y + 20), (r.x + 20, r.y + 12), 3)
+    for (x, y) in ((6, 21), (8, 18), (20, 11), (21, 14)):
+        pygame.draw.circle(surf, bone, (r.x + x, r.y + y), 2)
+    pygame.draw.circle(surf, bone, (r.x + 23, r.y + 23), 4)
+    pygame.draw.circle(surf, (40, 40, 40), (r.x + 22, r.y + 22), 1)
+
+    for i in (SEWER_WALL, SEWER_WALL_STAIN, SEWER_WALL_PIPE, SEWER_WALL_MOSS):
+        _sewer_wall(surf, cell(i), rng)
+    _sewer_wall(surf, cell(SEWER_WALL_DARK), rng, base=(44, 50, 44), mortar=(26, 30, 26))
+    r = cell(SEWER_WALL_STAIN)
+    for x, length in ((7, 18), (16, 26), (24, 12)):
+        pygame.draw.line(surf, slime_dark, (r.x + x, r.y), (r.x + x, r.y + length), 3)
+        pygame.draw.circle(surf, slime, (r.x + x, r.y + length), 2)
+    r = cell(SEWER_WALL_PIPE)
+    pygame.draw.rect(surf, rust_dark, (r.x + 8, r.y + 8, 16, 14), border_radius=3)
+    pygame.draw.rect(surf, rust, (r.x + 9, r.y + 9, 14, 12), border_radius=3)
+    pygame.draw.circle(surf, (20, 24, 20), (r.centerx, r.y + 15), 5)
+    pygame.draw.line(surf, slime, (r.centerx, r.y + 18), (r.centerx, r.bottom - 1), 3)
+    r = cell(SEWER_WALL_MOSS)
+    for x in range(0, 32, 5):
+        h = rng.randint(4, 11)
+        pygame.draw.ellipse(surf, slime_dark, (r.x + x - 2, r.bottom - h, 8, h + 4))
+        pygame.draw.ellipse(surf, slime, (r.x + x - 1, r.bottom - h + 2, 5, h))
+
+    # Corridors: a metal grate over sludge, and a wet stone walkway.
+    r = cell(SEWER_GRATE)
+    surf.fill((34, 56, 34), r)
+    for y in range(2, 32, 6):
+        pygame.draw.line(surf, (54, 84, 48), (r.x + 2, r.y + y + 2), (r.x + 10, r.y + y + 2), 1)
+    for x in range(1, 32, 6):
+        pygame.draw.line(surf, (92, 96, 92), (r.x + x, r.y), (r.x + x, r.bottom - 1), 3)
+    for y in (0, 31):
+        pygame.draw.line(surf, (70, 74, 70), (r.x, r.y + y), (r.right - 1, r.y + y), 2)
+    r = cell(SEWER_WALKWAY)
+    surf.fill((52, 58, 52), r)
+    for (x, y) in ((4, 6), (18, 10), (10, 22), (24, 26)):
+        pygame.draw.ellipse(surf, (66, 86, 70), (r.x + x, r.y + y, 7, 3))
+    pygame.draw.line(surf, (40, 44, 40), (r.x, r.y + 16), (r.right - 1, r.y + 16), 1)
+
+    # Door: rusty iron gate.
+    r = cell(SEWER_GATE)
+    surf.fill((20, 24, 20), r)
+    for x in range(3, 32, 6):
+        pygame.draw.line(surf, rust, (r.x + x, r.y + 1), (r.x + x, r.bottom - 2), 3)
+    for y in (5, 26):
+        pygame.draw.line(surf, rust_dark, (r.x, r.y + y), (r.right - 1, r.y + y), 3)
+    pygame.draw.rect(surf, rust_dark, r, 2)
+
+    # Stairs down: an open manhole with a ladder.
+    r = cell(SEWER_MANHOLE)
+    _sewer_floor(surf, r, rng)
+    pygame.draw.circle(surf, (110, 110, 104), r.center, 14)
+    pygame.draw.circle(surf, (8, 10, 8), r.center, 11)
+    for y in (-6, -1, 4):
+        pygame.draw.line(surf, rust, (r.centerx - 6, r.centery + y), (r.centerx + 6, r.centery + y), 2)
+    for x in (-6, 6):
+        pygame.draw.line(surf, rust_dark, (r.centerx + x, r.centery - 9), (r.centerx + x, r.centery + 8), 2)
+
+    # Sludge: green water with ripples.
+    r = cell(SEWER_SLUDGE)
+    surf.fill((44, 84, 40), r)
+    for x, y in ((3, 8), (16, 12), (7, 22), (19, 26)):
+        pygame.draw.arc(surf, (96, 150, 70), (r.x + x, r.y + y - 3, 11, 7), 0, math.pi, 2)
+    return surf
+
+
 def _gen_hero_sheet() -> pygame.Surface:
     """Draw a simple knight figure for every (direction, phase) cell."""
     surf = _new_sheet(HERO_COLS, HERO_ROWS)
@@ -257,8 +395,10 @@ ENEMY_COLORS = {
     "slime": ((90, 190, 90), (60, 140, 60)),
     "goblin": ((150, 170, 90), (110, 130, 60)),
     "bat": ((140, 100, 180), (100, 70, 140)),
+    "rat": ((120, 96, 80), (80, 62, 52)),
     "skeleton": ((220, 220, 210), (170, 170, 160)),
-    "boss": ((200, 70, 60), (150, 40, 35)),
+    "rat_king": ((110, 100, 96), (70, 62, 60)),
+    "boss": ((110, 100, 96), (70, 62, 60)),
 }
 _DEFAULT_ENEMY = ((160, 160, 160), (120, 120, 120))
 
@@ -298,7 +438,7 @@ def _draw_enemy_frame(surf: pygame.Surface, px: int, py: int,
     phase = col % 2
     if col in ENEMY_DEATH:
         pygame.draw.ellipse(surf, dark, (px + 4, py + 22, 24, 7))
-        if name in ("skeleton", "boss"):       # a few bones / horns left
+        if name == "skeleton":                 # a few bones left
             pygame.draw.line(surf, body, (px + 9, py + 24), (px + 15, py + 22), 2)
             pygame.draw.line(surf, body, (px + 18, py + 25), (px + 24, py + 23), 2)
         return
@@ -310,7 +450,35 @@ def _draw_enemy_frame(surf: pygame.Surface, px: int, py: int,
     attack = col in ENEMY_ATTACK
     eye = (255, 60, 40) if attack else (20, 20, 20)
 
-    if name == "bat":
+    if name in ("rat", "rat_king", "boss"):
+        # A rat in profile: long body, head with a round ear, pink tail.
+        # The boss is the Rat King: bigger, with a gold crown.
+        big = name != "rat"
+        k = 1.35 if big else 1.0
+        lunge = 3 if attack else 0
+        bx, by = x - (7 if big else 2) + lunge, y + 2
+        bw, bh = int(20 * k), int(12 * k)
+        tail = (220, 140, 150)
+        pygame.draw.lines(surf, tail, False,
+                          [(bx - bw // 2, by + 2), (bx - bw // 2 - 5, by + 5),
+                           (bx - bw // 2 - 8, by + (1 if phase else 4))], 2)
+        pygame.draw.ellipse(surf, body, (bx - bw // 2, by - bh // 2, bw, bh))
+        pygame.draw.ellipse(surf, dark, (bx - bw // 2, by - bh // 2, bw, bh), 1)
+        hx, hy = bx + bw // 2 - 1, by - int(3 * k)
+        pygame.draw.polygon(surf, body, [(hx - 4, hy - 4), (hx + int(8 * k), hy + 1), (hx - 3, hy + 5)])
+        pygame.draw.circle(surf, tail, (hx + int(8 * k), hy + 1), 2)            # nose
+        pygame.draw.circle(surf, body, (hx - 2, hy - 5), int(3 * k))          # ear
+        pygame.draw.circle(surf, tail, (hx - 2, hy - 5), max(1, int(2 * k) - 1))
+        pygame.draw.circle(surf, eye, (hx + 2, hy - 1), 1 if not big else 2)
+        for fx in (-bw // 3, bw // 4):
+            pygame.draw.line(surf, dark, (bx + fx, by + bh // 2 - 1), (bx + fx, by + bh // 2 + 2), 2)
+        if big:
+            cx0, cy0 = hx - 6, hy - 10
+            pygame.draw.polygon(surf, (230, 190, 90), [
+                (cx0, cy0 + 6), (cx0, cy0), (cx0 + 3, cy0 + 3), (cx0 + 6, cy0 - 1),
+                (cx0 + 9, cy0 + 3), (cx0 + 12, cy0), (cx0 + 12, cy0 + 6)])
+            pygame.draw.circle(surf, (200, 40, 50), (cx0 + 6, cy0 + 4), 1)
+    elif name == "bat":
         # Small round body, two wings that flap with the frame.
         up = -5 if phase else 2
         for side in (-1, 1):
@@ -350,22 +518,6 @@ def _draw_enemy_frame(surf: pygame.Surface, px: int, py: int,
         pygame.draw.line(surf, body, (x + 2, y + 2), (x + reach, y + 7), 2)
         pygame.draw.line(surf, body, (x - 1, y + 10), (x - 4, y + 13), 2)
         pygame.draw.line(surf, body, (x + 1, y + 10), (x + 4, y + 13), 2)
-    elif name == "boss":
-        # Wide horned body with a crown of spikes and a fanged mouth.
-        h = 20 if attack else 18
-        pygame.draw.ellipse(surf, body, (x - 12, y - 9, 24, h))
-        pygame.draw.ellipse(surf, dark, (x - 12, y - 9, 24, h), 2)
-        for hx in (-1, 1):
-            pygame.draw.polygon(surf, (235, 225, 200),
-                                [(x + hx * 7, y - 7), (x + hx * 14, y - 15), (x + hx * 10, y - 5)])
-        for sx in (-4, 0, 4):
-            pygame.draw.polygon(surf, (230, 190, 90),
-                                [(x + sx - 2, y - 8), (x + sx, y - 13), (x + sx + 2, y - 8)])
-        pygame.draw.circle(surf, eye, (x - 5, y - 2), 2)
-        pygame.draw.circle(surf, eye, (x + 5, y - 2), 2)
-        pygame.draw.line(surf, (30, 10, 10), (x - 5, y + 4), (x + 5, y + 4), 2)
-        for fx in (-3, 3):
-            pygame.draw.line(surf, (240, 240, 240), (x + fx, y + 4), (x + fx, y + 7), 1)
     else:
         # Slime (and any unknown name): a jelly blob.
         h = 18 if attack else 16

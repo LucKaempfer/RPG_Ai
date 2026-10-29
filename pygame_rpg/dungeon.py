@@ -21,17 +21,19 @@ from typing import List, Tuple, Dict, Optional
 
 from .assets import (
     assets,
-    TILE_FLOOR, TILE_WALL, TILE_WALL_DARK, TILE_CORRIDOR, TILE_DOOR,
-    TILESET_COLS, TILESET_ROWS,
+    SEWER_FLOOR, SEWER_FLOOR_CRACK, SEWER_FLOOR_MOSS, SEWER_FLOOR_PUDDLE,
+    SEWER_FLOOR_DRAIN, SEWER_FLOOR_BONES, SEWER_WALL, SEWER_WALL_STAIN,
+    SEWER_WALL_PIPE, SEWER_WALL_MOSS, SEWER_WALL_DARK, SEWER_GRATE,
+    SEWER_WALKWAY, SEWER_GATE, SEWER_COLS, SEWER_ROWS,
 )
 
 # Configuration constants
 TILE_SIZE = 32
-DUNGEON_WIDTH = 80   # in tiles
-DUNGEON_HEIGHT = 60  # in tiles
+DUNGEON_WIDTH = 60   # in tiles
+DUNGEON_HEIGHT = 44  # in tiles
 MAX_ROOM_SIZE = 10   # max width/height in tiles
 MIN_ROOM_SIZE = 4
-NUM_ROOMS = 15
+NUM_ROOMS = 13
 # Free tiles kept between rooms: room walls stay solid and a corridor
 # (with wall on both sides) fits through every gap.
 ROOM_GAP = 3
@@ -66,6 +68,8 @@ class Dungeon:
         self.visited_corridors: set = set()  # corridor cells seen (minimap)
         self.minimap_surface: Optional[pygame.Surface] = None
         self._tile_frames: Optional[List[pygame.Surface]] = None
+        self._shade: Optional[pygame.Surface] = None
+        self._tile_cache: Dict[Tuple[int, int], int] = {}
 
     def generate(self, seed: Optional[int] = None):
         # A private RNG: the seed fully determines the floor and the
@@ -74,8 +78,9 @@ class Dungeon:
         self.rooms.clear()
         self.room_map.clear()
         self.visited_corridors.clear()
+        self._tile_cache = {}
         attempts = 0
-        while len(self.rooms) < NUM_ROOMS and attempts < NUM_ROOMS * 10:
+        while len(self.rooms) < NUM_ROOMS and attempts < NUM_ROOMS * 40:
             attempts += 1
             w = rng.randint(MIN_ROOM_SIZE, MAX_ROOM_SIZE)
             h = rng.randint(MIN_ROOM_SIZE, MAX_ROOM_SIZE)
@@ -183,20 +188,26 @@ class Dungeon:
         self._create_corridor(a.rect.center, b.rect.center)
 
     def _connect_rooms(self):
-        """Connect each room to the nearest *earlier* room by a corridor.
+        """Link the rooms with the shortest corridors that still reach
+        every room: start from room 0 and keep adding the unlinked room
+        whose walls are closest to an already linked room (Prim's minimum
+        spanning tree over wall-to-wall gaps).  A tree, so every room is
+        reachable and there are no long detours."""
+        linked = [self.rooms[0]]
+        rest = list(self.rooms[1:])
+        while rest:
+            room, near = min(((r, l) for r in rest for l in linked),
+                             key=lambda p: self._gap(p[0].rect, p[1].rect))
+            self._link(room, near)
+            linked.append(room)
+            rest.remove(room)
 
-        Linking only to earlier rooms builds a tree, so every room is
-        reachable from room 0 (linking to the nearest room overall could
-        leave separate clusters).
-        """
-        for i, room in enumerate(self.rooms):
-            if i == 0:
-                continue
-            nearest = min(
-                self.rooms[:i],
-                key=lambda r: self._distance(room.rect.center, r.rect.center),
-            )
-            self._link(room, nearest)
+    @staticmethod
+    def _gap(a, b) -> int:
+        """Tiles of open ground between two rects (0 if they touch)."""
+        dx = max(b.left - a.right, a.left - b.right, 0)
+        dy = max(b.top - a.bottom, a.top - b.bottom, 0)
+        return dx + dy
 
     @staticmethod
     def _distance(p1: Tuple[int, int], p2: Tuple[int, int]) -> float:
@@ -229,6 +240,39 @@ class Dungeon:
                     if best is None or dist < best[0]:
                         best = (dist, out)
         return best[1] if best else room.rect.center
+
+    def visible_from(self, cell: Tuple[int, int], radius: int) -> set:
+        """Cells the hero at ``cell`` can see: within ``radius`` tiles and
+        with a straight line to them that crosses only floor (walls block
+        sight; the wall itself is seen).  Open doors don't block."""
+        cx, cy = cell
+        seen = set()
+        r2 = radius * radius
+        for tx in range(cx - radius, cx + radius + 1):
+            for ty in range(cy - radius, cy + radius + 1):
+                if (tx - cx) ** 2 + (ty - cy) ** 2 > r2:
+                    continue
+                if self._line_clear(cx, cy, tx, ty):
+                    seen.add((tx, ty))
+        return seen
+
+    def _line_clear(self, x0, y0, x1, y1) -> bool:
+        """Bresenham line: every cell strictly between the ends is floor."""
+        dx, dy = abs(x1 - x0), -abs(y1 - y0)
+        sx, sy = (1 if x0 < x1 else -1), (1 if y0 < y1 else -1)
+        err = dx + dy
+        x, y = x0, y0
+        while (x, y) != (x1, y1):
+            e2 = 2 * err
+            if e2 >= dy:
+                err += dy
+                x += sx
+            if e2 <= dx:
+                err += dx
+                y += sy
+            if (x, y) != (x1, y1) and (x, y) not in self.room_map:
+                return False
+        return True
 
     def is_walkable(self, cell: Tuple[int, int]) -> bool:
         """Room and corridor cells are floor; everything else is wall."""
@@ -263,22 +307,71 @@ class Dungeon:
         pygame.draw.rect(surface, (92, 92, 118), (*pos, *size), width=1)
 
     def _tiles(self) -> List[pygame.Surface]:
-        """Tileset frames (cached); index matches the TILE_* constants."""
+        """Sewer tileset frames (cached); index matches SEWER_*."""
         if self._tile_frames is None:
             self._tile_frames = assets.load_sheet(
-                "tileset.png", TILESET_COLS, TILESET_ROWS
+                "sewer/tiles.png", SEWER_COLS, SEWER_ROWS
             )
         return self._tile_frames
 
+    def _tile_for(self, cell) -> int:
+        """The sewer tile for ``cell``: doors are iron gates, corridors
+        grates or walkways, room floors mostly flagstones with some moss,
+        puddles, drains and bones; walls whose face shows (floor below)
+        get slime stains, pipes and moss."""
+        tile = self._tile_cache.get(cell)
+        if tile is None:
+            # Seeded per cell (not the floor's rng): the same spot always
+            # looks the same, with no visible stripes or repeats.
+            x, y = cell
+            h = random.Random(x * 7919 + y * 104729).randrange(1 << 16)
+            tile = self._tile_cache[cell] = self._pick_tile(cell, h)
+        return tile
+
+    def _pick_tile(self, cell, h) -> int:
+        x, y = cell
+        if self.room_map.get(cell) is not None:
+            if cell in self.door_tiles:
+                return SEWER_GATE
+            pick = h % 40
+            return {0: SEWER_FLOOR_PUDDLE, 1: SEWER_FLOOR_PUDDLE,
+                    2: SEWER_FLOOR_MOSS, 3: SEWER_FLOOR_MOSS, 4: SEWER_FLOOR_MOSS,
+                    5: SEWER_FLOOR_CRACK, 6: SEWER_FLOOR_CRACK,
+                    7: SEWER_FLOOR_DRAIN, 8: SEWER_FLOOR_BONES}.get(pick, SEWER_FLOOR)
+        if cell in self.room_map:
+            return SEWER_WALKWAY if h % 5 == 0 else SEWER_GRATE
+        if (x, y + 1) in self.room_map:          # wall face over a floor
+            pick = h % 12
+            return {0: SEWER_WALL_PIPE, 1: SEWER_WALL_STAIN, 2: SEWER_WALL_STAIN,
+                    3: SEWER_WALL_MOSS, 4: SEWER_WALL_MOSS}.get(pick, SEWER_WALL)
+        return SEWER_WALL_DARK
+
+    def _lit(self, cell, visible) -> bool:
+        """In sight now: a visible cell, or a wall touching one."""
+        if cell in visible:
+            return True
+        if cell in self.room_map:
+            return False
+        x, y = cell
+        return any((x + dx, y + dy) in visible
+                   for dx in (-1, 0, 1) for dy in (-1, 0, 1))
+
     def render(self, surface: pygame.Surface, camera_offset: Tuple[int, int],
                seen: Optional[set] = None,
-               overrides: Optional[Dict[Tuple[int, int], int]] = None):
+               overrides: Optional[Dict[Tuple[int, int], int]] = None,
+               visible: Optional[set] = None):
         """Render the visible part of the dungeon to the main surface.
 
         ``seen`` (fog of war): when given, only seen floor cells and the
         walls touching them are drawn; the rest stays black.
         ``overrides`` maps cells to a tile index drawn instead (stairs).
+        ``visible``: cells in the hero's line of sight right now; seen
+        cells outside it are drawn dimmed (remembered, not watched).
         """
+        if visible is not None and (self._shade is None
+                                    or self._shade.get_size() != (TILE_SIZE, TILE_SIZE)):
+            self._shade = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+            self._shade.fill((0, 0, 0, 150))
         offset_x, offset_y = camera_offset
         tiles = self._tiles()
         surf_w, surf_h = surface.get_size()
@@ -296,13 +389,9 @@ class Dungeon:
                     continue
                 if overrides and cell in overrides:
                     tile = overrides[cell]
-                elif self.room_map.get(cell) is not None:
-                    tile = TILE_DOOR if cell in self.door_tiles else TILE_FLOOR
-                elif cell in self.room_map:
-                    tile = TILE_CORRIDOR
                 else:
-                    # Unlit stone walls, with a deterministic dark variant.
-                    tile = TILE_WALL if (x * 31 + y * 17) % 9 else TILE_WALL_DARK
-                surface.blit(
-                    tiles[tile], (x * TILE_SIZE - offset_x, y * TILE_SIZE - offset_y)
-                )
+                    tile = self._tile_for(cell)
+                pos = (x * TILE_SIZE - offset_x, y * TILE_SIZE - offset_y)
+                surface.blit(tiles[tile], pos)
+                if visible is not None and not self._lit(cell, visible):
+                    surface.blit(self._shade, pos)
