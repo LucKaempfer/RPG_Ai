@@ -163,4 +163,25 @@ ok(ab2.slot_of(next(a for a in ab2.equipped_abilities() if a.id == "chain_lightn
 for name in ("base", "inventory", "stats", "level_up"):
     build_screen(name, screen, {"player": ab2}).draw(screen)
 ok(True, "screens render with abilities")
+
+# --- Rarity (sub-milestone 6) ---
+import random
+from collections import Counter
+from pygame_rpg.config import RARITIES, RARITY_WEIGHTS
+ok(all(i.rarity == I.RARITY_BY_LEVEL[i.level] for i in I.CATALOG.values()), "rarity by tier")
+ok(I.item_by_id("sword_3").rarity == "rare" and I.item_by_id("fireball_4").rarity == "epic"
+   and I.item_by_id("potion").rarity == "common", "rarity spot-checks")
+rng = random.Random(1)
+counts = Counter(I.roll_rarity(rng) for _ in range(20000))
+total = sum(RARITY_WEIGHTS.values())
+ok(all(abs(counts[r] / 20000 - RARITY_WEIGHTS[r] / total) < 0.02 for r in RARITIES), "roll_rarity weights")
+rng = random.Random(2)
+drops = [I.roll_loot(rng, max_level=2) for _ in range(500)]
+ok(all(d.level <= 2 and d.rarity == "common" for d in drops), "loot respects max level (falls back)")
+drops = [I.roll_loot(rng, kinds=("weapon",)) for _ in range(500)]
+ok(all(d.kind == "weapon" for d in drops) and {d.rarity for d in drops} == {"common", "rare", "epic"}, "loot by kind, all rarities")
+d = drops[0]; d.ap += 99
+ok(I.CATALOG[d.id].ap != d.ap, "loot is a copy")
+inv = InventoryScreen(screen, ab2); inv.selected = ab2.inventory[0]; inv.draw(screen)
+ok(True, "inventory renders rarity")
 print(f"m2 OK ({checks} checks)")

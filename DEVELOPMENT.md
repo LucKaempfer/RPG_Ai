@@ -12,23 +12,25 @@ Base (lobby) already runs in the GUI; the item system, dungeon and combat are ne
 
 ## 0. Start Here
 
-**Where we are:** M1 (sprites) and M3 (GUI up to the Base) are done. M2 (item system) is
-nearly done: sub-milestones 1 (weapons), 2 (armor), 3 (consumables), 4 (trinkets) and
-5 (abilities) are done, and most of 6 (wiring) is in place: 11 equipment slots, effective
-stats, max/current HP and MP, the level gate on equip, charges in saves, old-save migration.
+**Where we are:** M1 (sprites), M3 (GUI up to the Base) and **M2 (item system) are done.**
 `pygame_rpg/items.py` holds a **212-item catalog** (20 weapon bases + 60 tiers, 8 armor + 24,
-6 consumables + 18, 13 trinkets + 39, 6 abilities + 18; no duplicate ids).
+6 consumables + 18, 13 trinkets + 39, 6 abilities + 18; no duplicate ids), with rarity by tier
+and a `roll_loot()` helper ready for drops. The hero has 11 equipment slots, effective stats,
+HP and MP, and a level gate on equip; old saves migrate on load.
 
-**Next task: finish M2 sub-milestone 6, rarity** (details in §6.1):
+**Next task: M4 — Dungeon + Combat** (details in §6.2). Suggested order, one step at a time,
+each verified headless:
 
-1. `Item.rarity` already exists (default `"common"`). Decide which items get rare / epic /
-   legendary (suggestion: by tier, e.g. level 1-2 common, 3 rare, 4 epic; legendary for a few
-   hand-placed items later). Rarity never changes stat size; it drives colour and spawn weight.
-2. Inventory: slot and row borders by rarity instead of by kind (`KIND_BORDER` in
-   `gui/inventory_screen.py`); keep kind visible in the row tag.
-3. Spawn weights: a `RARITY_WEIGHTS` table in `config.py` for M4's loot rolls, plus a pure
-   `roll_rarity(rng)` helper that tests can call.
-4. Extend `tests/m2_smoke_test.py`, then mark M2 done and start M4.
+1. **Dungeon screen:** a `gui/dungeon_screen.py` that wraps `dungeon.py` + the hero sprite from
+   `assets.py` (the M1 loop lives in git history, commit `d2a0ec2`, `main.py`). Enable the
+   Base's *Adventure* button; Esc returns to the Base. Add wall collision.
+2. **Enemies (`enemies.py`):** data-driven enemy types scaled by floor; placed as sprites in
+   rooms; bumping into one opens the battle screen.
+3. **Combat (`combat.py` + `gui/battle_screen.py`):** turn-based menu (Attack / Abilities /
+   Items / Run). Damage uses `Player.total()`; abilities use `can_cast()` / `spend_mp()` and
+   cooldowns kept in the battle state; bombs and mana potions become usable here; ailments as
+   data; trinket wards and XP bonus apply. Win → XP + `roll_loot()`; death → back to the Base.
+4. **Loot, stairs, HUD, fog of war,** then dungeon state in saves (M5).
 
 **Standing rules**
 
@@ -51,7 +53,7 @@ meaningful.
 |---|-----------|----------|--------|
 | M1 | Sprites everywhere | Tileset, player/enemy/item/UI sprites, asset manager | ✅ done |
 | M3 | GUI up to the Base | Title → tutorial → hero maker/chooser → Base → inventory / stats / level-up, JSON saves | ✅ done (16 Oct 2026), 32-check end-to-end smoke test |
-| M2 | Item system | Full catalog, equipment slots, equipment-driven stats, weight, rarity (six sub-milestones, §6.1) | 🚧 1-5 of 6 done (weapons, armor, consumables, trinkets, abilities) + most wiring; next: rarity |
+| M2 | Item system | Full catalog, equipment slots, equipment-driven stats, weight, rarity (six sub-milestones, §6.1) | ✅ done (29 Oct 2026): 212-item catalog, 11 slots, effective stats, HP/MP, level gate, rarity + loot roll |
 | M4 | Dungeon + Combat | Collision, fog of war, loot, enemies/bosses, turn-based battles, weapon ailments, HUD | pending |
 | M5 | Persistence + Polish | Dungeon state in saves, balance config, polish, pytest suite | pending (character JSON saves already done) |
 
@@ -156,7 +158,7 @@ tests/                 # pytest suite (M5)
 weight (kg), ap, rap, map, dp, rdp, mdp, hp, slot, effect, heal, mana, damage, charges,
 combat_only, bonus_weight, xp_bonus, loot_bonus, speed_bonus, resist (trinkets),
 attack_type, mp_cost, cooldown, guard, duration (abilities), description`.
-New kinds add fields with defaults (e.g. `charges`, later `rarity`) so existing entries and
+New kinds add fields with defaults (e.g. `charges`, `rarity`) so existing entries and
 saves stay valid. Item ids for tiers follow `<base_id>_<level>` (e.g. `sword_3`), names get a
 Roman numeral (`Sword III`).
 
@@ -247,8 +249,6 @@ close; other screens save only on window close.
 
 **Still open:**
 
-* Rarity has a data field but every item is `common`; colours and spawn weights are the
-  next task (§0).
 * `pygame_rpg/README.md` still describes the M1 skeleton.
 * Placeholder icons for items are generated into `pygame_rpg/assets/items/` the first time an
   item is shown, so they appear as untracked files in `git status`. Either commit them, ignore
@@ -259,15 +259,17 @@ close; other screens save only on window close.
 
 ## 6. Roadmap / Next Steps
 
-### 6.1 M2 — Item system (remaining sub-milestones)
+### 6.1 M2 — Item system (done)
 
-Done: **1. Weapons, all tiers**, **2. Armor** and **3. Consumables** (§4).
+1. **Weapons**, 2. **Armor**, 3. **Consumables** — done (§4).
 
 4. **Trinkets** — done (52 items, see §4).
 5. **Abilities** — done (24 items, MP pool, 4 ability slots, see §4).
 6. **Wiring** — done: 11 equipment slots, effective stats, max/current HP and MP, level gate on
-   equip, charges in saves, old-save migration. *Remaining (next):* rarity — assign rarities,
-   rarity-coloured borders in the inventory, spawn-weight table + `roll_rarity()` for M4 loot.
+   equip, charges in saves, old-save migration, and rarity: by tier (levels 1-2 common,
+   3 rare, 4 epic; legendary reserved for hand-placed boss drops), rarity-coloured borders and
+   labels in the inventory, `RARITY_WEIGHTS` (70/22/7/1) in `config.py`, `roll_rarity()` and
+   `roll_loot(rng, max_level, kinds)` in `items.py`.
 
 **Definition of done (M2):** full multi-tier catalog (weapons, armor, consumables, trinkets,
 abilities), equipment math testable without pygame, weight system working, every old save loads.
@@ -325,8 +327,8 @@ with the HUD active.
 * **Quick catalog check** (no display needed):
   `python -c "from pygame_rpg import items; print(len(items.CATALOG))"` → `212` today.
 * **M2 harness** `tests/m2_smoke_test.py` (run `python tests/m2_smoke_test.py` from the repo
-  root → "m2 OK (170 checks)"): headless checks covering catalog counts and
-  every pre-existing id, armor/trinket/ability equipping, the level gate, MP, base vs effective stats, capped healing and
+  root → "m2 OK (177 checks)"): headless checks covering catalog counts and
+  every pre-existing id, armor/trinket/ability equipping, the level gate, MP, rarity + loot rolls, base vs effective stats, capped healing and
   charges, save round-trip, old-save migration, and a GUI smoke test (every screen renders,
   equip armor and use a potion through the inventory buttons). Saves go to a temp folder; it is
   the natural seed for the M5 pytest suite. Extend it with each sub-milestone.
@@ -339,7 +341,7 @@ with the HUD active.
    functions with module-level dicts and stub bodies. The pygame game re-implements it as classes.
 2. **V3 gaps filled by design:** Base/inventory built from the plan because V3's `lobby()`,
    `inventory()` and `backpack()` are stubs; `BASE_MAX_WEIGHT = 50`; V3 has no rarity data, so
-   inventory borders are coloured by item kind for now; V3 has no level-2+ weapons or any armor,
+   rarity follows the tier (§6.1); V3 has no level-2+ weapons or any armor,
    so tiers and armor are design decisions documented in `items.py` comments.
 3. **`item_by_id()` returns a copy**, so per-character state can never mutate the catalog.
 4. **Asset manager pattern:** missing files are generated and saved to disk under the same name;

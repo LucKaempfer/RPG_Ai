@@ -37,13 +37,12 @@ from .screen import (
 GOOD = (110, 200, 110)
 BAD = (220, 110, 110)
 
-# Kind-based slot border colors (no rarity data exists in V3).
-KIND_BORDER = {
-    "weapon": (180, 90, 90),
-    "armor": (90, 130, 190),
-    "trinket": (170, 140, 90),
-    "consumable": (120, 120, 140),
-    "ability": (150, 100, 190),
+# Rarity colours for item borders and names.
+RARITY_COLOR = {
+    "common": (150, 150, 165),
+    "rare": (90, 140, 230),
+    "epic": (170, 100, 220),
+    "legendary": (235, 150, 50),
 }
 
 from ..player import EQUIP_SLOTS as SLOTS
@@ -287,6 +286,9 @@ class InventoryScreen(Screen):
                                  width=2, border_radius=4)
             elif is_hot:
                 pygame.draw.rect(surface, PANEL_HOT, r, border_radius=4)
+            rcol = RARITY_COLOR.get(item.rarity, BORDER_COLOR)
+            pygame.draw.rect(surface, rcol, (r.x + 3, r.y + 2, 28, 28),
+                             width=2, border_radius=4)
             surface.blit(self._icon(item, 24), (r.x + 5, r.y + 4))
             nm = font(20).render(item.name, True,
                                  TEXT_COLOR if is_sel else DIM_TEXT)
@@ -307,7 +309,7 @@ class InventoryScreen(Screen):
             is_sel = item is not None and self.selected is item
             is_hot = (hover is not None and hover[0] == "slot"
                       and hover[1] == i and item is not None)
-            border = (KIND_BORDER.get(item.kind, BORDER_COLOR)
+            border = (RARITY_COLOR.get(item.rarity, BORDER_COLOR)
                       if item is not None else BORDER_COLOR)
             if is_sel:
                 pygame.draw.rect(surface, PANEL_HOT, box, border_radius=6)
@@ -341,6 +343,10 @@ class InventoryScreen(Screen):
         else:
             nm = font(22).render(sel.name, True, GOLD)
             surface.blit(nm, (482, 338))
+            rar = font(16).render(sel.rarity, True,
+                                  RARITY_COLOR.get(sel.rarity, DIM_TEXT))
+            surface.blit(rar, rar.get_rect(topright=(
+                self.detail_panel.right - 12, 342)))
             y = 366
             for line in _wrap(sel.description, 18, 280):
                 surface.blit(font(18).render(line, True, DIM_TEXT), (482, y))
