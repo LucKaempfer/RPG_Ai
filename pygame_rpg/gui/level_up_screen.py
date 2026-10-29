@@ -12,6 +12,7 @@ Down + Enter); each pick bursts gold sparks from its button.
 
 import pygame
 
+from .. import audio
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, MP_PER_LEVEL, max_xp_for
 from ..player import UPGRADABLE_STATS
 from ..savegame import save_player
@@ -25,6 +26,11 @@ from .screen import (
 
 class LevelUpScreen(Screen):
     name = "level_up"
+
+    @property
+    def ambience(self):
+        """Keep the dungeon's ambience going when opened from a floor."""
+        return getattr(self.return_to, "ambience", None)
 
     def __init__(self, screen, player, return_to=None):
         super().__init__(screen)
@@ -61,6 +67,7 @@ class LevelUpScreen(Screen):
         self._refresh_labels()
         self.fx.burst(*self.stat_buttons[stat].rect.center, GOLD, count=24)
         self.glow_t = 0.6
+        audio.play("level_up")
 
     def handle_event(self, event):
         if event.type == pygame.QUIT:

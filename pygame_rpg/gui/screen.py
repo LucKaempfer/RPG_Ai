@@ -58,6 +58,8 @@ class Screen:
     """
 
     name = "screen"
+    # Ambient loop while this screen shows ("sewer") or None.
+    ambience = None
 
     def __init__(self, screen: pygame.Surface):
         self.screen = screen

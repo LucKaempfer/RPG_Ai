@@ -22,11 +22,12 @@ import random
 
 import pygame
 
+from .. import audio
 from ..assets import (
     AssetManager, HERO_COLS, HERO_ROWS, HERO_IDLE_COLS, HERO_DIR_UP,
     ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, ENEMY_HURT, ENEMY_DEATH,
 )
-from ..combat import Battle, STYLES, ONGOING, WON, LOST, FLED
+from ..combat import Battle, STYLES, AFFLICTED, ONGOING, WON, LOST, FLED
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from ..savegame import save_player, delete_run
 from .effects import Particles
@@ -61,6 +62,7 @@ def _bar(surface, rect, value, maximum, color):
 
 class BattleScreen(Screen):
     name = "battle"
+    ambience = "sewer"   # the fight happens down in the sewer
 
     def __init__(self, screen, player, enemy, dungeon, rng=None):
         super().__init__(screen)
@@ -145,23 +147,26 @@ class BattleScreen(Screen):
         kind = action[0]
         hp_before = self.enemy.hp
         hero_before = self.player.current_hp
+        out = []
         if kind == "continue":
+            audio.play("click")
             return self._leave()
         if kind == "mode":
             self.mode, self.focus = action[1], 0
         elif kind == "back":
             self.mode, self.focus = "main", 0
         elif kind == "attack":
-            b.attack(action[1] if len(action) > 1 else "strike")
+            out = b.attack(action[1] if len(action) > 1 else "strike")
             self.mode = "main"
         elif kind == "cast":
-            b.cast(action[1])
+            out = b.cast(action[1])
             self.mode = "main"
         elif kind == "use":
-            b.use_item(action[1])
+            out = b.use_item(action[1])
             self.mode = "main"
         elif kind == "run":
-            b.run()
+            out = b.run()
+        self._sounds(action, out, hp_before, hero_before)
         if self.enemy.hp < hp_before:
             self.hurt_t = HURT_TIME
             self._pop(f"-{hp_before - self.enemy.hp}", BAD, 590, 170)
@@ -178,6 +183,36 @@ class BattleScreen(Screen):
                 self.fx.burst(590, 270, (255, 255, 255), count=12, speed=120)
         self._build_buttons()
         return None
+
+    def _sounds(self, action, out, hp_before, hero_before):
+        """Sound for what the last menu pick did: the hero's move, then
+        (slightly later) the enemy's counter-hit and the fight's end."""
+        kind, b = action[0], self.battle
+        if kind in ("mode", "back"):
+            audio.play("click")
+            return
+        if any(line == "You can't move this turn!" for line in out):
+            audio.play("ailment")
+        elif kind == "attack":
+            hit = self.enemy.hp < hp_before
+            audio.play(action[1] if hit and len(action) > 1
+                       else "strike" if hit else "miss")
+        elif kind == "cast":
+            a = action[1]
+            audio.play("magic" if a.damage else "heal" if a.heal else "guard")
+        elif kind == "use":
+            audio.play("bomb" if action[1].damage else "potion")
+        elif kind == "run":
+            audio.play("run" if b.state == FLED else "fail")
+        if any(line.endswith(f"{word}!") for line in out
+               for word in AFFLICTED.values()):
+            audio.play("ailment", delay=0.25)
+        if self.player.current_hp < hero_before:
+            audio.play("hurt", delay=0.4)
+        if b.state == WON:
+            audio.play("victory", delay=0.45)
+        elif b.state == LOST:
+            audio.play("defeat", delay=0.6)
 
     def _pop(self, text, color, x, y):
         self.pops.append([text, color, x, y, 0.0])
