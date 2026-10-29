@@ -7,3 +7,4 @@ venv/
 
 # Runtime data
 saves/
+.pytest_cache/

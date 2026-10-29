@@ -63,7 +63,8 @@ def build_screen(name, display, kwargs=None):
         if name == "dungeon":
             return DungeonScreen(display, player,
                                  floor=kwargs.get("floor", 1),
-                                 seed=kwargs.get("seed"))
+                                 seed=kwargs.get("seed"),
+                                 run=kwargs.get("run"))
         return LevelUpScreen(display, player,
                              return_to=kwargs.get("return_to"))
     raise ValueError(f"unknown screen name: {name!r}")

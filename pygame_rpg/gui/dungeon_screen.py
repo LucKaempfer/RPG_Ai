@@ -13,10 +13,15 @@ fog of war, and what stands on the floor:
 * stairs: appear in the boss's room once the boss is beaten; stepping
   on them builds the next, harder floor.
 
-Arrows / WASD move.  Esc saves, rests (full HP / MP) and returns to the
-Base; the next Adventure starts again on floor 1.  Window close saves,
-then quits.
+The run is saved (``savegame.save_run``) on entering a floor, after
+every battle, on Esc and on window close: floor, seed, beaten enemies,
+opened chests, stairs, fog and the hero's spot.  Enemy and chest
+placement follow the seed, so the save only records what changed.
+Esc returns to the Base *without* resting; the Base's Continue picks
+the run up again, New Adventure (or a defeat) ends it.
 """
+
+import random
 
 import pygame
 
@@ -26,11 +31,11 @@ from ..assets import (
     ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, TILE_STAIRS_DOWN,
 )
 from ..combat import WON, FLED
-from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
+from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, CHESTS_PER_FLOOR
 from ..dungeon import Dungeon, TILE_SIZE, DUNGEON_WIDTH, DUNGEON_HEIGHT
 from ..enemies import place_enemies, boss_room, BOSS_TYPE
 from ..items import roll_loot
-from ..savegame import save_player
+from ..savegame import save_player, save_run
 from .base_screen import pending_levels
 from .hud import Hud
 from .screen import QUIT, Screen, font, DIM_TEXT
@@ -46,18 +51,25 @@ FRAME_TIME = 0.12
 TOUCH = 24
 # How far (in tiles) the hero sees into corridors; rooms light up whole.
 SIGHT = 2
-CHESTS_PER_FLOOR = 2
 
 MINIMAP_SCALE = 2
+BANNER_TIME = 2.0   # seconds the "Floor N" banner shows on arrival
 
 
 class DungeonScreen(Screen):
     name = "dungeon"
 
-    def __init__(self, screen, player, floor=1, seed=None):
+    def __init__(self, screen, player, floor=1, seed=None, run=None):
+        """``run``: a dict from ``to_run()`` (a saved run) to restore;
+        it overrides ``floor`` and ``seed``."""
         super().__init__(screen)
         self.player = player
+        if run is not None:
+            floor, seed = run["floor"], run["seed"]
+        if seed is None:
+            seed = random.randrange(1 << 30)
         self.floor = floor
+        self.seed = seed
         self.dungeon = Dungeon()
         self.dungeon.generate(seed)
         self.x, self.y = map(float, self.dungeon.spawn_point())
@@ -67,10 +79,12 @@ class DungeonScreen(Screen):
         self.visited = []
         self.seen = set()
         self.enemies = place_enemies(self.dungeon, floor)
+        self.all_enemies = list(self.enemies)   # placement order, for saves
         self.chests = self._place_chests()   # [cell, opened]
         self.stairs = None                   # cell, once the boss is beaten
         self.ignore = None      # enemy just fled from: no re-bump until apart
         self.check_levels = False
+        self.banner_t = BANNER_TIME
         self.hud = Hud()
         self.hud.say(f"Floor {floor}: beat the {BOSS_TYPE.name} to open the stairs.")
         self._mark_visited()
@@ -83,6 +97,51 @@ class DungeonScreen(Screen):
                 self.enemy_frames[e.type.sprite] = assets.load_sheet(
                     f"enemies/{e.type.sprite}.png", ENEMY_COLS, ENEMY_ROWS)
         self.chest_frames = assets.load_sheet("objects/chest.png", 2, 1)
+        if run is not None:
+            self._restore(run)
+        self.save_run()
+
+    # -- run saves -------------------------------------------------------
+    def to_run(self) -> dict:
+        """What a run save needs on top of the seed (JSON-ready)."""
+        rooms = self.dungeon.rooms
+        return {
+            "floor": self.floor, "seed": self.seed,
+            "x": self.x, "y": self.y, "facing": self.facing,
+            "beaten": [i for i, e in enumerate(self.all_enemies)
+                       if not e.alive],
+            "chests": [opened for _, opened in self.chests],
+            "stairs": self.stairs is not None,
+            "seen": sorted(self.seen),
+            "visited": [rooms.index(r) for r in self.visited],
+            "corridors": sorted(self.dungeon.visited_corridors),
+        }
+
+    def _restore(self, run: dict) -> None:
+        for i in run.get("beaten", []):
+            if 0 <= i < len(self.all_enemies):
+                self.all_enemies[i].hp = 0
+        self.enemies = [e for e in self.all_enemies if e.alive]
+        for chest, opened in zip(self.chests, run.get("chests", [])):
+            chest[1] = bool(opened)
+        if run.get("stairs"):
+            self.stairs = boss_room(self.dungeon).rect.center
+        self.seen = {tuple(c) for c in run.get("seen", [])}
+        rooms = self.dungeon.rooms
+        self.visited = [rooms[i] for i in run.get("visited", [])
+                        if 0 <= i < len(rooms)]
+        self.dungeon.visited_corridors = {tuple(c) for c in
+                                          run.get("corridors", [])}
+        x, y = run.get("x", self.x), run.get("y", self.y)
+        if self._fits(x, y):
+            self.x, self.y = float(x), float(y)
+        self.facing = run.get("facing", self.facing)
+        self.hud.messages.clear()
+        self.hud.say(f"Floor {self.floor}: run continued.")
+        self._mark_visited()
+
+    def save_run(self) -> None:
+        save_run(self.player.name, self.to_run())
 
     # -- floor contents --------------------------------------------------
     def _place_chests(self):
@@ -206,6 +265,7 @@ class DungeonScreen(Screen):
             self.check_levels = True
         elif battle.state == FLED:
             self.ignore = battle.enemy
+        self.save_run()
 
     def _open_chests(self):
         for chest in self.chests:
@@ -224,10 +284,11 @@ class DungeonScreen(Screen):
     def handle_event(self, event):
         if event.type == pygame.QUIT:
             save_player(self.player)
+            self.save_run()
             return QUIT
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            self.player.rest()
             save_player(self.player)
+            self.save_run()
             return ("base", {"player": self.player})
         return None
 
@@ -236,6 +297,7 @@ class DungeonScreen(Screen):
         request or None.  ``handle_update`` feeds it the keyboard; tests
         call it directly."""
         self.anim_t += dt
+        self.banner_t = max(0.0, self.banner_t - dt)
         self.hud.update(dt)
         if self.check_levels:
             self.check_levels = False
@@ -292,11 +354,20 @@ class DungeonScreen(Screen):
             center=(int(self.x) - ox, int(self.y) - oy)))
 
         self.hud.draw(surface, self.player, self.floor)
+        if self.banner_t > 0:
+            alpha = int(255 * min(1.0, self.banner_t / 0.5))
+            img = font(48).render(f"Floor {self.floor}", True, (235, 200, 90))
+            shadow = font(48).render(f"Floor {self.floor}", True, (0, 0, 0))
+            for im in (img, shadow):
+                im.set_alpha(alpha)
+            r = img.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3))
+            surface.blit(shadow, r.move(2, 2))
+            surface.blit(img, r)
         mm_w = DUNGEON_WIDTH * MINIMAP_SCALE
         self.dungeon.draw_minimap(
             surface, self.visited, (SCREEN_WIDTH - mm_w - 10, 10),
             self.cell(), scale=MINIMAP_SCALE)
         hint = font(18).render(
-            "Arrows / WASD: move    Esc: back to base", True, DIM_TEXT)
+            "Arrows / WASD: move    Esc: Base (run is kept)", True, DIM_TEXT)
         surface.blit(hint, hint.get_rect(bottomright=(
             SCREEN_WIDTH - 12, SCREEN_HEIGHT - 10)))

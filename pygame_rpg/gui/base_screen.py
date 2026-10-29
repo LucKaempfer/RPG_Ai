@@ -6,15 +6,18 @@ pending level-ups are counted but not banked, so nothing is lost if
 the player wanders off before resolving them.  The actual level-up
 (banking XP and picking stats) happens on the level-up screen.
 
-Buttons: Inventory, View Stats, Adventure (enter the dungeon, M4),
-Save & Exit.  Escape auto-saves and returns to the title screen.
+Buttons: Inventory, View Stats, Adventure, Save & Exit.  With a saved
+dungeon run (M5) the Adventure button reads "Continue (Floor N)" and
+resumes it as it was (HP included), and an extra New Adventure button
+drops it.  A new adventure starts rested (full HP / MP) on floor 1.
+Escape auto-saves and returns to the title screen.
 """
 
 import pygame
 
 from ..assets import AssetManager, HERO_COLS, HERO_ROWS
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, max_xp_for
-from ..savegame import save_player
+from ..savegame import save_player, load_run, delete_run
 from .screen import (
     QUIT, Screen, Button, font,
     BG_COLOR, PANEL_COLOR, TEXT_COLOR, DIM_TEXT, GOLD, BORDER_COLOR,
@@ -51,11 +54,15 @@ class BaseScreen(Screen):
             "player/hero_sheet.png", HERO_COLS, HERO_ROWS)[0]
         self.portrait = pygame.transform.scale(frame, (128, 128))
 
+        self.run = load_run(player.name)
         x, w = 420, 340
-        self.btn_inventory = Button("Inventory", (x, 120, w, 52))
-        self.btn_stats = Button("View Stats", (x, 184, w, 52))
-        self.btn_adventure = Button("Adventure", (x, 248, w, 52))
-        self.btn_saveexit = Button("Save & Exit", (x, 312, w, 52))
+        self.btn_inventory = Button("Inventory", (x, 100, w, 48))
+        self.btn_stats = Button("View Stats", (x, 158, w, 48))
+        label = (f"Continue (Floor {self.run['floor']})" if self.run
+                 else "Adventure")
+        self.btn_adventure = Button(label, (x, 216, w, 48))
+        self.btn_new_run = Button("New Adventure", (x, 274, w, 48))
+        self.btn_saveexit = Button("Save & Exit", (x, 332, w, 48))
         self.btn_choose = Button("Choose Stat", (x, 440, w, 52), size=28)
 
     # -- helpers ---------------------------------------------------------
@@ -63,8 +70,11 @@ class BaseScreen(Screen):
         """Buttons that react to input; the rest are drawn disabled."""
         if self.pending_ups > 0:
             return [self.btn_choose]
-        return [self.btn_inventory, self.btn_stats, self.btn_adventure,
-                self.btn_saveexit]
+        return [b for b in self._menu() if b is not self.btn_new_run or self.run]
+
+    def _menu(self):
+        return (self.btn_inventory, self.btn_stats, self.btn_adventure,
+                self.btn_new_run, self.btn_saveexit)
 
     def _hover(self, pos):
         for btn in self._active_buttons():
@@ -90,7 +100,12 @@ class BaseScreen(Screen):
                 return ("inventory", {"player": self.player})
             if btn is self.btn_stats:
                 return ("stats", {"player": self.player})
-            if btn is self.btn_adventure:
+            if btn is self.btn_adventure and self.run:
+                self._save()
+                return ("dungeon", {"player": self.player, "run": self.run})
+            if btn is self.btn_adventure or btn is self.btn_new_run:
+                delete_run(self.player.name)
+                self.player.rest()
                 self._save()
                 return ("dungeon", {"player": self.player})
             if btn is self.btn_saveexit:
@@ -152,8 +167,9 @@ class BaseScreen(Screen):
 
         # Right: menu buttons.
         active = set(map(id, self._active_buttons()))
-        for btn in (self.btn_inventory, self.btn_stats,
-                    self.btn_adventure, self.btn_saveexit):
+        for btn in self._menu():
+            if btn is self.btn_new_run and not self.run:
+                continue
             if id(btn) in active:
                 btn.draw(surface, hot=(btn is self.hot))
             else:
@@ -162,7 +178,7 @@ class BaseScreen(Screen):
             note = font(26).render(
                 f"LEVEL UP! ({self.pending_ups} pending)", True, GOLD)
             surface.blit(note, note.get_rect(
-                midtop=(self.btn_choose.rect.centerx, 380)))
+                midtop=(self.btn_choose.rect.centerx, 398)))
             self.btn_choose.draw(surface, hot=(self.btn_choose is self.hot))
         hint = font(18).render(
             "Esc: save & return to title", True, DIM_TEXT)

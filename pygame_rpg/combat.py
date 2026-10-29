@@ -13,7 +13,8 @@ Damage
     included); the hero's defense likewise uses dp / rdp / mdp.
     Weapon power = 4 + 2 x weapon level (2 unarmed); an ability's power
     is half its ``damage`` (it adds on top of the stat and the ailment);
-    bombs deal their ``damage`` flat, ignoring defense.
+    bombs deal their ``damage`` flat, ignoring defense.  The numbers in
+    this docstring are the defaults in ``config.py`` (Balance section).
 
 Ailments (``AILMENTS``) tick at the start of the afflicted side's turn:
 damage over time, and stun / electrocuted skip that turn.  Weapon and
@@ -26,6 +27,11 @@ stats, exactly as before.  Loot comes from ``items.roll_loot``.
 """
 from dataclasses import dataclass
 
+from .config import (
+    WEAPON_POWER_BASE, WEAPON_POWER_PER_LEVEL, UNARMED_POWER, ENEMY_HIT_MULT,
+    DAMAGE_VARIANCE, ABILITY_CHANCE_BONUS, LEVEL_CHANCE_BONUS, WARD_PER_LEVEL,
+    BOMB_EFFECT_CHANCE, RUN_CHANCE, LOOT_CHANCE, WIN_HEAL_PCT, WIN_MP,
+)
 from .items import roll_loot
 
 ONGOING, WON, LOST, FLED = "ongoing", "won", "lost", "fled"
@@ -50,17 +56,7 @@ AILMENTS = {
 AFFLICTED = {"bleeding": "bleeding", "poison": "poisoned", "burning": "burning",
              "stun": "stunned", "electrocuted": "electrocuted"}
 
-ABILITY_CHANCE_BONUS = 20
-LEVEL_CHANCE_BONUS = 5
-WARD_PER_LEVEL = 25
-BOMB_EFFECT_CHANCE = 60
-
-UNARMED_POWER = 2
-RUN_CHANCE = 60
-LOOT_CHANCE = 50       # % for normal enemies (+ trinket loot bonus)
-# Catching your breath after a won fight.
-WIN_HEAL_PCT = 10      # % of max HP
-WIN_MP = 5
+# Tuning numbers (chances, powers, recovery) live in config.py.
 
 STAT_FOR = {"melee": "ap", "ranged": "rap", "magic": "map"}
 DEFENSE_FOR = {"melee": "dp", "ranged": "rdp", "magic": "mdp"}
@@ -99,7 +95,7 @@ class Battle:
         self.log.append(text)
 
     def _vary(self, value) -> float:
-        return value * self.rng.uniform(0.85, 1.15)
+        return value * self.rng.uniform(*DAMAGE_VARIANCE)
 
     def _ward(self, ailment) -> int:
         """Best ward level the hero wears against ``ailment`` (0 = none)."""
@@ -175,7 +171,7 @@ class Battle:
             self._say(out, f"The {e.name} can't move!")
         else:
             defense = self.player.total(DEFENSE_FOR[e.type.attack_type]) + self.guard
-            dmg = max(1, round(self._vary(2 * e.attack)) - defense)
+            dmg = max(1, round(self._vary(ENEMY_HIT_MULT * e.attack)) - defense)
             self.player.current_hp = max(0, self.player.current_hp - dmg)
             self._say(out, f"The {e.name} hits you for {dmg}.")
             if self.player.current_hp > 0:
@@ -225,7 +221,7 @@ class Battle:
         if weapon is None:
             power, effect, bonus, what = UNARMED_POWER, "", 0, "Your fist"
         else:
-            power = 4 + 2 * weapon.level
+            power = WEAPON_POWER_BASE + WEAPON_POWER_PER_LEVEL * weapon.level
             effect = weapon.effect
             bonus = LEVEL_CHANCE_BONUS * (weapon.level - 1)
             what = f"Your {weapon.name}"
