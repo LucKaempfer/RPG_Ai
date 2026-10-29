@@ -6,9 +6,9 @@ Each room has a unique ID, a Pygame Rect that defines its position in world spac
 and a list of doors.  Doors are simply world coordinates that lie on a
 room's wall.  Each door is linked to a door in another room, forming a graph.
 
-The dungeon is rendered tile‑by‑tile.  For the purposes of this demo
-we use a single tile size (`TILE_SIZE`).  The minimap is drawn in the top
-left corner as a small grid where each visited room is a coloured block.
+The dungeon is rendered tile‑by‑tile with a single tile size
+(`TILE_SIZE`).  The minimap shows visited rooms and walked corridors.
+Room and corridor cells are walkable; everything else is wall.
 """
 
 import random
@@ -54,21 +54,24 @@ class Dungeon:
         self.rooms: List[Room] = []
         self.room_map: Dict[Tuple[int, int], Room] = {}  # world cell -> room
         self.door_tiles: set = set()  # world cells holding a door
+        self.visited_corridors: set = set()  # corridor cells seen (minimap)
         self.minimap_surface: Optional[pygame.Surface] = None
         self._tile_frames: Optional[List[pygame.Surface]] = None
 
     def generate(self, seed: Optional[int] = None):
-        if seed is not None:
-            random.seed(seed)
+        # A private RNG: the seed fully determines the floor and the
+        # global random state is left alone (M5 saves store the seed).
+        rng = self.rng = random.Random(seed)
         self.rooms.clear()
         self.room_map.clear()
+        self.visited_corridors.clear()
         attempts = 0
         while len(self.rooms) < NUM_ROOMS and attempts < NUM_ROOMS * 10:
             attempts += 1
-            w = random.randint(MIN_ROOM_SIZE, MAX_ROOM_SIZE)
-            h = random.randint(MIN_ROOM_SIZE, MAX_ROOM_SIZE)
-            x = random.randint(1, DUNGEON_WIDTH - w - 1)
-            y = random.randint(1, DUNGEON_HEIGHT - h - 1)
+            w = rng.randint(MIN_ROOM_SIZE, MAX_ROOM_SIZE)
+            h = rng.randint(MIN_ROOM_SIZE, MAX_ROOM_SIZE)
+            x = rng.randint(1, DUNGEON_WIDTH - w - 1)
+            y = rng.randint(1, DUNGEON_HEIGHT - h - 1)
             new_rect = pygame.Rect(x, y, w, h)
             if any(new_rect.colliderect(r.rect) for r in self.rooms):
                 continue  # overlap, try again
@@ -79,34 +82,34 @@ class Dungeon:
                 for ry in range(new_rect.top, new_rect.bottom):
                     self.room_map[(rx, ry)] = room
 
-        # Add doors and corridors
-        for room in self.rooms:
-            self._add_doors(room)
-        self.door_tiles = {pos for room in self.rooms for pos in room.doors}
         self._connect_rooms()
+        self._add_doors()
 
-    def _add_doors(self, room: Room):
-        """Place a random door on each side of the room."""
-        sides = ['top', 'bottom', 'left', 'right']
-        for side in sides:
-            if random.random() < 0.5:  # 50% chance to add a door on this side
-                if side in ('top', 'bottom'):
-                    dx = random.randint(room.rect.left + 1, room.rect.right - 2)
-                    dy = room.rect.top if side == 'top' else room.rect.bottom - 1
-                else:
-                    dx = room.rect.left if side == 'left' else room.rect.right - 1
-                    dy = random.randint(room.rect.top + 1, room.rect.bottom - 2)
-                pos = (dx, dy)
-                room.add_door(pos)
+    def _add_doors(self):
+        """A door is a room cell next to a corridor cell: the spot where a
+        corridor leaves the room."""
+        self.door_tiles = set()
+        for (x, y), room in self.room_map.items():
+            if room is None:
+                continue
+            for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                if n in self.room_map and self.room_map[n] is None:
+                    room.add_door((x, y))
+                    self.door_tiles.add((x, y))
+                    break
 
     def _connect_rooms(self):
-        """Connect each room to the nearest room by a straight corridor."""
+        """Connect each room to the nearest *earlier* room by a corridor.
+
+        Linking only to earlier rooms builds a tree, so every room is
+        reachable from room 0 (linking to the nearest room overall could
+        leave separate clusters).
+        """
         for i, room in enumerate(self.rooms):
             if i == 0:
-                continue  # skip first room; it will get connected by others
-            # Find nearest room
+                continue
             nearest = min(
-                (r for r in self.rooms if r != room),
+                self.rooms[:i],
                 key=lambda r: self._distance(room.rect.center, r.rect.center),
             )
             # Create corridor between centers
@@ -120,34 +123,47 @@ class Dungeon:
         """Carve a straight horizontal‑then‑vertical corridor between two points."""
         x1, y1 = start
         x2, y2 = end
-        # Horizontal part
+        # Corridor cells map to None; cells already inside a room keep
+        # their room.
         for x in range(min(x1, x2), max(x1, x2) + 1):
-            self.room_map[(x, y1)] = None  # corridor cell
-        # Vertical part
+            self.room_map.setdefault((x, y1), None)
         for y in range(min(y1, y2), max(y1, y2) + 1):
-            self.room_map[(x2, y)] = None
+            self.room_map.setdefault((x2, y), None)
 
     def get_room_at(self, world_pos: Tuple[int, int]) -> Optional[Room]:
         return self.room_map.get(world_pos)
 
-    def draw_minimap(self, surface: pygame.Surface, visited: List[Room]):
-        """Draw a tiny minimap in the top‑left corner."""
-        scale = 0.1  # each dungeon tile -> 0.1 pixels
-        minimap_size = (int(DUNGEON_WIDTH * scale), int(DUNGEON_HEIGHT * scale))
-        if self.minimap_surface is None or self.minimap_surface.get_size() != minimap_size:
-            self.minimap_surface = pygame.Surface(minimap_size, pygame.SRCALPHA)
-        self.minimap_surface.fill((0, 0, 0, 0))  # clear
-        # Draw visited rooms as white blocks
+    def is_walkable(self, cell: Tuple[int, int]) -> bool:
+        """Room and corridor cells are floor; everything else is wall."""
+        return cell in self.room_map
+
+    def spawn_point(self) -> Tuple[int, int]:
+        """World pixel centre of the first room (where the hero enters)."""
+        cx, cy = self.rooms[0].rect.center
+        return (cx * TILE_SIZE + TILE_SIZE // 2, cy * TILE_SIZE + TILE_SIZE // 2)
+
+    def draw_minimap(self, surface: pygame.Surface, visited, pos,
+                     player_cell: Tuple[int, int], scale: int = 2):
+        """Draw the explored map at ``pos``: visited rooms, corridor
+        cells the hero has walked, and the hero as a dot.  ``scale`` = pixels per
+        tile."""
+        size = (DUNGEON_WIDTH * scale, DUNGEON_HEIGHT * scale)
+        if self.minimap_surface is None or self.minimap_surface.get_size() != size:
+            self.minimap_surface = pygame.Surface(size, pygame.SRCALPHA)
+        mm = self.minimap_surface
+        mm.fill((0, 0, 0, 150))
         for room in visited:
-            w, h = room.rect.size
-            rect = pygame.Rect(
-                int(room.rect.left * scale),
-                int(room.rect.top * scale),
-                max(1, int(w * scale)),
-                max(1, int(h * scale)),
-            )
-            pygame.draw.rect(self.minimap_surface, (200, 200, 200), rect)
-        surface.blit(self.minimap_surface, (5, 5))
+            r = room.rect
+            pygame.draw.rect(mm, (190, 190, 200),
+                             (r.x * scale, r.y * scale, r.w * scale, r.h * scale))
+        for cell in self.visited_corridors:
+            pygame.draw.rect(mm, (120, 120, 135),
+                             (cell[0] * scale, cell[1] * scale, scale, scale))
+        px, py = player_cell
+        pygame.draw.rect(mm, (230, 190, 90),
+                         (px * scale - 1, py * scale - 1, scale + 2, scale + 2))
+        surface.blit(mm, pos)
+        pygame.draw.rect(surface, (92, 92, 118), (*pos, *size), width=1)
 
     def _tiles(self) -> List[pygame.Surface]:
         """Tileset frames (cached); index matches the TILE_* constants."""
@@ -157,8 +173,15 @@ class Dungeon:
             )
         return self._tile_frames
 
-    def render(self, surface: pygame.Surface, camera_offset: Tuple[int, int]):
-        """Render the visible part of the dungeon to the main surface."""
+    def render(self, surface: pygame.Surface, camera_offset: Tuple[int, int],
+               seen: Optional[set] = None,
+               overrides: Optional[Dict[Tuple[int, int], int]] = None):
+        """Render the visible part of the dungeon to the main surface.
+
+        ``seen`` (fog of war): when given, only seen floor cells and the
+        walls touching them are drawn; the rest stays black.
+        ``overrides`` maps cells to a tile index drawn instead (stairs).
+        """
         offset_x, offset_y = camera_offset
         tiles = self._tiles()
         surf_w, surf_h = surface.get_size()
@@ -169,7 +192,14 @@ class Dungeon:
         for x in range(x0, x1):
             for y in range(y0, y1):
                 cell = (x, y)
-                if self.room_map.get(cell) is not None:
+                if seen is not None and cell not in seen and not (
+                        cell not in self.room_map and any(
+                            (x + dx, y + dy) in seen
+                            for dx in (-1, 0, 1) for dy in (-1, 0, 1))):
+                    continue
+                if overrides and cell in overrides:
+                    tile = overrides[cell]
+                elif self.room_map.get(cell) is not None:
                     tile = TILE_DOOR if cell in self.door_tiles else TILE_FLOOR
                 elif cell in self.room_map:
                     tile = TILE_CORRIDOR

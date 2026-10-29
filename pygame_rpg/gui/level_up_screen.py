@@ -23,9 +23,11 @@ from .screen import (
 class LevelUpScreen(Screen):
     name = "level_up"
 
-    def __init__(self, screen, player):
+    def __init__(self, screen, player, return_to=None):
         super().__init__(screen)
         self.player = player
+        # Screen to resume when done (the dungeon, mid-run); None = Base.
+        self.return_to = return_to
         self.hot = None
         self.stat_buttons = {}
         x, w, y = 420, 340, 120
@@ -64,10 +66,15 @@ class LevelUpScreen(Screen):
                         if b is btn)
             self._bank(stat)
             if pending_levels(self.player) == 0:
-                return ("base", {"player": self.player})
+                return self._leave()
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            return ("base", {"player": self.player})
+            return self._leave()
         return None
+
+    def _leave(self):
+        if self.return_to is not None:
+            return ("resume", {"screen": self.return_to})
+        return ("base", {"player": self.player})
 
     def _hover(self, pos):
         for btn in self.stat_buttons.values():
@@ -91,6 +98,8 @@ class LevelUpScreen(Screen):
         for btn in self.stat_buttons.values():
             btn.draw(surface, hot=(btn is self.hot))
         hint = font(18).render(
-            "Pick a stat to raise (+1).  Esc: back to base", True, DIM_TEXT)
+            "Pick a stat to raise (+1).  Esc: "
+            + ("back to the dungeon" if self.return_to else "back to base"),
+            True, DIM_TEXT)
         surface.blit(hint, hint.get_rect(bottomright=(
             SCREEN_WIDTH - 20, SCREEN_HEIGHT - 14)))

@@ -6,7 +6,7 @@ pending level-ups are counted but not banked, so nothing is lost if
 the player wanders off before resolving them.  The actual level-up
 (banking XP and picking stats) happens on the level-up screen.
 
-Buttons: Inventory, View Stats, Adventure (M4, disabled),
+Buttons: Inventory, View Stats, Adventure (enter the dungeon, M4),
 Save & Exit.  Escape auto-saves and returns to the title screen.
 """
 
@@ -63,7 +63,8 @@ class BaseScreen(Screen):
         """Buttons that react to input; the rest are drawn disabled."""
         if self.pending_ups > 0:
             return [self.btn_choose]
-        return [self.btn_inventory, self.btn_stats, self.btn_saveexit]
+        return [self.btn_inventory, self.btn_stats, self.btn_adventure,
+                self.btn_saveexit]
 
     def _hover(self, pos):
         for btn in self._active_buttons():
@@ -89,6 +90,9 @@ class BaseScreen(Screen):
                 return ("inventory", {"player": self.player})
             if btn is self.btn_stats:
                 return ("stats", {"player": self.player})
+            if btn is self.btn_adventure:
+                self._save()
+                return ("dungeon", {"player": self.player})
             if btn is self.btn_saveexit:
                 self._save()
                 return QUIT
@@ -153,8 +157,7 @@ class BaseScreen(Screen):
             if id(btn) in active:
                 btn.draw(surface, hot=(btn is self.hot))
             else:
-                self._draw_disabled(surface, btn,
-                                    "  (soon)" if btn is self.btn_adventure else "")
+                self._draw_disabled(surface, btn, "")
         if self.pending_ups > 0:
             note = font(26).render(
                 f"LEVEL UP! ({self.pending_ups} pending)", True, GOLD)
