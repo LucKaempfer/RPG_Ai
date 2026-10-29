@@ -37,7 +37,10 @@ MP_COLOR = (80, 120, 220)
 GOOD = (110, 200, 110)
 BAD = (220, 110, 110)
 LOG_LINES = 7
-HURT_TIME = 0.35   # seconds the enemy shows its hurt frames after a hit
+HURT_TIME = 0.35   # seconds a side shows it was hit (enemy hurt frames,
+                   # hero red flash + shake)
+SHAKE = 6          # pixels the hero sprite jolts when hit
+POP_TIME = 1.0     # seconds a damage / heal number floats up
 
 MENU = ("Attack", "Abilities", "Items", "Run")
 
@@ -66,6 +69,8 @@ class BattleScreen(Screen):
         self.hot = None
         self.anim_t = 0.0
         self.hurt_t = 0.0
+        self.hero_hurt_t = 0.0
+        self.pops = []      # [text, color, x, y, age]: floating numbers
         self.panel_log = pygame.Rect(24, 404, 470, 176)
         self.panel_menu = pygame.Rect(510, 404, 266, 176)
 
@@ -123,6 +128,7 @@ class BattleScreen(Screen):
         b = self.battle
         kind = action[0]
         hp_before = self.enemy.hp
+        hero_before = self.player.current_hp
         if kind == "continue":
             return self._leave()
         if kind == "mode":
@@ -141,8 +147,18 @@ class BattleScreen(Screen):
             b.run()
         if self.enemy.hp < hp_before:
             self.hurt_t = HURT_TIME
+            self._pop(f"-{hp_before - self.enemy.hp}", BAD, 590, 170)
+        lost = hero_before - self.player.current_hp
+        if lost > 0:
+            self.hero_hurt_t = HURT_TIME
+            self._pop(f"-{lost}", BAD, 134, 200)
+        elif lost < 0:
+            self._pop(f"+{-lost}", GOOD, 134, 200)
         self._build_buttons()
         return None
+
+    def _pop(self, text, color, x, y):
+        self.pops.append([text, color, x, y, 0.0])
 
     def _leave(self):
         b = self.battle
@@ -184,6 +200,10 @@ class BattleScreen(Screen):
     def handle_update(self, dt):
         self.anim_t += dt
         self.hurt_t = max(0.0, self.hurt_t - dt)
+        self.hero_hurt_t = max(0.0, self.hero_hurt_t - dt)
+        for pop in self.pops:
+            pop[4] += dt
+        self.pops = [p for p in self.pops if p[4] < POP_TIME]
 
     # -- drawing -------------------------------------------------------------
     def _statuses(self, surface, statuses, pos, extra=()):
@@ -213,7 +233,13 @@ class BattleScreen(Screen):
         self._statuses(surface, e.statuses, (420, 94))
 
         # Hero (left).
-        surface.blit(self.hero_frames[blink], (70, 220))
+        hero_img = self.hero_frames[blink]
+        hx = 70
+        if self.hero_hurt_t > 0:
+            hero_img = hero_img.copy()
+            hero_img.fill((110, 0, 0), special_flags=pygame.BLEND_RGB_ADD)
+            hx += SHAKE if int(self.hero_hurt_t * 40) % 2 else -SHAKE
+        surface.blit(hero_img, (hx, 220))
         name = font(26).render(p.name, True, TEXT_COLOR)
         surface.blit(name, (220, 250))
         _bar(surface, (220, 284, 170, 14), p.current_hp, p.max_hp, HP_COLOR)
@@ -246,6 +272,11 @@ class BattleScreen(Screen):
                 pygame.draw.rect(surface, (30, 30, 42), btn.rect, border_radius=6)
                 txt = font(btn.font_size).render(btn.label, True, (95, 95, 110))
                 surface.blit(txt, txt.get_rect(center=btn.rect.center))
+
+        for text, color, x, y, age in self.pops:
+            img = font(28).render(text, True, color)
+            img.set_alpha(int(255 * (1 - age / POP_TIME)))
+            surface.blit(img, img.get_rect(center=(x, y - 40 * age)))
 
         if b.state != ONGOING:
             msg = {WON: ("Victory!", GOOD), FLED: ("You escaped.", TEXT_COLOR),

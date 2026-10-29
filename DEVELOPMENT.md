@@ -6,33 +6,32 @@
 
 **Goal:** turn the minimal `pygame_rpg/` dungeon crawler plus the text-based `RPG_V3/`
 mechanics into one complete 2-D, sprite-based pygame game. Everything up to and including the
-Base (lobby), the item system, the dungeon and turn-based combat run in the GUI; persistence of
-dungeon runs and polish (M5) are next.
+Base (lobby), the item system, the dungeon, turn-based combat and saved dungeon runs work in
+the GUI. What's left is play-testing the balance and more polish (rest of M5).
 
 ---
 
 ## 0. Start Here
 
-**Where we are:** M1 (sprites), M3 (GUI up to the Base), M2 (item system) and **M4 (dungeon +
-combat) are done.** The Base's *Adventure* button opens a generated floor. You walk it under fog of
-war and bump into enemies, which starts a turn-based battle (Attack / Abilities / Items / Run).
-Beaten enemies give XP and loot, chests hold loot, and the HUD shows HP / MP / XP and a message log.
-Level-ups can be banked mid-run. Beating the floor's boss opens the stairs to a harder floor, and
-losing a battle carries you back to the Base. Design calls made along the way are in §4 (Combat)
-and §8.
+**Where we are:** M1, M3, M2 and M4 are done. M5 (persistence + polish) is mostly done:
+* **Dungeon runs are saved.** The Base shows *Continue (Floor N)* plus *New Adventure*.
+* The tuning numbers live in `config.py`.
+* There is a pytest suite (`python -m pytest`).
+* Battles show damage numbers and a hit flash, and each floor opens with a banner.
 
-**Next task: M5, persistence + polish** (details in §6.3):
+The full loop: Base → Adventure → walk a fogged floor → bump an enemy → turn-based battle →
+XP / loot → level up mid-run → chests → beat the boss → stairs to a harder floor. Esc returns to
+the Base with the run kept; defeat ends the run.
 
-1. **Play-test the M4 balance on the real machine** first: the numbers in `enemies.py` /
-   `combat.py` came from a simulation (§4 Combat). Note what feels off before moving numbers
-   into `config.py`.
-2. **Dungeon state in saves:** today a run is not saved. Leaving the dungeon (Esc, defeat, window
-   close) ends the run and the next *Adventure* starts at floor 1 with a new seed. The player's
-   items, XP and HP are saved as before. Add a `dungeon.json` (floor, seed, beaten enemies,
-   opened chests, seen cells, hero position) and a *continue run* choice in the Base.
-3. **pytest suite:** turn `tests/m2_smoke_test.py` and `tests/m4_smoke_test.py` into pytest
-   modules (they are plain scripts with an `ok()` helper today).
-4. **Polish:** hit flash / screen shake, death animation, chest pop, level-up fanfare, real art.
+**Next tasks** (details in §6.3):
+
+1. **Play-test the balance on the real machine.** The numbers in `config.py` (Balance section)
+   came from a simulation (§4 Combat). Tune them there.
+2. **Polish still open:** chest-open pop, death animation, level-up fanfare, real art for the
+   placeholder sprites (several enemies share the slime shape with different colours), a title
+   logo, keyboard navigation in the Base.
+3. **Answer the open design questions in §9** (defeat penalty, endgame after floor 4-5, how
+   abilities are found).
 
 **Standing rules**
 
@@ -57,7 +56,7 @@ meaningful.
 | M3 | GUI up to the Base | Title → tutorial → hero maker/chooser → Base → inventory / stats / level-up, JSON saves | ✅ done (16 Oct 2026), 32-check end-to-end smoke test |
 | M2 | Item system | Full catalog, equipment slots, equipment-driven stats, weight, rarity (six sub-milestones, §6.1) | ✅ done (29 Oct 2026): 212-item catalog, 11 slots, effective stats, HP/MP, level gate, rarity + loot roll |
 | M4 | Dungeon + Combat | Collision, fog of war, loot, enemies/bosses, turn-based battles, weapon ailments, HUD | ✅ done (29 Oct 2026): dungeon screen, enemies + boss, battle screen, chests, stairs, fog, HUD, mid-run level-ups |
-| M5 | Persistence + Polish | Dungeon state in saves, balance config, polish, pytest suite | pending (character JSON saves already done) |
+| M5 | Persistence + Polish | Dungeon state in saves, balance config, polish, pytest suite | 🚧 run saves, balance in `config.py`, pytest suite, battle feedback done; play-test + more polish open |
 
 ---
 
@@ -70,24 +69,25 @@ Starting the game runs the full pre-adventure flow in the GUI: **title → tutor
 (equip / unequip / use / drop + weight bar, 11 equipment slots incl. 4 ability slots) → stats (base + equipment bonus)
 → level-up (bank one stat at a time)**, with one JSON save per character. The Base's *Adventure* button opens the dungeon: **walk a fogged floor → bump an enemy → turn-based
 battle → XP / loot → level up mid-run → open chests → beat the boss → stairs to the next floor**.
-Defeat or Esc returns to the Base (rested, saved).
+Esc returns to the Base and keeps the run (*Continue (Floor N)*). A defeat ends the run and you
+wake up rested in the Base.
 
 ### 2.2 File-by-file
 
 | File | Status | Notes |
 |------|--------|-------|
 | `pygame_rpg/main.py` | ✅ M4 | State machine: `build_screen()` factory, per-event screen switching, global clock loop. `handle_update` may also return a transition; `("resume", {"screen": s})` switches back to an existing screen object (dungeon floor after a battle / level-up). The M1 dungeon demo loop was removed (recoverable from git, commit `d2a0ec2`). |
-| `pygame_rpg/config.py` | ✅ M3 | Screen 800×600 @ 60 FPS, starting stats, XP curve (`max_xp_for`), `BASE_MAX_WEIGHT = 50`, `SAVE_DIR`. |
+| `pygame_rpg/config.py` | ✅ M5 | Screen 800×600 @ 60 FPS, starting stats, XP curve (`max_xp_for`), `BASE_MAX_WEIGHT = 50`, `SAVE_DIR`, rarity weights, and the **Balance** section (weapon power, enemy hit multiplier, variance, ailment bonuses, run / loot chances, post-win recovery, enemy growth, enemies per room, chests per floor). |
 | `pygame_rpg/player.py` | ✅ M3 | `Player` dataclass: base stats, XP/level-up, upgrade counts, backpack, 11 equipment slots, `bonus()`/`total()`, `max_hp`/`current_hp`/`heal()`, `max_mp`/`current_mp`/`restore_mp()`/`can_cast()`/`spend_mp()`/`equipped_abilities()`, `slot_for`/`can_equip`/`slot_of`/`equip`/`unequip`/`drop`, `can_use`/`use`, weight, `to_dict`/`from_dict` (with old-save migration). |
 | `pygame_rpg/items.py` | 🚧 M2 | `Item` dataclass; builders `_wp`/`_arm`/`_con`/`_trinket`/`_ab` + tier helpers `_tier`/`_arm_tier`/`_con_tier`/`_trinket_tier`/`_ab_tier`; `CATALOG` (212 items); `STARTER_INVENTORY = ["sword", "potion", "fireball"]`; `item_by_id()` returns a copy. |
-| `pygame_rpg/savegame.py` | ✅ M3 | `saves/<name>.json` per character + `saves/index.json`; `_safe_name()` validates names (`^[\w .-]{1,20}$`), index self-prunes missing files; `_resolve()` turns saved item refs (id or `{"id", "charges"}`) into items. |
+| `pygame_rpg/savegame.py` | ✅ M5 | `saves/<name>.json` per character + `saves/index.json`; runs in `saves/runs/<name>.json` (`save_run` / `load_run` / `delete_run`; a broken run file reads as no run); `_safe_name()` validates names (`^[\w .-]{1,20}$`), index self-prunes missing files; `_resolve()` turns saved item refs (id or `{"id", "charges"}`) into items. |
 | `pygame_rpg/gui/screen.py` | ✅ M3 | `Screen` base class, `Button`, cached `font()`, shared palette, `QUIT` sentinel. |
 | `pygame_rpg/gui/*.py` (8 screens) | ✅ M3 | `title_screen`, `tutorial_screen`, `hero_maker`, `hero_chooser`, `base_screen`, `inventory_screen`, `stats_screen`, `level_up_screen` (takes `return_to`: resume a dungeon floor instead of the Base). |
 | `pygame_rpg/dungeon.py` | ✅ M4 | Seeded generation (private `rng`, same seed = same floor): non-overlapping rooms, corridors linked as a tree so every room is reachable, doors where corridors leave rooms. `is_walkable()`, `spawn_point()`, tileset rendering with camera offset and fog (`seen` cells + their walls; `overrides` for the stairs tile), minimap of visited rooms + walked corridors. |
 | `pygame_rpg/enemies.py` | ✅ M4 | `EnemyType` (frozen data) for slime, bat, goblin, skeleton + `BOSS_TYPE`; `make_enemy()` scales per floor; `boss_room()` (farthest from room 0); `place_enemies()` with the dungeon's rng. |
 | `pygame_rpg/combat.py` | ✅ M4 | `Battle`: pure rules, no drawing. `attack()`, `cast()`, `use_item()`, `run()`, ailments (`AILMENTS`), cooldowns, Shield guard, wards, XP + loot on win. |
-| `pygame_rpg/gui/dungeon_screen.py` | ✅ M4 | `DungeonScreen(player, floor, seed)`: `move()` with axis-separated wall collision (20 px hitbox), trinket speed bonus, walk/idle animation, clamped camera, fog (`seen`), enemies, chests, stairs, HUD + minimap. `step(dx, dy, dt)` is one frame and returns a transition (battle on bump, level-up after a win, next floor on the stairs); tests drive it directly. `battle_over()` is called by the battle screen. Esc rests, saves → Base. |
-| `pygame_rpg/gui/battle_screen.py` | ✅ M4 | `BattleScreen`: enemy + hero sprites, HP / MP bars, ailments, log, menu (Attack / Abilities / Items / Run, sub-lists), keyboard + mouse; Continue resumes the floor, or on defeat rests + saves → Base. |
+| `pygame_rpg/gui/dungeon_screen.py` | ✅ M4 | `DungeonScreen(player, floor, seed)`: `move()` with axis-separated wall collision (20 px hitbox), trinket speed bonus, walk/idle animation, clamped camera, fog (`seen`), enemies, chests, stairs, HUD + minimap. Saves the run (`to_run()` / `save_run()`) on floor entry, after each battle, on Esc and on quit; `run=` restores one. `step(dx, dy, dt)` is one frame and returns a transition (battle on bump, level-up after a win, next floor on the stairs); tests drive it directly. `battle_over()` is called by the battle screen. Esc saves → Base (no rest). Floor banner on arrival. |
+| `pygame_rpg/gui/battle_screen.py` | ✅ M4 | `BattleScreen`: enemy + hero sprites, HP / MP bars, ailments, log, menu (Attack / Abilities / Items / Run, sub-lists), keyboard + mouse; Floating damage / heal numbers, hero hit flash + shake. Continue resumes the floor, or on defeat rests, saves, deletes the run → Base. |
 | `pygame_rpg/gui/hud.py` | ✅ M4 | `Hud`: floor, level, weapon icon, HP / MP / XP bars, fading message log (`say()`). |
 | `pygame_rpg/assets.py` + `assets/` | M1, in use | `AssetManager`: loads PNGs, slices sheets, and generates + saves placeholder art for missing files (tileset, hero sheet, slime, sword/potion icons, panel). Used by GUI screens for icons/portrait. |
 | `pygame_rpg/README.md` | outdated | Still describes the M1 skeleton (walk around a dungeon). Update or fold into this file when M4 lands. |
@@ -103,6 +103,7 @@ Defeat or Esc returns to the Base (rested, saved).
 * PR #2: equipment/HP bug fixes + consumables. Then `7e47d37` trinkets (from the desktop
   stash) and abilities on the same branch.
 * PRs #3 / #4: abilities, rarity (M2 done). PR #5: M4 (dungeon screen, enemies, combat, HUD).
+* PR #6: M5 run saves, pytest suite, balance in `config.py`, battle feedback.
 * `.gitignore` covers `venv/`, `saves/`, `__pycache__/`, `*.py[cod]`.
 
 ---
@@ -114,7 +115,7 @@ Defeat or Esc returns to the Base (rested, saved).
 ```
 pygame_rpg/
 ├── main.py            # state machine + build_screen() factory + clock loop
-├── config.py          # constants: display, starting stats, XP curve, weight, save dir
+├── config.py          # constants: display, stats, XP curve, weight, saves, rarity, balance
 ├── player.py          # Player: stats, XP/level-up, equipment, backpack, (de)serialization
 ├── items.py           # Item dataclass + data-driven catalog
 ├── savegame.py        # JSON save/load + hero index
@@ -133,13 +134,18 @@ pygame_rpg/
                        # ui/panel.png (generated placeholders)
 ```
 
-### 3.2 Target additions (M5)
+### 3.2 Tests and saves on disk
 
 ```
-pygame_rpg/
-├── run_state.py       # dungeon run save/load (dungeon.json)
-└── assets/            # real art replacing the placeholders (same filenames)
-tests/                 # pytest suite
+tests/
+├── conftest.py            # headless pygame, repo on sys.path, `saves` temp-folder fixture
+├── test_combat.py         # damage formulas, ailments, stun, wards, cooldowns, win / lose
+├── test_dungeon.py        # no overlap, connectivity, seeding, boss + entrance rules
+├── test_saves.py          # player + run round trips, migration, broken run file
+├── test_smoke_scripts.py  # runs the two scripts below as pytest cases
+├── m2_smoke_test.py       # end-to-end item / inventory checks (plain script)
+└── m4_smoke_test.py       # end-to-end dungeon / battle / run-save checks (plain script)
+saves/                     # git-ignored: <name>.json, index.json, runs/<name>.json
 ```
 
 ### 3.3 Conventions
@@ -186,8 +192,14 @@ goes back to the backpack. The catalog is code
 and saves are data, so items are always stored by id. `saves/index.json` is the hero list (the
 V3 `saved_chars.txt` equivalent).
 
+**Run saves** (`saves/runs/<name>.json`, M5): `floor, seed, x, y, facing, beaten` (indices into
+the seeded enemy placement), `chests` (opened flags), `stairs`, `seen` (fog cells), `visited`
+(room indices), `corridors` (minimap). The seed rebuilds the floor, enemies and chests; the save
+only records what changed. Chest loot after a reload is rolled fresh.
+
 **Save triggers today:** on character creation; from the Base on Esc / *Save & Exit* / window
-close; other screens save only on window close.
+close / Adventure; in the dungeon on floor entry, after each battle, on Esc and on window close
+(player + run); after a defeat (player; the run is deleted). Other screens save only on window close.
 
 ---
 
@@ -270,6 +282,9 @@ play-testing.
 * **Run:** 60 %, never from the boss. The enemy you fled from does not re-trigger until you step
   away.
 * **Defeat:** "You collapse" → back to the Base with full HP / MP, nothing lost but the run.
+* **Leaving and resting:** Esc keeps the run and does *not* heal, so Esc-and-Continue is no free
+  heal; use potions from the inventory. Starting a new adventure (first one or *New Adventure*)
+  rests the hero.
 * **Floors:** 2 chests per floor (not in the entrance room, loot up to floor + 1). The boss's
   room shows stairs once the boss is beaten; the stairs make a new floor (+1) with a new seed.
   Fog: whole rooms reveal on entry, corridors within 2 cells.
@@ -295,7 +310,6 @@ play-testing.
 **Still open:**
 
 * `pygame_rpg/README.md` still describes the M1 skeleton.
-* A dungeon run is not saved: leaving it (Esc / defeat / window close) restarts at floor 1 (M5).
 * Enemies stand still; there is no attack / hurt animation on the dungeon map yet.
 * The battle Items list shows at most four consumables.
 * Placeholder icons for items are generated into `pygame_rpg/assets/items/` the first time an
@@ -346,15 +360,13 @@ with the HUD active.
 
 ### 6.3 M5 — Persistence + Polish
 
-* **Persistence:** `dungeon.json` (floor seed, room state, defeated enemies, opened chests);
-  in-run save triggers (leaving mid-run, floor cleared, explicit *Save & Exit*).
-* **Balance:** move tuning numbers (tier growth, ailment values, drop rates) into `config.py`.
-* **Polish:** hit flash, screen shake, death animation, chest pop, level-up fanfare (no audio
-  dependency required), consistent pixel font/panels, logo on the title screen.
-* **Tests (pytest, headless):** dungeon generation (room count, connectivity, no overlap);
-  item system (stat math, weight/overload, rarity roll, equip/unequip round-trip); level-up
-  (XP curve, carry-over, stat pick persistence); save/load (round-trip, corrupt save, old-save
-  migration); combat (damage formula, ailment ticks, stun skip).
+* **Persistence** — ✅ run saves (`saves/runs/<name>.json`, §3.4), Continue / New Adventure.
+* **Balance** — ✅ combat / enemy / floor numbers in `config.py`. Item tier growth and
+  `AILMENTS` stay next to their data (`items.py`, `combat.py`). Play-testing is still open.
+* **Polish** — ✅ damage numbers, hero hit flash + shake, floor banner. Open: death animation,
+  chest pop, level-up fanfare (no audio dependency required), real art, title logo.
+* **Tests** — ✅ `python -m pytest` (52 tests). Open: split the two smoke scripts into real
+  pytest functions over time; level-up banking has coverage only in the smoke script.
 
 ---
 
@@ -363,7 +375,9 @@ with the HUD active.
 * **Windows venv (main dev machine):** `venv/` with Python 3.14.7 and `pygame-ce` 2.5.8. Plain
   `pygame` 2.6.1 has no CPython 3.14 wheel; `pygame-ce` is API-compatible (still `import pygame`).
   Run: `.\venv\Scripts\python.exe -m pygame_rpg.main` from the repo root.
-* **Other setups:** `pip install pygame-ce`, then `python -m pygame_rpg.main`. The item/player
+* **Other setups:** `pip install -r requirements.txt` (pygame-ce + pytest), then
+  `python -m pygame_rpg.main`.
+* **Tests:** `python -m pytest` from the repo root (headless; saves go to temp folders). The item/player
   modules import fine on Python 3.13 too.
 * **Headless runs:** set `SDL_VIDEODRIVER=dummy` and `SDL_AUDIODRIVER=dummy` before
   `pygame.init()`. Surfaces and `convert()` work normally, so this catches real rendering bugs.
@@ -380,7 +394,7 @@ with the HUD active.
   charges, save round-trip, old-save migration, and a GUI smoke test (every screen renders,
   equip armor and use a potion through the inventory buttons). Saves go to a temp folder; it is
   the natural seed for the M5 pytest suite. Extend it with each sub-milestone.
-* **M4 harness** `tests/m4_smoke_test.py` → "m4 OK (359 checks)": 40 seeds of generation
+* **M4 harness** `tests/m4_smoke_test.py` → "m4 OK (380 checks)": 40 seeds of generation
   (no overlap, room cells intact, every room reachable, doors open onto corridors, determinism,
   global `random` untouched), and the dungeon screen (spawn, walls stop the hero, a 3000-step
   random walk stays on floor, the hero walks a BFS path to every room on three seeds, speed
@@ -388,7 +402,10 @@ with the HUD active.
   in the lair, free cells, empty entrance, seeded, floor scaling); combat rules (attack, cast +
   cooldown, heal / shield, bombs, no running from the boss, stun, wards, XP bonus, recovery, loot
   vs weight, defeat); and the full loop through the screens (bump → battle → Continue → mid-run
-  level-up → resume, flee without re-bump, chest, boss → stairs → floor 2, fog, defeat → Base).
+  level-up → resume, flee without re-bump, chest, boss → stairs → floor 2, fog, defeat → Base);
+  run saves (save on entry / battle / Esc / quit / stairs, Continue restores enemies, chests,
+  stairs, fog, position and HP, New Adventure drops the run, broken files, delete with the hero);
+  battle feedback (damage numbers fade) and the floor banner.
 
 ---
 
@@ -410,8 +427,8 @@ with the HUD active.
    this document uses milestones only (M1 sprites, M2 items, M3 GUI, M4 dungeon + combat,
    M5 persistence + polish).
 7. **Floors live in screen objects.** A `DungeonScreen` holds its floor (enemies, chests, fog);
-   battles and the level-up screen get it passed and `resume` it, so nothing is rebuilt. This
-   is also why a run is not saved yet (M5).
+   battles and the level-up screen get it passed and `resume` it, so nothing is rebuilt. Run
+   saves (M5) store the seed plus what changed, never the screen.
 8. **XP stays banked by choice.** Battles add raw XP; levels are banked on the level-up screen
    (opened automatically after a win) so the player still picks each stat, as in V3.
 9. **Defeat costs only the run,** no items or XP, to keep the early game forgiving until balance

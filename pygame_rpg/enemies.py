@@ -9,6 +9,11 @@ turn-based battle (``combat.py``).
 """
 from dataclasses import dataclass, field
 
+from .config import (
+    ENEMY_HP_GROWTH as HP_GROWTH, ENEMY_ATTACK_GROWTH as ATTACK_GROWTH,
+    ENEMY_DEFENSE_GROWTH as DEFENSE_GROWTH, ENEMY_XP_GROWTH as XP_GROWTH,
+    ENEMIES_PER_ROOM,
+)
 from .dungeon import TILE_SIZE
 
 
@@ -43,12 +48,12 @@ ENEMY_TYPES = {
 BOSS_TYPE = EnemyType("Dungeon Lord", "boss", hp=60, attack=6, defense=4,
                       attack_type="magic", effect="burning", xp=150)
 
-# Per floor above 1: +20% HP, +1 attack, +1 defense, +30% XP.  The hero
-# gains about two levels per floor, so this keeps fights roughly even.
-HP_GROWTH, ATTACK_GROWTH, DEFENSE_GROWTH, XP_GROWTH = 0.20, 1, 1, 0.30
+# Per-floor growth (config.ENEMY_*_GROWTH): +20% HP, +1 attack, +1
+# defense, +30% XP.  The hero gains about two levels per floor, so this
+# keeps fights roughly even.
 
 # Enemies per room (room 0, the entrance, always stays empty).
-MIN_PER_ROOM, MAX_PER_ROOM = 0, 2
+MIN_PER_ROOM, MAX_PER_ROOM = ENEMIES_PER_ROOM
 
 
 @dataclass

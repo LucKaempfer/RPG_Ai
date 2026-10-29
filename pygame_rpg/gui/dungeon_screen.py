@@ -31,7 +31,7 @@ from ..assets import (
     ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, TILE_STAIRS_DOWN,
 )
 from ..combat import WON, FLED
-from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
+from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, CHESTS_PER_FLOOR
 from ..dungeon import Dungeon, TILE_SIZE, DUNGEON_WIDTH, DUNGEON_HEIGHT
 from ..enemies import place_enemies, boss_room, BOSS_TYPE
 from ..items import roll_loot
@@ -51,9 +51,9 @@ FRAME_TIME = 0.12
 TOUCH = 24
 # How far (in tiles) the hero sees into corridors; rooms light up whole.
 SIGHT = 2
-CHESTS_PER_FLOOR = 2
 
 MINIMAP_SCALE = 2
+BANNER_TIME = 2.0   # seconds the "Floor N" banner shows on arrival
 
 
 class DungeonScreen(Screen):
@@ -84,6 +84,7 @@ class DungeonScreen(Screen):
         self.stairs = None                   # cell, once the boss is beaten
         self.ignore = None      # enemy just fled from: no re-bump until apart
         self.check_levels = False
+        self.banner_t = BANNER_TIME
         self.hud = Hud()
         self.hud.say(f"Floor {floor}: beat the {BOSS_TYPE.name} to open the stairs.")
         self._mark_visited()
@@ -296,6 +297,7 @@ class DungeonScreen(Screen):
         request or None.  ``handle_update`` feeds it the keyboard; tests
         call it directly."""
         self.anim_t += dt
+        self.banner_t = max(0.0, self.banner_t - dt)
         self.hud.update(dt)
         if self.check_levels:
             self.check_levels = False
@@ -352,6 +354,15 @@ class DungeonScreen(Screen):
             center=(int(self.x) - ox, int(self.y) - oy)))
 
         self.hud.draw(surface, self.player, self.floor)
+        if self.banner_t > 0:
+            alpha = int(255 * min(1.0, self.banner_t / 0.5))
+            img = font(48).render(f"Floor {self.floor}", True, (235, 200, 90))
+            shadow = font(48).render(f"Floor {self.floor}", True, (0, 0, 0))
+            for im in (img, shadow):
+                im.set_alpha(alpha)
+            r = img.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3))
+            surface.blit(shadow, r.move(2, 2))
+            surface.blit(img, r)
         mm_w = DUNGEON_WIDTH * MINIMAP_SCALE
         self.dungeon.draw_minimap(
             surface, self.visited, (SCREEN_WIDTH - mm_w - 10, 10),

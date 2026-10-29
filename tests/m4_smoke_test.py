@@ -80,6 +80,7 @@ from pygame_rpg.gui.screen import QUIT
 hero = Player(name="Walker")
 ds = build_screen("dungeon", screen, {"player": hero, "seed": 3})
 ok(isinstance(ds, DungeonScreen) and ds._fits(ds.x, ds.y), "spawn inside the first room")
+ok(ds.banner_t > 0, "floor banner on arrival")
 ok(ds.visited == [ds.dungeon.rooms[0]], "first room visited")
 ds.draw(screen); ds.handle_update(0.016)
 
@@ -259,6 +260,8 @@ for _ in range(60):
     target.hp = min(target.hp, 1)
     res = press(bs, pygame.K_RETURN)          # focus 0 = Attack
 ok(bs.battle.state == C.WON, "won through the menu")
+ok(any(t.startswith("-") for t, *_ in bs.pops), "damage numbers pop up")
+bs.handle_update(5.0); ok(not bs.pops and bs.hurt_t == 0, "pops and flashes fade")
 bs.draw(screen)
 res = press(bs, pygame.K_RETURN)              # Continue
 ok(res[0] == "resume" and res[1]["screen"] is ds,

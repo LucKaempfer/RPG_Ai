@@ -46,3 +46,31 @@ SAVE_DIR = "saves"
 # item falls back to the next more common one.
 RARITIES = ("common", "rare", "epic", "legendary")
 RARITY_WEIGHTS = {"common": 70, "rare": 22, "epic": 7, "legendary": 1}
+
+# --- Balance (M4 numbers, collected here in M5) ---
+# Simulated, not yet play-tested: tune here.  DEVELOPMENT.md §4 explains
+# how they combine.
+# Hero hits: (attack stat + power) x variance - enemy defense.
+WEAPON_POWER_BASE = 4      # weapon power = base + per_level x weapon level
+WEAPON_POWER_PER_LEVEL = 2
+UNARMED_POWER = 2
+# Enemy hits: ENEMY_HIT_MULT x attack x variance - hero defense - guard.
+ENEMY_HIT_MULT = 2
+DAMAGE_VARIANCE = (0.85, 1.15)
+# Ailment chance (%) bonuses on top of combat.AILMENTS; wards cut the
+# hero's chance by WARD_PER_LEVEL % per ward level.
+ABILITY_CHANCE_BONUS = 20
+LEVEL_CHANCE_BONUS = 5
+WARD_PER_LEVEL = 25
+BOMB_EFFECT_CHANCE = 60
+RUN_CHANCE = 60            # % to flee (never from the boss)
+LOOT_CHANCE = 50           # % drop for normal enemies (+ trinket loot bonus)
+WIN_HEAL_PCT = 10          # after a won fight: % of max HP back
+WIN_MP = 5                 # ... and this much MP
+# Enemy growth per floor above 1 (HP / XP as fractions, attack / defense flat).
+ENEMY_HP_GROWTH = 0.20
+ENEMY_ATTACK_GROWTH = 1
+ENEMY_DEFENSE_GROWTH = 1
+ENEMY_XP_GROWTH = 0.30
+ENEMIES_PER_ROOM = (0, 2)  # min, max (never in the entrance room)
+CHESTS_PER_FLOOR = 2
