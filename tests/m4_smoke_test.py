@@ -158,7 +158,7 @@ ok([(e.name, e.x, e.y) for e in E.place_enemies(d1, 2)] == [(e.name, e.x, e.y) f
    "placement follows the seed")
 s1, s3 = E.make_enemy(E.ENEMY_TYPES["slime"], 1), E.make_enemy(E.ENEMY_TYPES["slime"], 3)
 ok(s3.max_hp > s1.max_hp and s3.attack == s1.attack + 2 and s3.xp > s1.xp, "floor scaling")
-ok(all(t.min_floor <= 1 for t in E.ENEMY_TYPES.values() if t.name in ("Slime", "Bat")), "floor-1 pool")
+ok(all(t.min_floor <= 1 for t in E.ENEMY_TYPES.values() if t.name in ("Slime", "Bat", "Rat")), "floor-1 pool")
 
 # --- Combat rules ---
 def kit(*ids, lvl=1):
@@ -250,7 +250,11 @@ ds.x, ds.y = target.x - 2 * TILE_SIZE, target.y
 if not ds._fits(ds.x, ds.y):
     ds.x, ds.y = target.x, target.y - 2 * TILE_SIZE
 r = walk_to(ds, target.x, target.y)
-ok(r is not None and r[0] == "battle" and r[1]["enemy"] is target, "bump starts a battle")
+ok(r is not None and r[0] == "battle"
+   and E.boss_room(ds.dungeon) is not ds.dungeon.get_room_at(E.cell_of(r[1]["enemy"]))
+   and ds.dungeon.get_room_at(E.cell_of(r[1]["enemy"])) is ds.dungeon.get_room_at(E.cell_of(target)),
+   "being in an enemy's room starts a battle")
+target = r[1]["enemy"]
 bs = build_screen("battle", screen, r[1]); ok(isinstance(bs, BattleScreen), "battle screen built")
 bs.draw(screen)
 hero.xp = hero.max_xp - 1                     # next win levels up
@@ -273,7 +277,7 @@ lu = build_screen(r[0], screen, r[1]); lu.draw(screen)
 click_res = lu.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1,
                                                pos=lu.stat_buttons["ap"].rect.center))
 ok(click_res == ("resume", {"screen": ds}) and hero.lvl == 3, "level banked, back to the floor")
-ok(ds.step(0, 0, 1 / 60) is None, "no second level-up prompt")
+r = ds.step(0, 0, 1 / 60); ok(r is None or r[0] != "level_up", "no second level-up prompt")
 
 # Room entry: stepping through a door into a room with enemies starts the
 # fight at once (no walking around them); fleeing puts the hero outside.
@@ -380,7 +384,8 @@ ok(d2.seen >= d1.seen and len(d2.visited) == len(d1.visited)
    and d2.dungeon.visited_corridors == d1.dungeon.visited_corridors, "fog + minimap restored")
 ok(d2.player.current_hp == 33, "HP carried over")
 d2.draw(screen)
-ok(d2.step(0, 0, 1 / 60) is None, "no instant fight on load")
+r = d2.step(0, 0, 1 / 60)
+ok((r is None) == (d1.room_enemy() is None), "on load a fight starts only if the room still has enemies")
 
 hb = BaseScreen(screen, d2.player)
 r = hb.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=hb.btn_new_run.rect.center))

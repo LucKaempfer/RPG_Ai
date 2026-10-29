@@ -38,6 +38,8 @@ ENEMY_TYPES = {
                        attack_type="melee", effect="poison", xp=20),
     "bat": EnemyType("Bat", "bat", hp=20, attack=6, defense=1,
                      attack_type="melee", effect="bleeding", xp=18),
+    "rat": EnemyType("Rat", "rat", hp=18, attack=5, defense=1,
+                     attack_type="melee", effect="poison", xp=15),
     "goblin": EnemyType("Goblin", "goblin", hp=32, attack=6, defense=3,
                         attack_type="ranged", effect="bleeding", xp=30,
                         min_floor=2),
@@ -45,8 +47,8 @@ ENEMY_TYPES = {
                           defense=4, attack_type="melee", effect="stun",
                           xp=40, min_floor=3),
 }
-BOSS_TYPE = EnemyType("Dungeon Lord", "boss", hp=60, attack=6, defense=4,
-                      attack_type="magic", effect="burning", xp=150)
+BOSS_TYPE = EnemyType("Rat King", "rat_king", hp=60, attack=6, defense=4,
+                      attack_type="melee", effect="bleeding", xp=150)
 
 # Per-floor growth (config.ENEMY_*_GROWTH): +20% HP, +1 attack, +1
 # defense, +30% XP.  The hero gains about two levels per floor, so this

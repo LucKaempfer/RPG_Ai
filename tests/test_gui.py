@@ -121,7 +121,7 @@ def test_chest_pop(display, saves):
     ds.draw(display)
 
 
-@pytest.mark.parametrize("name", ["slime", "bat", "goblin", "skeleton", "boss"])
+@pytest.mark.parametrize("name", ["slime", "bat", "rat", "goblin", "skeleton", "rat_king"])
 def test_enemy_sheets_have_their_own_shape(display, name):
     from pygame_rpg.assets import _gen_enemy_sheet
     sheet = _gen_enemy_sheet(name)

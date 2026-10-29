@@ -52,7 +52,35 @@ def test_one_boss_in_the_lair_and_an_empty_entrance(seed):
 
 
 def test_floor_pool_and_scaling():
-    assert {t.name for t in E.ENEMY_TYPES.values() if t.min_floor <= 1} == {"Slime", "Bat"}
+    assert {t.name for t in E.ENEMY_TYPES.values() if t.min_floor <= 1} == {"Slime", "Bat", "Rat"}
     s1 = E.make_enemy(E.ENEMY_TYPES["slime"], 1)
     s3 = E.make_enemy(E.ENEMY_TYPES["slime"], 3)
     assert s3.max_hp > s1.max_hp and s3.attack == s1.attack + 2
+
+
+def test_walls_block_sight():
+    # Two 5x5 floors side by side with a solid wall column between them,
+    # and a one-cell gap (door) at the bottom row.
+    d = Dungeon()
+    for x in range(0, 11):
+        for y in range(0, 5):
+            if x != 5 or y == 4:
+                d.room_map[(x, y)] = None
+    seen = d.visible_from((2, 1), 8)
+    assert (4, 1) in seen and (5, 1) in seen        # floor and the wall itself
+    assert (7, 1) not in seen and (9, 0) not in seen    # behind the wall
+    assert (5, 4) in seen                           # the gap itself
+
+
+def test_sight_lines_are_clear():
+    d = floor(3)
+    c = d.rooms[0].rect.center
+    seen = d.visible_from(c, 8)
+    assert all(d._line_clear(*c, *cell) for cell in seen)
+
+
+@pytest.mark.parametrize("seed", range(5))
+def test_corridors_are_short(seed):
+    d = floor(seed)
+    corridor = sum(1 for v in d.room_map.values() if v is None)
+    assert corridor / len(d.rooms) < 12
