@@ -14,8 +14,8 @@ Use the module-level helpers:
   lets a follow-up (the enemy's counter-hit) land after the first sound.
 * ``set_ambience(name)``: the loop for the current screen ("sewer" or
   None).  Changing it fades the old loop out and the new one in.  The
-  sewer loop is running water; ``update`` scatters drips, distant pipe
-  groans and the odd rat squeak over it.
+  sewer loop is bubbling, flowing water; ``update`` scatters drips,
+  distant metal clanks, pipe groans and the odd rat squeak over it.
 * ``update(dt)``: once per frame from ``main.py`` (delays, ambience).
 * ``toggle_mute()``: M in game.
 
@@ -337,22 +337,43 @@ def _squeak(s):
     return s.gain(s.mix(*parts), 0.12)
 
 
+def _clank(s, base, hits=1):
+    """Distant metal: inharmonic bar partials, muffled, with a long
+    tunnel echo.  ``hits`` > 1 knocks a few times (a pipe being hit)."""
+    parts = []
+    for k in range(hits):
+        bar = s.mix(*[s.gain(s.env(s.tone(base * r, base * r, 1.2), attack=0.001,
+                                   decay=4 + 3 * r), 1 / (1 + r))
+                      for r in (1.0, 2.76, 5.4, 8.93)])
+        parts.append((s.gain(bar, 0.8 if k else 1.0), k * 0.28))
+    muffled = s.lowpass(s.lowpass(s.mix(*parts), 0.35), 0.5)
+    return s.echo(muffled, 0.19, 0.5, 6)
+
+
 def _sewer_loop(s, seconds=8.0):
-    """Flowing water: deep brown-noise rumble plus a babbling trickle
-    whose loudness wanders, crossfaded to loop seamlessly."""
-    n = s.n(seconds + 1.0)
-    rumble = s.lowpass(s.lowpass(s.noise(seconds + 1.0), 0.02), 0.05)
-    peak = max(abs(x) for x in rumble) or 1.0
-    rumble = [x / peak for x in rumble]
-    trickle = s.highpass(s.lowpass(s.noise(seconds + 1.0), 0.35), 0.08)
-    wander, target, g = [], 0.5, 0.5
-    for i in range(n):
-        if i % 600 == 0:
-            target = s.rng.uniform(0.15, 1.0)
-        g += (target - g) * 0.004
-        wander.append(g)
-    water = [0.7 * r + 0.6 * t * w for r, t, w in zip(rumble, trickle, wander)]
-    return s.loop(water, 1.0)
+    """Flowing water built from bubbles: a stream of tiny rising "blip"
+    grains (trickle) over slower, deeper gurgles, plus a faint rumble to
+    glue them.  Grains wrap around the end, so the buffer loops cleanly."""
+    n = s.n(seconds)
+    out = s.gain(s.loop(s.lowpass(s.lowpass(s.noise(seconds + 0.5), 0.03), 0.06),
+                        0.5), 4.0)
+    out = (out + [0.0] * n)[:n]
+    layers = [  # (grains per second, Hz range, grain seconds, loudness)
+        (34, (700, 1900), (0.02, 0.05), 0.16),   # trickle
+        (14, (220, 520), (0.05, 0.11), 0.28),    # gurgle
+        (4, (110, 200), (0.10, 0.18), 0.30),     # deep glugs
+    ]
+    rng = s.rng
+    for rate, (f_lo, f_hi), (d_lo, d_hi), vol in layers:
+        for _ in range(int(rate * seconds)):
+            f = rng.uniform(f_lo, f_hi)
+            grain = s.env(s.tone(f, f * rng.uniform(1.3, 2.0), rng.uniform(d_lo, d_hi)),
+                          attack=0.003, decay=rng.uniform(25, 60))
+            amp = vol * rng.uniform(0.3, 1.0)
+            o = rng.randrange(n)
+            for i, x in enumerate(grain):
+                out[(o + i) % n] += x * amp
+    return out
 
 
 _RECIPES = {
@@ -386,13 +407,17 @@ _RECIPES = {
     "drip2": lambda s: _drip(s, 1400),
     "drip3": lambda s: _drip(s, 1700),
     "groan": _groan,
+    "clank0": lambda s: _clank(s, 190),
+    "clank1": lambda s: _clank(s, 260, hits=2),
+    "clank2": lambda s: _clank(s, 330),
+    "clank3": lambda s: _clank(s, 150, hits=3),
     "squeak": _squeak,
     "sewer": _sewer_loop,
 }
 
 # Ambient one-shots per ambience: (sound, mean seconds between plays).
 _SCATTER = {
-    "sewer": [("drip", 1.6), ("groan", 25.0), ("squeak", 40.0)],
+    "sewer": [("drip", 1.8), ("clank", 9.0), ("groan", 30.0), ("squeak", 45.0)],
 }
 
 
