@@ -4,11 +4,12 @@ to the DEVELOPMENT.md M3 spec).
 
 Left:  backpack list (icon, name, count, weight) + weight bar.
 Right: equipment slots (weapon, head / torso / hands / feet armor,
-       two trinkets) with icons, and a detail panel for the selected item: description, stat diffs vs
+       two trinkets, four abilities) with icons, and a detail panel for the selected item: description, stat diffs vs
        the currently equipped item (green gain / red loss) and actions.
 
 Actions per item:
-- Equip   (weapon/armor/trinket in the backpack -> its slot)
+- Equip   (weapon/armor/trinket/ability in the backpack -> its slot,
+           once the hero meets the item's level gate)
 - Unequip (equipped item -> back to the backpack)
 - Use     (healing consumable outside battle: one charge, capped at
            max HP; new for the GUI -- V3 has no potion logic)
@@ -42,11 +43,32 @@ KIND_BORDER = {
     "armor": (90, 130, 190),
     "trinket": (170, 140, 90),
     "consumable": (120, 120, 140),
+    "ability": (150, 100, 190),
 }
 
 from ..player import EQUIP_SLOTS as SLOTS
 DIFF_STATS = ("hp", "ap", "rap", "map", "dp", "rdp", "mdp")
-SLOT_LABELS = {"trinket1": "trinket", "trinket2": "trinket"}
+SLOT_LABELS = {"trinket1": "trinket", "trinket2": "trinket",
+               "ability1": "skill 1", "ability2": "skill 2",
+               "ability3": "skill 3", "ability4": "skill 4"}
+# Slot grid rows: gear, feet + trinkets, abilities.
+SLOT_ROWS = (SLOTS[0:4], SLOTS[4:7], SLOTS[7:11])
+SLOT_BOX = 44
+
+
+def _wrap(text, size, width):
+    """Split ``text`` into lines that fit ``width`` pixels."""
+    lines, line = [], ""
+    for word in text.split():
+        trial = f"{line} {word}".strip()
+        if line and font(size).size(trial)[0] > width:
+            lines.append(line)
+            line = word
+        else:
+            line = trial
+    if line:
+        lines.append(line)
+    return lines
 
 ROW_H = 36
 VISIBLE_ROWS = 10
@@ -66,13 +88,14 @@ class InventoryScreen(Screen):
 
         # Panels.
         self.backpack = pygame.Rect(24, 64, 430, 452)
-        self.equip_panel = pygame.Rect(470, 64, 306, 200)
-        self.detail_panel = pygame.Rect(470, 276, 306, 240)
+        self.equip_panel = pygame.Rect(470, 64, 306, 226)
+        self.detail_panel = pygame.Rect(470, 300, 306, 216)
 
-        # Equipment slot boxes: 4 on the first row, 3 on the second.
+        # Equipment slot boxes, in SLOTS order (see SLOT_ROWS).
         self.slot_rects = [
-            pygame.Rect(486 + (i % 4) * 72, 96 + (i // 4) * 80, 56, 56)
-            for i in range(len(SLOTS))
+            pygame.Rect(492 + col * 72, 92 + row * 64, SLOT_BOX, SLOT_BOX)
+            for row, names in enumerate(SLOT_ROWS)
+            for col in range(len(names))
         ]
 
         self.btn_back = Button("Back", (24, 548, 140, 40), size=22)
@@ -101,7 +124,7 @@ class InventoryScreen(Screen):
         sel = self.selected
         if sel in self.player.inventory:
             acts = {self.btn_drop}
-            if self.player.slot_for(sel) is not None:
+            if self.player.can_equip(sel):
                 acts.add(self.btn_equip)
             if self.player.can_use(sel):
                 acts.add(self.btn_use)
@@ -246,7 +269,8 @@ class InventoryScreen(Screen):
         head = font(22).render("Backpack", True, TEXT_COLOR)
         surface.blit(head, (36, 70))
         wt = font(18).render(
-            f"{p.weight} / {p.max_weight} kg    HP {p.current_hp} / {p.max_hp}",
+            f"{p.weight} / {p.max_weight} kg    HP {p.current_hp} / {p.max_hp}"
+            f"    MP {p.current_mp} / {p.max_mp}",
             True, DIM_TEXT)
         surface.blit(wt, wt.get_rect(
             midbottom=(self.backpack.centerx, self.backpack.bottom - 10)))
@@ -297,7 +321,7 @@ class InventoryScreen(Screen):
                                  width=2, border_radius=6)
             if item is not None:
                 cx, cy = box.center
-                surface.blit(self._icon(item, 36), (cx - 18, cy - 18))
+                surface.blit(self._icon(item, 32), (cx - 16, cy - 16))
             label = font(16).render(
                 SLOT_LABELS.get(SLOTS[i], SLOTS[i]), True, DIM_TEXT)
             surface.blit(label, label.get_rect(
@@ -308,19 +332,20 @@ class InventoryScreen(Screen):
         pygame.draw.rect(surface, BORDER_COLOR, self.detail_panel,
                          width=2, border_radius=8)
         head = font(22).render("Details", True, TEXT_COLOR)
-        surface.blit(head, (482, 282))
+        surface.blit(head, (482, 306))
         sel = self.selected
         if sel is None:
             note = font(18).render("Select an item.", True, DIM_TEXT)
             surface.blit(note, note.get_rect(
-                midtop=(self.detail_panel.centerx, 320)))
+                midtop=(self.detail_panel.centerx, 344)))
         else:
             nm = font(22).render(sel.name, True, GOLD)
-            surface.blit(nm, (482, 314))
-            if sel.description:
-                desc = font(18).render(sel.description, True, DIM_TEXT)
-                surface.blit(desc, (482, 344))
-            y = 372
+            surface.blit(nm, (482, 338))
+            y = 366
+            for line in _wrap(sel.description, 18, 280):
+                surface.blit(font(18).render(line, True, DIM_TEXT), (482, y))
+                y += 20
+            y += 6
             for stat, old, new in self._diffs():
                 color = (GOOD if new > old else
                          BAD if new < old else TEXT_COLOR)
@@ -331,6 +356,10 @@ class InventoryScreen(Screen):
             if p.slot_of(sel) is not None:
                 eq = font(18).render("Currently equipped.", True, GOOD)
                 surface.blit(eq, (500, y))
+            elif sel.level > p.lvl and p.slot_for(sel) is not None:
+                req = font(18).render(
+                    f"Requires level {sel.level}.", True, BAD)
+                surface.blit(req, (500, y))
 
         # Action buttons + back.
         enabled = self._enabled_actions()

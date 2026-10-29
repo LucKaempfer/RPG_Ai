@@ -10,7 +10,7 @@ the bonus.  When no level-ups remain, the screen returns to the Base.
 
 import pygame
 
-from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, max_xp_for
+from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, MP_PER_LEVEL, max_xp_for
 from ..player import UPGRADABLE_STATS
 from ..savegame import save_player
 from .base_screen import pending_levels
@@ -46,6 +46,7 @@ class LevelUpScreen(Screen):
         p = self.player
         p.xp -= max_xp_for(p.lvl)
         p.lvl += 1
+        p.restore_mp(MP_PER_LEVEL)  # max MP grew; so does what is left
         p.apply_level_up(stat)
         self._refresh_labels()
 
