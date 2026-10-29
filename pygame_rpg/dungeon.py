@@ -24,7 +24,8 @@ from .assets import (
     SEWER_FLOOR, SEWER_FLOOR_CRACK, SEWER_FLOOR_MOSS, SEWER_FLOOR_PUDDLE,
     SEWER_FLOOR_DRAIN, SEWER_FLOOR_BONES, SEWER_WALL, SEWER_WALL_STAIN,
     SEWER_WALL_PIPE, SEWER_WALL_MOSS, SEWER_WALL_DARK, SEWER_GRATE,
-    SEWER_WALKWAY, SEWER_GATE, SEWER_COLS, SEWER_ROWS,
+    SEWER_WALKWAY, SEWER_GATE_N, SEWER_GATE_S, SEWER_GATE_W, SEWER_GATE_E,
+    SEWER_COLS, SEWER_ROWS,
 )
 
 # Configuration constants
@@ -243,8 +244,9 @@ class Dungeon:
 
     def visible_from(self, cell: Tuple[int, int], radius: int) -> set:
         """Cells the hero at ``cell`` can see: within ``radius`` tiles and
-        with a straight line to them that crosses only floor (walls block
-        sight; the wall itself is seen).  Open doors don't block."""
+        with a straight line to them that crosses only floor.  Walls and
+        doors block sight (the wall or gate itself is seen); standing in a
+        doorway, the hero sees both sides."""
         cx, cy = cell
         seen = set()
         r2 = radius * radius
@@ -257,12 +259,16 @@ class Dungeon:
         return seen
 
     def _line_clear(self, x0, y0, x1, y1) -> bool:
-        """Bresenham line: every cell strictly between the ends is floor."""
+        """Bresenham line: every cell strictly between the ends is floor
+        and not a door, and no diagonal step slips between two blocked
+        cells."""
         dx, dy = abs(x1 - x0), -abs(y1 - y0)
         sx, sy = (1 if x0 < x1 else -1), (1 if y0 < y1 else -1)
         err = dx + dy
+        opaque = lambda c: c not in self.room_map or c in self.door_tiles
         x, y = x0, y0
         while (x, y) != (x1, y1):
+            px, py = x, y
             e2 = 2 * err
             if e2 >= dy:
                 err += dy
@@ -270,7 +276,11 @@ class Dungeon:
             if e2 <= dx:
                 err += dx
                 y += sy
-            if (x, y) != (x1, y1) and (x, y) not in self.room_map:
+            # A diagonal step can't squeeze between two blocking cells
+            # (e.g. past a gate and the wall beside it).
+            if x != px and y != py and opaque((x, py)) and opaque((px, y)):
+                return False
+            if (x, y) != (x1, y1) and opaque((x, y)):
                 return False
         return True
 
@@ -310,7 +320,7 @@ class Dungeon:
         """Sewer tileset frames (cached); index matches SEWER_*."""
         if self._tile_frames is None:
             self._tile_frames = assets.load_sheet(
-                "sewer/tiles.png", SEWER_COLS, SEWER_ROWS
+                "sewer/tiles_v2.png", SEWER_COLS, SEWER_ROWS
             )
         return self._tile_frames
 
@@ -332,7 +342,13 @@ class Dungeon:
         x, y = cell
         if self.room_map.get(cell) is not None:
             if cell in self.door_tiles:
-                return SEWER_GATE
+                # The gate sits on the edge the corridor leaves from.
+                for (dx, dy), gate in (((0, -1), SEWER_GATE_N), ((0, 1), SEWER_GATE_S),
+                                       ((-1, 0), SEWER_GATE_W), ((1, 0), SEWER_GATE_E)):
+                    n = (x + dx, y + dy)
+                    if n in self.room_map and self.room_map[n] is None:
+                        return gate
+                return SEWER_GATE_N
             pick = h % 40
             return {0: SEWER_FLOOR_PUDDLE, 1: SEWER_FLOOR_PUDDLE,
                     2: SEWER_FLOOR_MOSS, 3: SEWER_FLOOR_MOSS, 4: SEWER_FLOOR_MOSS,

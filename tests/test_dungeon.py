@@ -84,3 +84,47 @@ def test_corridors_are_short(seed):
     d = floor(seed)
     corridor = sum(1 for v in d.room_map.values() if v is None)
     assert corridor / len(d.rooms) < 12
+
+
+def test_doors_block_sight_unless_standing_in_them():
+    # Corridor (0..3, 2) -> door (4, 2) -> room x 5..9.
+    d = Dungeon()
+    for x in range(0, 10):
+        d.room_map[(x, 2)] = None
+    for x in range(5, 10):
+        for y in range(0, 5):
+            d.room_map[(x, y)] = None
+    d.door_tiles = {(4, 2)}
+    from_corridor = d.visible_from((1, 2), 8)
+    assert (4, 2) in from_corridor                  # the gate itself
+    assert (6, 2) not in from_corridor              # not the room behind it
+    in_door = d.visible_from((4, 2), 8)
+    assert (1, 2) in in_door and (7, 3) in in_door  # both sides from the doorway
+    from_room = d.visible_from((7, 2), 8)
+    assert (4, 2) in from_room and (2, 2) not in from_room
+
+
+def test_gate_faces_the_corridor():
+    from pygame_rpg.assets import SEWER_GATE_N, SEWER_GATE_S, SEWER_GATE_W, SEWER_GATE_E
+    d = floor(4)
+    for door in d.door_tiles:
+        tile = d._tile_for(door)
+        dx, dy = {SEWER_GATE_N: (0, -1), SEWER_GATE_S: (0, 1),
+                  SEWER_GATE_W: (-1, 0), SEWER_GATE_E: (1, 0)}[tile]
+        n = (door[0] + dx, door[1] + dy)
+        assert n in d.room_map and d.room_map[n] is None
+
+
+def test_no_peeking_diagonally_past_a_gate():
+    # Corridor ends at (3, 2); door (4, 2) in the room's west edge; the
+    # room's wall ring is (3, 1) / (3, 3).  (4, 1) / (4, 3) are room floor.
+    d = Dungeon()
+    for x in range(0, 4):
+        d.room_map[(x, 2)] = None
+    for x in range(4, 9):
+        for y in range(0, 5):
+            d.room_map[(x, y)] = None
+    d.door_tiles = {(4, 2)}
+    seen = d.visible_from((3, 2), 8)
+    assert (4, 2) in seen
+    assert not any((x, y) in seen for x in range(4, 9) for y in range(0, 5) if (x, y) != (4, 2))
