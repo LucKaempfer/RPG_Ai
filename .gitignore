@@ -8,3 +8,7 @@ venv/
 # Runtime data
 saves/
 .pytest_cache/
+
+# Placeholder art the game generates on first use (assets.py).  The files
+# already in git stay tracked; add real art with `git add -f`.
+pygame_rpg/assets/

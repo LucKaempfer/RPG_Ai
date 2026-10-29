@@ -1,32 +1,26 @@
-# Pygame RPG Skeleton
+# Dungeon RPG (pygame)
 
-This repository contains a minimal 2‑D dungeon crawler built with **Pygame**.
-
-## Features
-
-- Procedurally generated dungeon with rooms and corridors.
-- Player movement with arrow keys / WASD.
-- Minimap in the top left corner showing visited rooms.
-- Basic tile‑based rendering (walls, floor, doors).
+A 2-D, sprite-based dungeon battler. You create a hero, gear them up in the Base, and fight your
+way down generated floors in turn-based battles.
 
 ## How to run
 
 ```bash
-# Ensure you have Python 3.9+ and a pygame variant installed.
-# On Python 3.14 use pygame-ce (drop-in replacement; plain pygame 2.6.1
-# has no prebuilt wheel for 3.14):
-pip install pygame-ce
+# Python 3.9+; on Python 3.14 use pygame-ce (plain pygame 2.6.1 has no 3.14 wheel).
+pip install -r requirements.txt
 
-# Run the game
+# From the repo root:
 python -m pygame_rpg.main
+
+# Tests (headless):
+python -m pytest
 ```
 
-The game starts in the first generated room. Walk around to explore.
+## Controls
 
-## Extending the game
+* Menus: mouse, or Up / Down + Enter; Esc goes back.
+* Dungeon: arrows / WASD to walk, bump into an enemy to fight, Esc returns to the Base (the run
+  is kept: *Continue (Floor N)*).
+* Battle: Attack / Abilities / Items / Run.
 
-- **Add combat** – create `Enemy` and `Item` classes.
-- **Add inventory UI** – draw a panel and handle item pickup.
-- **Improve graphics** – replace colored squares with spritesheets.
-
-Happy hacking!
+Everything else (architecture, rules, numbers, roadmap) is in `DEVELOPMENT.md` at the repo root.

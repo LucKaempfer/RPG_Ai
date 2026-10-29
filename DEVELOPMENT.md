@@ -7,31 +7,34 @@
 **Goal:** turn the minimal `pygame_rpg/` dungeon crawler plus the text-based `RPG_V3/`
 mechanics into one complete 2-D, sprite-based pygame game. Everything up to and including the
 Base (lobby), the item system, the dungeon, turn-based combat and saved dungeon runs work in
-the GUI. What's left is play-testing the balance and more polish (rest of M5).
+the GUI; all five milestones are done. What's left is play-testing the balance and real art.
 
 ---
 
 ## 0. Start Here
 
-**Where we are:** M1, M3, M2 and M4 are done. M5 (persistence + polish) is mostly done:
-* **Dungeon runs are saved.** The Base shows *Continue (Floor N)* plus *New Adventure*.
-* The tuning numbers live in `config.py`.
-* There is a pytest suite (`python -m pytest`).
-* Battles show damage numbers and a hit flash, and each floor opens with a banner.
+**Where we are:** all five milestones (M1 sprites, M3 GUI, M2 items, M4 dungeon + combat,
+M5 persistence + polish) are done.
+* Dungeon runs are saved (*Continue (Floor N)* / *New Adventure* in the Base).
+* The tuning numbers live in `config.py`, and there is a pytest suite (`python -m pytest`).
+* Polish: every menu works with the keyboard, each enemy type has its own placeholder shape,
+  and the title screen has a drawn logo.
+* Effects: damage numbers, hit flash, victory / defeat animations, chest sparks, a level-up
+  fanfare and a floor banner.
 
 The full loop: Base → Adventure → walk a fogged floor → bump an enemy → turn-based battle →
 XP / loot → level up mid-run → chests → beat the boss → stairs to a harder floor. Esc returns to
 the Base with the run kept; defeat ends the run.
 
-**Next tasks** (details in §6.3):
+**Next steps (beyond the milestones):**
 
 1. **Play-test the balance on the real machine.** The numbers in `config.py` (Balance section)
    came from a simulation (§4 Combat). Tune them there.
-2. **Polish still open:** chest-open pop, death animation, level-up fanfare, real art for the
-   placeholder sprites (several enemies share the slime shape with different colours), a title
-   logo, keyboard navigation in the Base.
+2. **Real art:** drop PNGs over the generated placeholders (same file names, §3.3). If enemy
+   sheets were generated on your machine before this version, delete the untracked
+   `pygame_rpg/assets/enemies/{bat,goblin,skeleton,boss}.png` so the new shapes are generated.
 3. **Answer the open design questions in §9** (defeat penalty, endgame after floor 4-5, how
-   abilities are found).
+   abilities are found), which decide the next content milestone.
 
 **Standing rules**
 
@@ -56,7 +59,7 @@ meaningful.
 | M3 | GUI up to the Base | Title → tutorial → hero maker/chooser → Base → inventory / stats / level-up, JSON saves | ✅ done (16 Oct 2026), 32-check end-to-end smoke test |
 | M2 | Item system | Full catalog, equipment slots, equipment-driven stats, weight, rarity (six sub-milestones, §6.1) | ✅ done (29 Oct 2026): 212-item catalog, 11 slots, effective stats, HP/MP, level gate, rarity + loot roll |
 | M4 | Dungeon + Combat | Collision, fog of war, loot, enemies/bosses, turn-based battles, weapon ailments, HUD | ✅ done (29 Oct 2026): dungeon screen, enemies + boss, battle screen, chests, stairs, fog, HUD, mid-run level-ups |
-| M5 | Persistence + Polish | Dungeon state in saves, balance config, polish, pytest suite | 🚧 run saves, balance in `config.py`, pytest suite, battle feedback done; play-test + more polish open |
+| M5 | Persistence + Polish | Dungeon state in saves, balance config, polish, pytest suite | ✅ done (29 Oct 2026): run saves, balance in `config.py`, pytest suite, effects, keyboard menus, enemy shapes, title logo |
 
 ---
 
@@ -90,7 +93,8 @@ wake up rested in the Base.
 | `pygame_rpg/gui/battle_screen.py` | ✅ M4 | `BattleScreen`: enemy + hero sprites, HP / MP bars, ailments, log, menu (Attack / Abilities / Items / Run, sub-lists), keyboard + mouse; Floating damage / heal numbers, hero hit flash + shake. Continue resumes the floor, or on defeat rests, saves, deletes the run → Base. |
 | `pygame_rpg/gui/hud.py` | ✅ M4 | `Hud`: floor, level, weapon icon, HP / MP / XP bars, fading message log (`say()`). |
 | `pygame_rpg/assets.py` + `assets/` | M1, in use | `AssetManager`: loads PNGs, slices sheets, and generates + saves placeholder art for missing files (tileset, hero sheet, slime, sword/potion icons, panel). Used by GUI screens for icons/portrait. |
-| `pygame_rpg/README.md` | outdated | Still describes the M1 skeleton (walk around a dungeon). Update or fold into this file when M4 lands. |
+| `pygame_rpg/README.md` | ✅ M5 | Short player-facing readme: install, run, test, controls; points here. |
+| `pygame_rpg/gui/effects.py` | ✅ M5 | `Particles` (burst / update / draw sparks) and `menu_key()` (Up / Down / Enter for button lists). |
 | `RPG_V3/main_V3.py` | reference | Text UI: `tutorial()`, `hero_maker()`, `hero_chooser()`, `lobby()` (stub), `inventory()`/`backpack()` (stubs), `xp_check()`. Ported up to the Base. |
 | `RPG_V3/assets_V3.py` | reference | `WP` weapon base + 7 subclasses with unimplemented `effect()`; empty `Consumable`/`Armor`/`Trinket`/`Ability`/`Enemy`/`Boss` classes; level-1 weapon catalog. |
 | `RPG_V3/tutorial.txt` | in use | Rendered page by page by the tutorial screen. |
@@ -104,6 +108,7 @@ wake up rested in the Base.
   stash) and abilities on the same branch.
 * PRs #3 / #4: abilities, rarity (M2 done). PR #5: M4 (dungeon screen, enemies, combat, HUD).
 * PR #6: M5 run saves, pytest suite, balance in `config.py`, battle feedback.
+* PR #7: M5 polish (effects, keyboard menus, enemy shapes, title logo); M5 done.
 * `.gitignore` covers `venv/`, `saves/`, `__pycache__/`, `*.py[cod]`.
 
 ---
@@ -128,6 +133,7 @@ pygame_rpg/
 │   ├── title_screen.py, tutorial_screen.py, hero_maker.py, hero_chooser.py
 │   ├── base_screen.py, inventory_screen.py, stats_screen.py, level_up_screen.py
 │   ├── dungeon_screen.py  # walk the floor: fog, enemies, chests, stairs
+│   ├── effects.py         # Particles (sparks) + menu_key() keyboard navigation
 │   ├── battle_screen.py   # turn-based battle menu
 │   └── hud.py             # in-dungeon HUD (bars, weapon icon, message log)
 └── assets/            # tileset, hero sheet, enemy sheets, item icons, objects/chest.png,
@@ -142,6 +148,7 @@ tests/
 ├── test_combat.py         # damage formulas, ailments, stun, wards, cooldowns, win / lose
 ├── test_dungeon.py        # no overlap, connectivity, seeding, boss + entrance rules
 ├── test_saves.py          # player + run round trips, migration, broken run file
+├── test_gui.py            # keyboard menus, particles, battle end animations, enemy sheets
 ├── test_smoke_scripts.py  # runs the two scripts below as pytest cases
 ├── m2_smoke_test.py       # end-to-end item / inventory checks (plain script)
 └── m4_smoke_test.py       # end-to-end dungeon / battle / run-save checks (plain script)
@@ -309,12 +316,13 @@ play-testing.
 
 **Still open:**
 
-* `pygame_rpg/README.md` still describes the M1 skeleton.
 * Enemies stand still; there is no attack / hurt animation on the dungeon map yet.
 * The battle Items list shows at most four consumables.
-* Placeholder icons for items are generated into `pygame_rpg/assets/items/` the first time an
-  item is shown, so they appear as untracked files in `git status`. Either commit them, ignore
-  them, or generate them in memory only.
+* Generated placeholders are git-ignored (`pygame_rpg/assets/`); the files committed before
+  that stay tracked. A placeholder generated once is kept on disk, so a newer generator (e.g. the
+  enemy shapes) only shows after deleting the old file. Real art needs `git add -f`.
+* The hero chooser, hero maker and inventory still lean on the mouse (text input works by
+  keyboard); `effects.menu_key()` is the helper to extend them with.
 * The stats screen grid uses 2 of its 3 columns (cosmetic).
 
 ---
@@ -363,9 +371,11 @@ with the HUD active.
 * **Persistence** — ✅ run saves (`saves/runs/<name>.json`, §3.4), Continue / New Adventure.
 * **Balance** — ✅ combat / enemy / floor numbers in `config.py`. Item tier growth and
   `AILMENTS` stay next to their data (`items.py`, `combat.py`). Play-testing is still open.
-* **Polish** — ✅ damage numbers, hero hit flash + shake, floor banner. Open: death animation,
-  chest pop, level-up fanfare (no audio dependency required), real art, title logo.
-* **Tests** — ✅ `python -m pytest` (52 tests). Open: split the two smoke scripts into real
+* **Polish** — ✅ damage numbers, hero hit flash + shake, floor banner, victory burst + enemy
+  death frames, defeat collapse, chest sparks, level-up fanfare, title logo with embers,
+  distinct enemy placeholder shapes, keyboard navigation (title, Base, level-up). Open: real
+  art, sound.
+* **Tests** — ✅ `python -m pytest` (65 tests, incl. `test_gui.py`). Open: split the two smoke scripts into real
   pytest functions over time; level-up banking has coverage only in the smoke script.
 
 ---

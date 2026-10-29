@@ -37,6 +37,7 @@ from ..enemies import place_enemies, boss_room, BOSS_TYPE
 from ..items import roll_loot
 from ..savegame import save_player, save_run
 from .base_screen import pending_levels
+from .effects import Particles
 from .hud import Hud
 from .screen import QUIT, Screen, font, DIM_TEXT
 
@@ -85,6 +86,7 @@ class DungeonScreen(Screen):
         self.ignore = None      # enemy just fled from: no re-bump until apart
         self.check_levels = False
         self.banner_t = BANNER_TIME
+        self.fx = Particles()
         self.hud = Hud()
         self.hud.say(f"Floor {floor}: beat the {BOSS_TYPE.name} to open the stairs.")
         self._mark_visited()
@@ -272,6 +274,7 @@ class DungeonScreen(Screen):
             cell, opened = chest
             if not opened and self._near(*self._centre(cell)):
                 chest[1] = True
+                self.fx.burst(*self._centre(cell), (240, 200, 90), count=22)
                 item = roll_loot(self.dungeon.rng,
                                  max_level=min(4, self.floor + 1))
                 if self.player.can_carry(item):
@@ -298,6 +301,7 @@ class DungeonScreen(Screen):
         call it directly."""
         self.anim_t += dt
         self.banner_t = max(0.0, self.banner_t - dt)
+        self.fx.update(dt)
         self.hud.update(dt)
         if self.check_levels:
             self.check_levels = False
@@ -346,6 +350,8 @@ class DungeonScreen(Screen):
             if e.boss:
                 img = pygame.transform.scale(img, (48, 48))
             surface.blit(img, img.get_rect(center=(e.x - ox, e.y - oy)))
+
+        self.fx.draw(surface, (ox, oy))
 
         cols = HERO_WALK_COLS if self.moving else HERO_IDLE_COLS
         col = cols[int(self.anim_t / FRAME_TIME) % len(cols)]

@@ -278,29 +278,101 @@ def _gen_enemy_sheet(name: str) -> pygame.Surface:
     body, dark = ENEMY_COLORS.get(name, _DEFAULT_ENEMY)
     surf = _new_sheet(ENEMY_COLS, ENEMY_ROWS)
     for col in range(ENEMY_COLS):
-        _draw_enemy_frame(surf, col * FRAME_SIZE, 0, body, dark, col)
+        # Draw each frame on its own surface so wings / horns that reach
+        # past the edge (hurt shake) are clipped instead of bleeding
+        # into the neighbouring frame.
+        frame = pygame.Surface((FRAME_SIZE, FRAME_SIZE), pygame.SRCALPHA)
+        _draw_enemy_frame(frame, 0, 0, body, dark, col, name)
+        surf.blit(frame, (col * FRAME_SIZE, 0))
     return surf
 
 
 def _draw_enemy_frame(surf: pygame.Surface, px: int, py: int,
-                      body, dark, col: int):
-    """Draw one 32x32 enemy frame at (px, py) for animation column ``col``."""
+                      body, dark, col: int, name: str = "slime"):
+    """Draw one 32x32 enemy frame at (px, py) for animation column ``col``.
+
+    Every enemy shares the animation rules (idle bob, attack lunge with
+    red eyes, hurt shake + red flash, death puddle); ``name`` picks the
+    silhouette so each type reads differently at a glance."""
     x, y = px + 16, py + 18
     phase = col % 2
     if col in ENEMY_DEATH:
         pygame.draw.ellipse(surf, dark, (px + 4, py + 22, 24, 7))
+        if name in ("skeleton", "boss"):       # a few bones / horns left
+            pygame.draw.line(surf, body, (px + 9, py + 24), (px + 15, py + 22), 2)
+            pygame.draw.line(surf, body, (px + 18, py + 25), (px + 24, py + 23), 2)
         return
     if col in ENEMY_HURT:
         x += 3 if phase else -3  # shake
         body = (255, 120, 120)   # red flash
     if col in ENEMY_IDLE:
         y += 1 if phase else 0   # breathing
-    h = 18 if col in ENEMY_ATTACK else 16
-    pygame.draw.ellipse(surf, body, (x - 10, y - 8, 20, h))
-    pygame.draw.ellipse(surf, dark, (x - 10, y - 8, 20, h), 2)
-    eye = (255, 60, 40) if col in ENEMY_ATTACK else (20, 20, 20)
-    pygame.draw.circle(surf, eye, (x - 4, y - 2), 2)
-    pygame.draw.circle(surf, eye, (x + 4, y - 2), 2)
+    attack = col in ENEMY_ATTACK
+    eye = (255, 60, 40) if attack else (20, 20, 20)
+
+    if name == "bat":
+        # Small round body, two wings that flap with the frame.
+        up = -5 if phase else 2
+        for side in (-1, 1):
+            tip = (x + side * 15, y + up - 4)
+            wing = [(x + side * 4, y - 3), tip, (x + side * 11, y + 4),
+                    (x + side * 6, y + 2)]
+            pygame.draw.polygon(surf, body, wing)
+            pygame.draw.polygon(surf, dark, wing, 1)
+        pygame.draw.ellipse(surf, body, (x - 6, y - 7, 12, 13))
+        pygame.draw.ellipse(surf, dark, (x - 6, y - 7, 12, 13), 1)
+        pygame.draw.polygon(surf, dark, [(x - 5, y - 6), (x - 3, y - 11), (x - 1, y - 6)])
+        pygame.draw.polygon(surf, dark, [(x + 1, y - 6), (x + 3, y - 11), (x + 5, y - 6)])
+        pygame.draw.circle(surf, eye, (x - 2, y - 2), 1)
+        pygame.draw.circle(surf, eye, (x + 2, y - 2), 1)
+    elif name == "goblin":
+        # Body + big head with pointy ears, a club when attacking.
+        pygame.draw.rect(surf, dark, (x - 6, y + 2, 12, 10), border_radius=3)
+        pygame.draw.ellipse(surf, body, (x - 7, y - 10, 14, 13))
+        pygame.draw.ellipse(surf, dark, (x - 7, y - 10, 14, 13), 1)
+        pygame.draw.polygon(surf, body, [(x - 6, y - 5), (x - 13, y - 9), (x - 7, y - 1)])
+        pygame.draw.polygon(surf, body, [(x + 6, y - 5), (x + 13, y - 9), (x + 7, y - 1)])
+        pygame.draw.circle(surf, eye, (x - 3, y - 4), 1)
+        pygame.draw.circle(surf, eye, (x + 3, y - 4), 1)
+        club = (x + 9, y - 6) if attack else (x + 10, y + 6)
+        pygame.draw.line(surf, (110, 80, 50), (x + 6, y + 6), club, 3)
+    elif name == "skeleton":
+        # Skull, rib cage, thin limbs.
+        pygame.draw.circle(surf, body, (x, y - 6), 6)
+        pygame.draw.circle(surf, dark, (x, y - 6), 6, 1)
+        pygame.draw.circle(surf, eye if attack else (30, 30, 30), (x - 2, y - 7), 2)
+        pygame.draw.circle(surf, eye if attack else (30, 30, 30), (x + 2, y - 7), 2)
+        pygame.draw.line(surf, body, (x, y), (x, y + 10), 2)
+        for dy in (2, 5, 8):
+            pygame.draw.line(surf, body, (x - 5, y + dy), (x + 5, y + dy), 1)
+        reach = 9 if attack else 6
+        pygame.draw.line(surf, body, (x - 2, y + 2), (x - reach, y + 7), 2)
+        pygame.draw.line(surf, body, (x + 2, y + 2), (x + reach, y + 7), 2)
+        pygame.draw.line(surf, body, (x - 1, y + 10), (x - 4, y + 13), 2)
+        pygame.draw.line(surf, body, (x + 1, y + 10), (x + 4, y + 13), 2)
+    elif name == "boss":
+        # Wide horned body with a crown of spikes and a fanged mouth.
+        h = 20 if attack else 18
+        pygame.draw.ellipse(surf, body, (x - 12, y - 9, 24, h))
+        pygame.draw.ellipse(surf, dark, (x - 12, y - 9, 24, h), 2)
+        for hx in (-1, 1):
+            pygame.draw.polygon(surf, (235, 225, 200),
+                                [(x + hx * 7, y - 7), (x + hx * 14, y - 15), (x + hx * 10, y - 5)])
+        for sx in (-4, 0, 4):
+            pygame.draw.polygon(surf, (230, 190, 90),
+                                [(x + sx - 2, y - 8), (x + sx, y - 13), (x + sx + 2, y - 8)])
+        pygame.draw.circle(surf, eye, (x - 5, y - 2), 2)
+        pygame.draw.circle(surf, eye, (x + 5, y - 2), 2)
+        pygame.draw.line(surf, (30, 10, 10), (x - 5, y + 4), (x + 5, y + 4), 2)
+        for fx in (-3, 3):
+            pygame.draw.line(surf, (240, 240, 240), (x + fx, y + 4), (x + fx, y + 7), 1)
+    else:
+        # Slime (and any unknown name): a jelly blob.
+        h = 18 if attack else 16
+        pygame.draw.ellipse(surf, body, (x - 10, y - 8, 20, h))
+        pygame.draw.ellipse(surf, dark, (x - 10, y - 8, 20, h), 2)
+        pygame.draw.circle(surf, eye, (x - 4, y - 2), 2)
+        pygame.draw.circle(surf, eye, (x + 4, y - 2), 2)
 
 
 def _gen_item_icon(key: str) -> pygame.Surface:

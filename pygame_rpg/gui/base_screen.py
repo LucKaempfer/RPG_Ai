@@ -10,7 +10,8 @@ Buttons: Inventory, View Stats, Adventure, Save & Exit.  With a saved
 dungeon run (M5) the Adventure button reads "Continue (Floor N)" and
 resumes it as it was (HP included), and an extra New Adventure button
 drops it.  A new adventure starts rested (full HP / MP) on floor 1.
-Escape auto-saves and returns to the title screen.
+Mouse or keyboard (Up / Down + Enter).  Escape auto-saves and returns
+to the title screen.
 """
 
 import pygame
@@ -18,6 +19,7 @@ import pygame
 from ..assets import AssetManager, HERO_COLS, HERO_ROWS
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, max_xp_for
 from ..savegame import save_player, load_run, delete_run
+from .effects import menu_key
 from .screen import (
     QUIT, Screen, Button, font,
     BG_COLOR, PANEL_COLOR, TEXT_COLOR, DIM_TEXT, GOLD, BORDER_COLOR,
@@ -48,6 +50,7 @@ class BaseScreen(Screen):
         self.player = player
         self.pending_ups = pending_levels(player)
         self.hot = None
+        self.focus = None
 
         # Portrait: first idle frame of the hero sheet, scaled up 4x.
         frame = AssetManager().load_sheet(
@@ -93,27 +96,37 @@ class BaseScreen(Screen):
         if event.type == pygame.MOUSEMOTION:
             self.hot = self._hover(event.pos)
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            btn = self._hover(event.pos)
-            if btn is self.btn_choose:
-                return ("level_up", {"player": self.player})
-            if btn is self.btn_inventory:
-                return ("inventory", {"player": self.player})
-            if btn is self.btn_stats:
-                return ("stats", {"player": self.player})
-            if btn is self.btn_adventure and self.run:
-                self._save()
-                return ("dungeon", {"player": self.player, "run": self.run})
-            if btn is self.btn_adventure or btn is self.btn_new_run:
-                delete_run(self.player.name)
-                self.player.rest()
-                self._save()
-                return ("dungeon", {"player": self.player})
-            if btn is self.btn_saveexit:
-                self._save()
-                return QUIT
+            return self._press(self._hover(event.pos))
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self._save()
             return "title"
+        elif event.type == pygame.KEYDOWN:
+            active = self._active_buttons()
+            self.focus, activate = menu_key(event, len(active), self.focus)
+            if self.focus is not None:
+                self.hot = active[self.focus]
+            if activate:
+                return self._press(active[self.focus])
+        return None
+
+    def _press(self, btn):
+        if btn is self.btn_choose:
+            return ("level_up", {"player": self.player})
+        if btn is self.btn_inventory:
+            return ("inventory", {"player": self.player})
+        if btn is self.btn_stats:
+            return ("stats", {"player": self.player})
+        if btn is self.btn_adventure and self.run:
+            self._save()
+            return ("dungeon", {"player": self.player, "run": self.run})
+        if btn is self.btn_adventure or btn is self.btn_new_run:
+            delete_run(self.player.name)
+            self.player.rest()
+            self._save()
+            return ("dungeon", {"player": self.player})
+        if btn is self.btn_saveexit:
+            self._save()
+            return QUIT
         return None
 
     def draw(self, surface):
@@ -181,7 +194,7 @@ class BaseScreen(Screen):
                 midtop=(self.btn_choose.rect.centerx, 398)))
             self.btn_choose.draw(surface, hot=(self.btn_choose is self.hot))
         hint = font(18).render(
-            "Esc: save & return to title", True, DIM_TEXT)
+            "Up/Down + Enter or click.  Esc: save & return to title", True, DIM_TEXT)
         surface.blit(hint, hint.get_rect(bottomright=(
             SCREEN_WIDTH - 20, SCREEN_HEIGHT - 14)))
 

@@ -5,7 +5,9 @@ Mirrors V3 xp_check(): for every pending level the player chooses one
 stat to raise by +LEVEL_UP_BONUS.  Each pick banks exactly one level
 (one iteration of Player.add_xp's while-loop): the xp pool loses
 max_xp_for(old level), the level rises, then apply_level_up() grants
-the bonus.  When no level-ups remain, the screen returns to the Base.
+the bonus.  When no level-ups remain, the screen returns to the Base
+(or to the dungeon floor in ``return_to``).  Mouse or keyboard (Up /
+Down + Enter); each pick bursts gold sparks from its button.
 """
 
 import pygame
@@ -14,6 +16,7 @@ from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, MP_PER_LEVEL, max_xp_for
 from ..player import UPGRADABLE_STATS
 from ..savegame import save_player
 from .base_screen import pending_levels
+from .effects import Particles, menu_key
 from .screen import (
     QUIT, Screen, Button, font,
     BG_COLOR, PANEL_COLOR, TEXT_COLOR, DIM_TEXT, GOLD, BORDER_COLOR,
@@ -29,6 +32,11 @@ class LevelUpScreen(Screen):
         # Screen to resume when done (the dungeon, mid-run); None = Base.
         self.return_to = return_to
         self.hot = None
+        self.focus = None
+        self.fx = Particles()
+        # Fanfare on arrival: the header pulses and sparks fly.
+        self.glow_t = 0.8
+        self.fx.burst(SCREEN_WIDTH // 2, 44, GOLD, count=30, speed=200)
         self.stat_buttons = {}
         x, w, y = 420, 340, 120
         for i, stat in enumerate(UPGRADABLE_STATS):
@@ -51,6 +59,8 @@ class LevelUpScreen(Screen):
         p.restore_mp(MP_PER_LEVEL)  # max MP grew; so does what is left
         p.apply_level_up(stat)
         self._refresh_labels()
+        self.fx.burst(*self.stat_buttons[stat].rect.center, GOLD, count=24)
+        self.glow_t = 0.6
 
     def handle_event(self, event):
         if event.type == pygame.QUIT:
@@ -59,17 +69,30 @@ class LevelUpScreen(Screen):
         if event.type == pygame.MOUSEMOTION:
             self.hot = self._hover(event.pos)
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            btn = self._hover(event.pos)
-            if btn is None or pending_levels(self.player) <= 0:
-                return None
-            stat = next(s for s, b in self.stat_buttons.items()
-                        if b is btn)
-            self._bank(stat)
-            if pending_levels(self.player) == 0:
-                return self._leave()
+            return self._pick(self._hover(event.pos))
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             return self._leave()
+        elif event.type == pygame.KEYDOWN:
+            buttons = list(self.stat_buttons.values())
+            self.focus, activate = menu_key(event, len(buttons), self.focus)
+            if self.focus is not None:
+                self.hot = buttons[self.focus]
+            if activate:
+                return self._pick(buttons[self.focus])
         return None
+
+    def _pick(self, btn):
+        if btn is None or pending_levels(self.player) <= 0:
+            return None
+        stat = next(s for s, b in self.stat_buttons.items() if b is btn)
+        self._bank(stat)
+        if pending_levels(self.player) == 0:
+            return self._leave()
+        return None
+
+    def handle_update(self, dt):
+        self.fx.update(dt)
+        self.glow_t = max(0.0, self.glow_t - dt)
 
     def _leave(self):
         if self.return_to is not None:
@@ -86,7 +109,7 @@ class LevelUpScreen(Screen):
         surface.fill(BG_COLOR)
         p = self.player
         ups = pending_levels(p)
-        header = font(32).render("LEVEL UP!", True, GOLD)
+        header = font(32 + int(16 * self.glow_t)).render("LEVEL UP!", True, GOLD)
         surface.blit(header, header.get_rect(midtop=(SCREEN_WIDTH // 2, 24)))
         plural = "s" if ups != 1 else ""
         note = font(24).render(
@@ -97,8 +120,9 @@ class LevelUpScreen(Screen):
         surface.blit(xpt, xpt.get_rect(midtop=(SCREEN_WIDTH // 2, 96)))
         for btn in self.stat_buttons.values():
             btn.draw(surface, hot=(btn is self.hot))
+        self.fx.draw(surface)
         hint = font(18).render(
-            "Pick a stat to raise (+1).  Esc: "
+            "Pick a stat to raise (+1), mouse or Up/Down + Enter.  Esc: "
             + ("back to the dungeon" if self.return_to else "back to base"),
             True, DIM_TEXT)
         surface.blit(hint, hint.get_rect(bottomright=(
