@@ -26,6 +26,11 @@ The full loop: Base → Adventure → walk a fogged floor → bump an enemy → 
 XP / loot → level up mid-run → chests → beat the boss → stairs to a harder floor. Esc returns to
 the Base with the run kept; defeat ends the run.
 
+**Play-test round 2 (PR #9):** the dungeon is a sewer. A new `sewer/tiles.png` has mossy
+flagstones, slimy brick walls with pipes, stains and moss, puddles, drains, bones, grated
+walkways, iron gates and manhole stairs, and there is torch-light darkness. Walls block line of
+sight, corridors are shorter, there is a Rat enemy, and the boss is a Rat King. `RUN_VERSION` is 3.
+
 **Play-test round 1 (done, PR #8):** single doors with corridors routed around rooms, fights
 start on entering an occupied room, inventory from the dungeon (I), damage previews, attack
 styles. Run saves carry `RUN_VERSION` (config); older runs are dropped because the same seed now
@@ -91,7 +96,7 @@ wake up rested in the Base.
 | `pygame_rpg/savegame.py` | ✅ M5 | `saves/<name>.json` per character + `saves/index.json`; runs in `saves/runs/<name>.json` (`save_run` / `load_run` / `delete_run`; a broken run file reads as no run); `_safe_name()` validates names (`^[\w .-]{1,20}$`), index self-prunes missing files; `_resolve()` turns saved item refs (id or `{"id", "charges"}`) into items. |
 | `pygame_rpg/gui/screen.py` | ✅ M3 | `Screen` base class, `Button`, cached `font()`, shared palette, `QUIT` sentinel. |
 | `pygame_rpg/gui/*.py` (8 screens) | ✅ M3 | `title_screen`, `tutorial_screen`, `hero_maker`, `hero_chooser`, `base_screen`, `inventory_screen`, `stats_screen`, `level_up_screen` (takes `return_to`: resume a dungeon floor instead of the Base). |
-| `pygame_rpg/dungeon.py` | ✅ M4 | Seeded generation (private `rng`, same seed = same floor): rooms with `ROOM_GAP` free tiles between them; each room links to the nearest earlier one (a tree, so all are reachable) by an A*-routed corridor from a door on the wall facing the target to a door on the target, never entering another room or the ring around it, so walls stay solid and every door is a single tile (one door per wall, reused). `door_outside()` gives the corridor cell outside a door. `is_walkable()`, `spawn_point()`, tileset rendering with camera offset and fog (`seen` cells + their walls; `overrides` for the stairs tile), minimap of visited rooms + walked corridors. |
+| `pygame_rpg/dungeon.py` | ✅ M4 | Seeded generation (private `rng`, same seed = same floor): 60 × 44 tiles, up to 13 rooms with `ROOM_GAP` free tiles between them; rooms are linked by a minimum spanning tree over wall-to-wall gaps (shortest corridors that still reach every room) with A*-routed corridors from a door on the wall facing the target to a door on the target, never entering another room or the ring around it, so walls stay solid and every door is a single tile (one door per wall, reused). `door_outside()` gives the corridor cell outside a door. `visible_from()` (line of sight), `is_walkable()`, `spawn_point()`, sewer-tileset rendering (`sewer/tiles.png`, per-cell variants cached in `_tile_cache`) with camera offset, fog (`seen` cells + their walls), dimming outside `visible`, `overrides` for the manhole stairs, minimap of visited rooms + walked corridors. |
 | `pygame_rpg/enemies.py` | ✅ M4 | `EnemyType` (frozen data) for slime, bat, goblin, skeleton + `BOSS_TYPE`; `make_enemy()` scales per floor; `boss_room()` (farthest from room 0); `place_enemies()` with the dungeon's rng. |
 | `pygame_rpg/combat.py` | ✅ M4 | `Battle`: pure rules, no drawing. `attack()`, `cast()`, `use_item()`, `run()`, ailments (`AILMENTS`), cooldowns, Shield guard, wards, XP + loot on win. |
 | `pygame_rpg/gui/dungeon_screen.py` | ✅ M4 | `DungeonScreen(player, floor, seed)`: `move()` with axis-separated wall collision (20 px hitbox), trinket speed bonus, walk/idle animation, clamped camera, fog (`seen`), enemies, chests, stairs, HUD + minimap. Saves the run (`to_run()` / `save_run()`) on floor entry, after each battle, on Esc and on quit; `run=` restores one. `step(dx, dy, dt)` is one frame and returns a transition (battle on bump, level-up after a win, next floor on the stairs); tests drive it directly. `battle_over()` is called by the battle screen. Esc saves → Base (no rest). Floor banner on arrival. |
@@ -115,6 +120,7 @@ wake up rested in the Base.
 * PRs #3 / #4: abilities, rarity (M2 done). PR #5: M4 (dungeon screen, enemies, combat, HUD).
 * PR #6: M5 run saves, pytest suite, balance in `config.py`, battle feedback.
 * PR #7: M5 polish (effects, keyboard menus, enemy shapes, title logo); M5 done.
+* PR #9: play-test round 2 (line of sight, shorter corridors, sewer look, Rat + Rat King).
 * PR #8: play-test round 1 (door generation, room-entry battles, inventory in the dungeon,
   damage previews, attack styles).
 * `.gitignore` covers `venv/`, `saves/`, `__pycache__/`, `*.py[cod]`.
@@ -295,8 +301,8 @@ play-testing.
   burning 25/2/5, stun 20/1 (skip turn), electrocuted 20/1/2 (skip). +5 % per weapon or ability
   level above 1, abilities +20 %, bombs a flat 60 %.
 * **Enemies** (floor-1 HP / attack / defense, type, ailment, XP): Slime 28/5/2 melee poison 20,
-  Bat 20/6/1 melee bleeding 18, Goblin 32/6/3 ranged bleeding 30 (floor 2+), Skeleton 40/7/4
-  melee stun 40 (floor 3+), Dungeon Lord boss 60/6/4 magic burning 150. Per floor: HP +20 %,
+  Bat 20/6/1 melee bleeding 18, Rat 18/5/1 melee poison 15, Goblin 32/6/3 ranged bleeding 30 (floor 2+), Skeleton 40/7/4
+  melee stun 40 (floor 3+), Rat King boss 60/6/4 melee bleeding 150. Per floor: HP +20 %,
   attack +1, defense +1, XP +30 %. 0-2 enemies per room (never the entrance), the boss in the
   room farthest from the entrance.
 * **After a win:** XP (+ trinket bonus) goes into `player.xp`; the floor then opens the level-up
@@ -313,7 +319,9 @@ play-testing.
   rests the hero.
 * **Floors:** 2 chests per floor (not in the entrance room, loot up to floor + 1). The boss's
   room shows stairs once the boss is beaten; the stairs make a new floor (+1) with a new seed.
-  Fog: whole rooms reveal on entry, corridors within 2 cells.
+  Sight: line of sight up to `SIGHT` = 8 tiles; walls block it (open doors don't). Cells seen
+  before stay on the map, dimmed; enemies show only while in sight. A torch-light vignette
+  darkens the screen edges.
 * **Balance check** (simulated, not play-tested): a fresh hero clears floor 1 comfortably; the
   floor-4 boss wins about a quarter of fights for a hero without potions, so potions and level-ups
   matter from floor 3 on.
@@ -396,7 +404,7 @@ with the HUD active.
   (`audio.py`: footsteps, doors, chests, encounter, the four attack styles, misses, hits,
   spells, potions, bombs, ailments, run, victory, defeat, level-up, stairs, menu clicks, and
   the looping sewer ambience). Open: real art.
-* **Tests** — ✅ `python -m pytest` (109 tests, incl. `test_gui.py` and `test_audio.py`; `pytest.ini` limits collection to `test_*.py`). Open: split the two smoke scripts into real
+* **Tests** — ✅ `python -m pytest` (117 tests, incl. `test_gui.py` and `test_audio.py`; `pytest.ini` limits collection to `test_*.py`). Open: split the two smoke scripts into real
   pytest functions over time; level-up banking has coverage only in the smoke script.
 
 ---

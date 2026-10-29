@@ -32,7 +32,7 @@ from .. import audio
 from ..assets import (
     AssetManager, HERO_COLS, HERO_ROWS, HERO_IDLE_COLS, HERO_WALK_COLS,
     HERO_DIR_DOWN, HERO_DIR_UP, HERO_DIR_LEFT, HERO_DIR_RIGHT,
-    ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, TILE_STAIRS_DOWN,
+    ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, SEWER_MANHOLE,
 )
 from ..combat import WON, FLED
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, CHESTS_PER_FLOOR, RUN_VERSION
@@ -56,11 +56,32 @@ FRAME_TIME = 0.12
 TOUCH = 24
 # Pixels walked per footstep sound.
 STRIDE = 34
-# How far (in tiles) the hero sees into corridors; rooms light up whole.
-SIGHT = 2
+# How far (in tiles) the hero sees.  Walls block the view (line of
+# sight); what was seen stays on the map but is drawn dimmed.
+SIGHT = 8
+# Torch light: the screen darkens from LIGHT_INNER px around the hero to
+# LIGHT_DARK alpha at LIGHT_OUTER px.
+LIGHT_INNER, LIGHT_OUTER, LIGHT_DARK = 120, 420, 190
 
 MINIMAP_SCALE = 2
 BANNER_TIME = 2.0   # seconds the "Floor N" banner shows on arrival
+
+
+_LIGHT = None
+
+
+def _light_mask():
+    """Dark overlay with a soft clear circle in the middle (cached)."""
+    global _LIGHT
+    if _LIGHT is None:
+        size = 2 * LIGHT_OUTER + max(SCREEN_WIDTH, SCREEN_HEIGHT)
+        _LIGHT = pygame.Surface((size, size), pygame.SRCALPHA)
+        _LIGHT.fill((0, 0, 0, LIGHT_DARK))
+        c = size // 2
+        for r in range(LIGHT_OUTER, LIGHT_INNER - 1, -4):
+            t = (r - LIGHT_INNER) / (LIGHT_OUTER - LIGHT_INNER)
+            pygame.draw.circle(_LIGHT, (0, 0, 0, int(LIGHT_DARK * t)), (c, c), r)
+    return _LIGHT
 
 
 class DungeonScreen(Screen):
@@ -87,6 +108,7 @@ class DungeonScreen(Screen):
         self.stride = 0.0   # pixels walked since the last footstep sound
         self.visited = []
         self.seen = set()
+        self.visible = set()                 # in line of sight right now
         self.enemies = place_enemies(self.dungeon, floor)
         self.all_enemies = list(self.enemies)   # placement order, for saves
         self.chests = self._place_chests()   # [cell, opened]
@@ -245,16 +267,13 @@ class DungeonScreen(Screen):
         if room is not None:
             if room not in self.visited:
                 self.visited.append(room)
-                r = room.rect
-                self.seen.update((x, y) for x in range(r.left, r.right)
-                                 for y in range(r.top, r.bottom))
         else:
             self.dungeon.visited_corridors.add(cell)
-        cx, cy = cell
-        for x in range(cx - SIGHT, cx + SIGHT + 1):
-            for y in range(cy - SIGHT, cy + SIGHT + 1):
-                if self.dungeon.is_walkable((x, y)):
-                    self.seen.add((x, y))
+        if cell != getattr(self, "_sight_from", None):
+            self._sight_from = cell
+            self.visible = {c for c in self.dungeon.visible_from(cell, SIGHT)
+                            if self.dungeon.is_walkable(c)}
+            self.seen |= self.visible
 
     def camera(self):
         """Top-left world pixel of the view, centred on the hero and
@@ -293,6 +312,7 @@ class DungeonScreen(Screen):
             if room is not None:
                 out = self.dungeon.door_outside(room, self.cell())
                 self.x, self.y = self._centre(out)
+                self._mark_visited()
                 self.hud.say(f"You escaped from the {battle.enemy.name}.")
         self.save_run()
 
@@ -363,9 +383,9 @@ class DungeonScreen(Screen):
     def draw(self, surface):
         surface.fill((0, 0, 0))
         ox, oy = self.camera()
-        overrides = {self.stairs: TILE_STAIRS_DOWN} if self.stairs else None
+        overrides = {self.stairs: SEWER_MANHOLE} if self.stairs else None
         self.dungeon.render(surface, (ox, oy), seen=self.seen,
-                            overrides=overrides)
+                            overrides=overrides, visible=self.visible)
         blink = int(self.anim_t / 0.4) % 2
 
         for cell, opened in self.chests:
@@ -375,8 +395,7 @@ class DungeonScreen(Screen):
                 surface.blit(img, img.get_rect(center=(x - ox, y - oy)))
 
         for e in self.enemies:
-            cell = (int(e.x // TILE_SIZE), int(e.y // TILE_SIZE))
-            if cell not in self.seen:
+            if cell_of(e) not in self.visible:      # walls hide enemies
                 continue
             img = self.enemy_frames[e.type.sprite][ENEMY_IDLE[blink]]
             if e.boss:
@@ -390,6 +409,9 @@ class DungeonScreen(Screen):
         frame = self.frames[self.facing * HERO_COLS + col]
         surface.blit(frame, frame.get_rect(
             center=(int(self.x) - ox, int(self.y) - oy)))
+
+        light = _light_mask()
+        surface.blit(light, light.get_rect(center=(int(self.x) - ox, int(self.y) - oy)))
 
         self.hud.draw(surface, self.player, self.floor)
         if self.banner_t > 0:
