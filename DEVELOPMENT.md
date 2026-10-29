@@ -12,25 +12,31 @@ Base (lobby) already runs in the GUI; the item system, dungeon and combat are ne
 
 ## 0. Start Here
 
-**Where we are:** M1 (sprites), M3 (GUI up to the Base) and **M2 (item system) are done.**
-`pygame_rpg/items.py` holds a **212-item catalog** (20 weapon bases + 60 tiers, 8 armor + 24,
-6 consumables + 18, 13 trinkets + 39, 6 abilities + 18; no duplicate ids), with rarity by tier
-and a `roll_loot()` helper ready for drops. The hero has 11 equipment slots, effective stats,
-HP and MP, and a level gate on equip; old saves migrate on load.
+**Where we are:** M1 (sprites), M3 (GUI up to the Base) and M2 (item system) are done. **M4
+(dungeon + combat) is in progress: step 1, the dungeon screen, is done.** The Base's *Adventure*
+button opens `gui/dungeon_screen.py`: a generated floor where the hero walks with wall collision,
+a walk animation, a following camera and a minimap of explored rooms and corridors. Esc saves and
+returns to the Base. `pygame_rpg/items.py` holds a 212-item catalog with rarity and a
+`roll_loot()` helper ready for drops.
 
-**Next task: M4 — Dungeon + Combat** (details in §6.2). Suggested order, one step at a time,
-each verified headless:
+**Next task: M4 step 2 — enemies** (details in §6.2):
 
-1. **Dungeon screen:** a `gui/dungeon_screen.py` that wraps `dungeon.py` + the hero sprite from
-   `assets.py` (the M1 loop lives in git history, commit `d2a0ec2`, `main.py`). Enable the
-   Base's *Adventure* button; Esc returns to the Base. Add wall collision.
-2. **Enemies (`enemies.py`):** data-driven enemy types scaled by floor; placed as sprites in
-   rooms; bumping into one opens the battle screen.
-3. **Combat (`combat.py` + `gui/battle_screen.py`):** turn-based menu (Attack / Abilities /
-   Items / Run). Damage uses `Player.total()`; abilities use `can_cast()` / `spend_mp()` and
-   cooldowns kept in the battle state; bombs and mana potions become usable here; ailments as
-   data; trinket wards and XP bonus apply. Win → XP + `roll_loot()`; death → back to the Base.
-4. **Loot, stairs, HUD, fog of war,** then dungeon state in saves (M5).
+1. New `pygame_rpg/enemies.py`: data-driven enemy types (`ENEMY_NAMES` in `assets.py` already
+   lists slime, goblin, bat, skeleton, boss and their sprite sheets generate as placeholders).
+   Stats scale with floor; one boss per floor in the room farthest from room 0.
+2. Place enemies as sprites in rooms (never in room 0) with the idle animation
+   (`ENEMY_IDLE` frames). Use the dungeon's own `rng` so placement follows the seed.
+3. Bumping into one (hitbox overlap in `DungeonScreen.move`) requests a transition to a
+   `"battle"` screen. Until step 3 exists, a stub battle screen that wins instantly is fine;
+   the beaten enemy is removed from the floor, so the dungeon screen must survive the round
+   trip (keep it in the transition kwargs, or keep floor state outside the screen).
+4. Extend `tests/m4_smoke_test.py`.
+
+Later M4 steps: **3. Combat** (`combat.py` + `gui/battle_screen.py`: turn-based menu Attack /
+Abilities / Items / Run; damage from `Player.total()`; abilities via `can_cast()` /
+`spend_mp()` with cooldowns in battle state; bombs and mana potions usable; ailments as data;
+trinket wards and XP bonus apply; win → XP + `roll_loot()`, death → back to the Base).
+**4. Loot, stairs, HUD, fog of war,** then dungeon state in saves (M5).
 
 **Standing rules**
 
@@ -54,7 +60,7 @@ meaningful.
 | M1 | Sprites everywhere | Tileset, player/enemy/item/UI sprites, asset manager | ✅ done |
 | M3 | GUI up to the Base | Title → tutorial → hero maker/chooser → Base → inventory / stats / level-up, JSON saves | ✅ done (16 Oct 2026), 32-check end-to-end smoke test |
 | M2 | Item system | Full catalog, equipment slots, equipment-driven stats, weight, rarity (six sub-milestones, §6.1) | ✅ done (29 Oct 2026): 212-item catalog, 11 slots, effective stats, HP/MP, level gate, rarity + loot roll |
-| M4 | Dungeon + Combat | Collision, fog of war, loot, enemies/bosses, turn-based battles, weapon ailments, HUD | pending |
+| M4 | Dungeon + Combat | Collision, fog of war, loot, enemies/bosses, turn-based battles, weapon ailments, HUD | 🚧 step 1 of 4 done (dungeon screen + collision); next: enemies |
 | M5 | Persistence + Polish | Dungeon state in saves, balance config, polish, pytest suite | pending (character JSON saves already done) |
 
 ---
@@ -66,7 +72,7 @@ meaningful.
 Starting the game runs the full pre-adventure flow in the GUI: **title → tutorial → hero maker
 (two-stage name input + confirm) or hero chooser (paged saved list) → Base hub → inventory
 (equip / unequip / use / drop + weight bar, 11 equipment slots incl. 4 ability slots) → stats (base + equipment bonus)
-→ level-up (bank one stat at a time)**, with one JSON save per character. The Base's *Adventure* button is drawn disabled until M4.
+→ level-up (bank one stat at a time)**, with one JSON save per character. The Base's *Adventure* button opens the dungeon (walk a generated floor; no enemies yet).
 
 ### 2.2 File-by-file
 
@@ -79,7 +85,8 @@ Starting the game runs the full pre-adventure flow in the GUI: **title → tutor
 | `pygame_rpg/savegame.py` | ✅ M3 | `saves/<name>.json` per character + `saves/index.json`; `_safe_name()` validates names (`^[\w .-]{1,20}$`), index self-prunes missing files; `_resolve()` turns saved item refs (id or `{"id", "charges"}`) into items. |
 | `pygame_rpg/gui/screen.py` | ✅ M3 | `Screen` base class, `Button`, cached `font()`, shared palette, `QUIT` sentinel. |
 | `pygame_rpg/gui/*.py` (8 screens) | ✅ M3 | `title_screen`, `tutorial_screen`, `hero_maker`, `hero_chooser`, `base_screen`, `inventory_screen`, `stats_screen`, `level_up_screen`. |
-| `pygame_rpg/dungeon.py` | M1, dormant | Rectangular rooms + corridor linking, tileset rendering with camera offset, minimap. No wall collision yet. Kept for M4. |
+| `pygame_rpg/dungeon.py` | 🚧 M4 | Seeded generation (private `rng`, same seed = same floor): non-overlapping rooms, corridors linked as a tree so every room is reachable, doors where corridors leave rooms. `is_walkable()`, `spawn_point()`, tileset rendering with camera offset, minimap of visited rooms + walked corridors. |
+| `pygame_rpg/gui/dungeon_screen.py` | 🚧 M4 | `DungeonScreen`: hero position, `move()` with axis-separated wall collision (20 px hitbox), trinket speed bonus, walk/idle animation, clamped camera, overlay (floor, HP/MP, minimap). Esc saves → Base. |
 | `pygame_rpg/assets.py` + `assets/` | M1, in use | `AssetManager`: loads PNGs, slices sheets, and generates + saves placeholder art for missing files (tileset, hero sheet, slime, sword/potion icons, panel). Used by GUI screens for icons/portrait. |
 | `pygame_rpg/README.md` | outdated | Still describes the M1 skeleton (walk around a dungeon). Update or fold into this file when M4 lands. |
 | `RPG_V3/main_V3.py` | reference | Text UI: `tutorial()`, `hero_maker()`, `hero_chooser()`, `lobby()` (stub), `inventory()`/`backpack()` (stubs), `xp_check()`. Ported up to the Base. |
@@ -109,11 +116,12 @@ pygame_rpg/
 ├── items.py           # Item dataclass + data-driven catalog
 ├── savegame.py        # JSON save/load + hero index
 ├── assets.py          # AssetManager + placeholder generators
-├── dungeon.py         # (dormant until M4) procedural rooms/corridors, rendering, minimap
+├── dungeon.py         # seeded floor generation, walkability, rendering, minimap
 ├── gui/
 │   ├── screen.py      # Screen base, Button, fonts, palette, QUIT
 │   ├── title_screen.py, tutorial_screen.py, hero_maker.py, hero_chooser.py
-│   └── base_screen.py, inventory_screen.py, stats_screen.py, level_up_screen.py
+│   ├── base_screen.py, inventory_screen.py, stats_screen.py, level_up_screen.py
+│   └── dungeon_screen.py  # M4: walk the floor (Adventure)
 └── assets/            # tileset.png, player/hero_sheet.png, enemies/slime.png,
                        # items/{sword,potion}.png, ui/panel.png (generated placeholders)
 ```
@@ -278,9 +286,9 @@ abilities), equipment math testable without pygame, weight system working, every
 
 The M1 crawler (`dungeon.py`, `assets.py`) is revived and wired to the Base's *Adventure* button.
 
-1. **Dungeon** — wall collision (today the player only clamps to bounds), tile fog of war
-   (minimap already tracks visited rooms), loot chests, floor pickups (respect `can_carry`),
-   stairs to the next generated floor, torches/decor.
+1. **Dungeon** — ✅ dungeon screen, wall collision, connected floors, real doors, minimap.
+   Still to come in step 4: tile fog of war, loot chests, floor pickups (respect
+   `can_carry`), stairs to the next generated floor, torches/decor.
 2. **Enemies (`enemies.py`)** — slimes/rats on floor 1, stronger level-scaled types deeper, one
    boss per floor (larger sprite, more HP, uses an ailment). Enemies stand as visible sprites
    with idle animation; bumping into one starts a battle. No chasing AI.
@@ -332,6 +340,11 @@ with the HUD active.
   charges, save round-trip, old-save migration, and a GUI smoke test (every screen renders,
   equip armor and use a potion through the inventory buttons). Saves go to a temp folder; it is
   the natural seed for the M5 pytest suite. Extend it with each sub-milestone.
+* **M4 harness** `tests/m4_smoke_test.py` → "m4 OK (260 checks)": 40 seeds of generation
+  (no overlap, room cells intact, every room reachable, doors open onto corridors, determinism,
+  global `random` untouched), and the dungeon screen (spawn, walls stop the hero, a 3000-step
+  random walk stays on floor, the hero walks a BFS path to every room on three seeds, speed
+  trinket, camera clamp, Adventure → dungeon → Esc → Base with save).
 
 ---
 

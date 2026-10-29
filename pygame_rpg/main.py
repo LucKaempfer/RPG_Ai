@@ -1,16 +1,17 @@
 # pygame_rpg/main.py
-"""M3 entry point: the pre-dungeon flow, run inside the GUI.
+"""Entry point: the state machine that runs every GUI screen.
 
 Flow: Title -> Tutorial -> Hero Maker -> Hero Chooser -> Base,
-with the Base branching into Inventory, Stats and Level-Up.
+with the Base branching into Inventory, Stats, Level-Up and the
+Dungeon (Adventure).
 
 Screens never reference each other directly.  Each one's
 ``handle_event`` returns a transition request (``None``, the ``QUIT``
 sentinel, a screen name string, or a ``(name, kwargs)`` tuple) and
 this state machine performs the actual swap.
 
-The M1 dungeon demo loop is kept in git history; ``dungeon.py`` and
-``assets.py`` stay available for the M4 adventure.
+``dungeon.py`` and ``assets.py`` (the M1 crawler) back the M4
+adventure in ``gui/dungeon_screen.py``.
 """
 
 import pygame
@@ -25,6 +26,7 @@ from .gui.base_screen import BaseScreen
 from .gui.inventory_screen import InventoryScreen
 from .gui.stats_screen import StatsScreen
 from .gui.level_up_screen import LevelUpScreen
+from .gui.dungeon_screen import DungeonScreen
 
 
 def build_screen(name, display, kwargs=None):
@@ -39,7 +41,7 @@ def build_screen(name, display, kwargs=None):
         return HeroMakerScreen(display)
     if name == "hero_chooser":
         return HeroChooserScreen(display)
-    if name in ("base", "inventory", "stats", "level_up"):
+    if name in ("base", "inventory", "stats", "level_up", "dungeon"):
         player = kwargs.get("player")
         if name == "base":
             return BaseScreen(display, player)
@@ -47,6 +49,10 @@ def build_screen(name, display, kwargs=None):
             return InventoryScreen(display, player)
         if name == "stats":
             return StatsScreen(display, player)
+        if name == "dungeon":
+            return DungeonScreen(display, player,
+                                 floor=kwargs.get("floor", 1),
+                                 seed=kwargs.get("seed"))
         return LevelUpScreen(display, player)
     raise ValueError(f"unknown screen name: {name!r}")
 
