@@ -1,10 +1,13 @@
 # pygame_rpg/gui/hero_maker.py
 """Hero creation screen (port of the V3 hero_maker()).
 
-Three stages: type a name, pick the hero's look (skin, hair, hair
-colour, tunic, with a live walking preview), confirm.  The character is
-then written to disk with the V3 starting stats plus the GUI starter
-gear (sword + potion).
+Four stages: type a name, choose a class (``classes.py``: warrior,
+archer, mage, rogue; it sets the starting stats and gear), pick the
+hero's look (skin, hair, hair colour, tunic, with a live walking
+preview holding the class's weapon), confirm.  The character is then
+written to disk with the class's stats and starter kit.
+
+Class stage: tap a card or Left / Right, Enter goes on, Esc goes back.
 
 Look stage keys: Up / Down pick a row, Left / Right change it, R rolls
 a random look, Enter goes on, Esc goes back to the name.
@@ -16,11 +19,14 @@ import pygame
 
 from ..assets import (
     AssetManager, LOOK_OPTIONS, LOOK_LABELS, look_choice,
-    HERO_COLS, HERO_WALK_COLS,
+    HERO_COLS, HERO_WALK_COLS, gear_of,
 )
-from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, START_LEVEL, START_HP
-from ..player import Player, LOOK_KEYS
-from ..items import STARTER_INVENTORY, item_by_id
+from ..classes import CLASSES, CLASS_ORDER, make_hero
+from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, START_LEVEL, START_MP
+from ..player import LOOK_KEYS
+from ..items import item_by_id
+from ..stat_names import LABEL
+from .inventory_screen import _wrap
 from ..savegame import save_player, name_exists, _safe_name
 from .screen import (
     Screen, Button,
@@ -32,6 +38,8 @@ MAX_NAME_LEN = 20
 ERROR_COLOR = (235, 110, 100)
 
 NAME_HINT = "Letters, numbers, spaces, . _ -   (up to 20 characters)"
+CLASS_HINT = "Tap a class or Left/Right: choose   Enter: next   Esc: back"
+CLASS_STATS = ("hp", "ap", "rap", "map", "dp", "rdp", "mdp")
 LOOK_HINT = "Up/Down: choose   Left/Right: change   R: random   Enter: next   Esc: back"
 # Preview: the hero walks and turns to a new direction every TURN_TIME s.
 PREVIEW_FRAME = 0.11
@@ -56,6 +64,12 @@ class HeroMakerScreen(Screen):
         self.btn_cancel = Button("Cancel", (cx + 20, bottom, 250, 48))
         self.btn_yes = Button("Yes", (cx - 230, bottom, 210, 48))
         self.btn_no = Button("No, go back", (cx + 20, bottom, 210, 48))
+        # Class stage: one card per class, details below.
+        self.hero_class = CLASS_ORDER[0]
+        self.class_cards = [pygame.Rect(40 + i * 185, 130, 170, 96)
+                            for i in range(len(CLASS_ORDER))]
+        self.btn_class_back = Button("Back", (cx - 230, bottom, 210, 48))
+        self.btn_class_next = Button("Next", (cx + 20, bottom, 210, 48))
         # Look stage.
         self.look = {k: 0 for k in LOOK_KEYS}
         self.row = 0
@@ -94,6 +108,8 @@ class HeroMakerScreen(Screen):
                     return self._validate()
                 if self.btn_cancel.rect.collidepoint(pos):
                     return "title"
+            elif self.stage == "class":
+                self._click_class(pos)
             elif self.stage == "look":
                 self._click_look(pos)
             else:
@@ -109,6 +125,8 @@ class HeroMakerScreen(Screen):
                     return "title"
                 elif event.key == pygame.K_BACKSPACE:
                     self.text = self.text[:-1]
+            elif self.stage == "class":
+                self._class_key(event.key)
             elif self.stage == "look":
                 self._look_key(event.key)
             else:
@@ -136,8 +154,34 @@ class HeroMakerScreen(Screen):
             self.error = f"{name} already exists. Choose another name."
             return None
         self.error = ""
-        self.stage = "look"
+        self.stage = "class"
         return None
+
+    # -- class stage -------------------------------------------------------
+    def pick_class(self, step) -> None:
+        i = CLASS_ORDER.index(self.hero_class)
+        self.hero_class = CLASS_ORDER[(i + step) % len(CLASS_ORDER)]
+
+    def _class_key(self, key) -> None:
+        if key in (pygame.K_LEFT, pygame.K_a, pygame.K_UP, pygame.K_w):
+            self.pick_class(-1)
+        elif key in (pygame.K_RIGHT, pygame.K_d, pygame.K_DOWN, pygame.K_s):
+            self.pick_class(1)
+        elif pygame.K_1 <= key < pygame.K_1 + len(CLASS_ORDER):
+            self.hero_class = CLASS_ORDER[key - pygame.K_1]
+        elif key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            self.stage = "look"
+        elif key == pygame.K_ESCAPE:
+            self.stage = "input"
+
+    def _click_class(self, pos) -> None:
+        for key, card in zip(CLASS_ORDER, self.class_cards):
+            if card.collidepoint(pos):
+                self.hero_class = key
+        if self.btn_class_next.rect.collidepoint(pos):
+            self.stage = "look"
+        elif self.btn_class_back.rect.collidepoint(pos):
+            self.stage = "input"
 
     # -- look stage --------------------------------------------------------
     def change(self, key, step) -> None:
@@ -161,7 +205,7 @@ class HeroMakerScreen(Screen):
         elif key in (pygame.K_RETURN, pygame.K_KP_ENTER):
             self.stage = "confirm"
         elif key == pygame.K_ESCAPE:
-            self.stage = "input"
+            self.stage = "class"
 
     def _click_look(self, pos) -> None:
         for i, (row, left, right) in enumerate(self.look_rows):
@@ -178,19 +222,19 @@ class HeroMakerScreen(Screen):
         elif self.btn_next.rect.collidepoint(pos):
             self.stage = "confirm"
         elif self.btn_back.rect.collidepoint(pos):
-            self.stage = "input"
+            self.stage = "class"
 
     def _create(self):
         """Write the new character to disk and head for the Base."""
-        name = _safe_name(self.text)
-        player = Player(name=name, look=dict(self.look))
-        player.inventory = [item_by_id(i) for i in STARTER_INVENTORY]
+        player = make_hero(_safe_name(self.text), self.look, self.hero_class)
         save_player(player)
         return ("base", {"player": player})
 
     def _hover(self, pos):
         if self.stage == "input":
             buttons = (self.btn_create, self.btn_cancel)
+        elif self.stage == "class":
+            buttons = (self.btn_class_back, self.btn_class_next)
         elif self.stage == "look":
             buttons = (self.btn_random, self.btn_next, self.btn_back)
         else:
@@ -227,6 +271,8 @@ class HeroMakerScreen(Screen):
             hint = font(20).render(NAME_HINT, True, DIM_TEXT)
             surface.blit(hint,
                          (self.input_rect.x, self.input_rect.bottom + 10))
+        elif self.stage == "class":
+            self._draw_class(surface)
         elif self.stage == "look":
             self._draw_look(surface)
         else:
@@ -238,9 +284,10 @@ class HeroMakerScreen(Screen):
             q = font(28).render(f"Is '{name}' correct?", True, TEXT_COLOR)
             surface.blit(q,
                          q.get_rect(center=(panel.centerx, panel.top + 50)))
+            cls = CLASSES[self.hero_class]
             info = font(22).render(
-                f"Level {START_LEVEL}  -  {START_HP} HP  -  "
-                f"starts with sword and potion", True, DIM_TEXT)
+                f"Level {START_LEVEL} {cls.name}  -  {cls.stats['hp']} health  -  "
+                f"{START_MP + cls.mp_bonus} mana", True, DIM_TEXT)
             surface.blit(info,
                          info.get_rect(center=(panel.centerx, panel.top + 110)))
             hero = self._preview_frame(0)
@@ -254,6 +301,9 @@ class HeroMakerScreen(Screen):
         if self.stage == "input":
             self.btn_create.draw(surface, hot=(self.hot is self.btn_create))
             self.btn_cancel.draw(surface, hot=(self.hot is self.btn_cancel))
+        elif self.stage == "class":
+            for btn in (self.btn_class_back, self.btn_class_next):
+                btn.draw(surface, hot=(self.hot is btn))
         elif self.stage == "look":
             for btn in (self.btn_random, self.btn_next, self.btn_back):
                 btn.draw(surface, hot=(self.hot is btn))
@@ -264,13 +314,65 @@ class HeroMakerScreen(Screen):
     def _preview_frame(self, direction=None, size=64):
         """The hero in the chosen look, walking; ``direction`` None turns
         through all four directions over time."""
-        frames = self.assets.hero_frames(self.look)
+        weapon = item_by_id(CLASSES[self.hero_class].kit[0])
+        frames = self.assets.hero_frames(self.look, gear_of({"weapon": weapon}))
         if direction is None:
             direction = (0, 3, 1, 2)[int(self.preview_t / TURN_TIME) % 4]
         col = HERO_WALK_COLS[int(self.preview_t / PREVIEW_FRAME)
                              % len(HERO_WALK_COLS)]
         frame = frames[direction * HERO_COLS + col]
         return pygame.transform.scale(frame, (size, size))
+
+    def _draw_class(self, surface):
+        """Class cards across the top, the chosen class's details below:
+        how it plays, its starting stats as bars, its starter kit."""
+        sub = font(26).render("Choose your class", True, DIM_TEXT)
+        surface.blit(sub, sub.get_rect(center=(SCREEN_WIDTH // 2, 108)))
+        for key, card in zip(CLASS_ORDER, self.class_cards):
+            cls, chosen = CLASSES[key], key == self.hero_class
+            pygame.draw.rect(surface, PANEL_COLOR, card, border_radius=8)
+            pygame.draw.rect(surface, FOCUS_BORDER if chosen else BORDER_COLOR,
+                             card, width=3 if chosen else 2, border_radius=8)
+            name = font(28).render(cls.name, True, GOLD if chosen else TEXT_COLOR)
+            surface.blit(name, name.get_rect(midtop=(card.centerx, card.y + 14)))
+            for i, line in enumerate(_wrap(cls.blurb, 18, card.w - 16)[:2]):
+                img = font(18).render(line, True, DIM_TEXT)
+                surface.blit(img, img.get_rect(midtop=(card.centerx, card.y + 48 + i * 18)))
+
+        cls = CLASSES[self.hero_class]
+        panel = pygame.Rect(40, 240, 725, 228)
+        pygame.draw.rect(surface, PANEL_COLOR, panel, border_radius=10)
+        pygame.draw.rect(surface, BORDER_COLOR, panel, width=2, border_radius=10)
+        hero = self._preview_frame(0, size=96)
+        surface.blit(hero, (panel.x + 14, panel.y + 12))
+        x, y = panel.x + 120, panel.y + 16
+        for line in _wrap(cls.about, 20, 240):
+            surface.blit(font(20).render(line, True, TEXT_COLOR), (x, y))
+            y += 21
+        y = max(y + 10, panel.y + 120)
+        surface.blit(font(19).render("Starts with:", True, GOLD), (panel.x + 16, y))
+        kit = ", ".join(dict.fromkeys(item_by_id(i).name for i in cls.kit))
+        extra = f", {cls.gold} gold" if cls.gold else ""
+        for line in _wrap(kit + extra, 19, 330):
+            y += 20
+            surface.blit(font(19).render(line, True, DIM_TEXT), (panel.x + 16, y))
+        # Stat bars on the right.
+        sx, sy = panel.x + 390, panel.y + 16
+        for i, stat in enumerate(CLASS_STATS):
+            value = cls.stats[stat]
+            top = 150 if stat == "hp" else 12
+            yy = sy + i * 26
+            surface.blit(font(19).render(LABEL[stat], True, DIM_TEXT), (sx, yy))
+            bar = pygame.Rect(sx + 130, yy + 3, 150, 12)
+            pygame.draw.rect(surface, (15, 15, 20), bar, border_radius=5)
+            fill = bar.copy()
+            fill.w = max(2, int(bar.w * min(1, value / top)))
+            pygame.draw.rect(surface, GOLD, fill, border_radius=5)
+            surface.blit(font(19).render(str(value), True, TEXT_COLOR), (bar.right + 8, yy))
+        mana = font(19).render(f"{LABEL['mp']}  {START_MP + cls.mp_bonus}", True, DIM_TEXT)
+        surface.blit(mana, (sx, sy + len(CLASS_STATS) * 26))
+        hint = font(18).render(CLASS_HINT, True, DIM_TEXT)
+        surface.blit(hint, hint.get_rect(midtop=(SCREEN_WIDTH // 2, 476)))
 
     def _draw_look(self, surface):
         """Preview on the left, one option row per look key on the right."""

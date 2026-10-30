@@ -72,6 +72,8 @@ def test_hero_maker_look_stage(display, saves):
     h = HeroMakerScreen(display)
     h.text = "Mira"
     assert h.handle_event(key(pygame.K_RETURN)) is None
+    assert h.stage == "class"
+    h.handle_event(key(pygame.K_RETURN))
     assert h.stage == "look"
     h.handle_event(key(pygame.K_RIGHT))                 # skin 0 -> 1
     h.handle_event(key(pygame.K_DOWN))
@@ -84,9 +86,11 @@ def test_hero_maker_look_stage(display, saves):
     assert all(0 <= h.look[k] < len(LOOK_OPTIONS[k]) for k in LOOK_KEYS)
     chosen = dict(h.look)
     h.handle_event(key(pygame.K_ESCAPE))
+    assert h.stage == "class"
+    h.handle_event(key(pygame.K_ESCAPE))
     assert h.stage == "input"
-    h.handle_event(key(pygame.K_RETURN))
-    h.handle_event(key(pygame.K_RETURN))
+    for _ in range(3):
+        h.handle_event(key(pygame.K_RETURN))
     assert h.stage == "confirm"
     h.draw(display)
     name, kwargs = h.handle_event(key(pygame.K_RETURN))

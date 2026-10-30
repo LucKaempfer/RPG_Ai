@@ -8,6 +8,7 @@ here — the player is only ever handed back to the Base.
 
 import pygame
 
+from ..classes import class_name
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from ..player import UPGRADABLE_STATS
 from ..savegame import save_player
@@ -67,7 +68,7 @@ class StatsScreen(Screen):
         pygame.draw.rect(surface, PANEL_COLOR, panel, border_radius=8)
         pygame.draw.rect(surface, BORDER_COLOR, panel, width=2, border_radius=8)
 
-        lvl = font(26).render(f"Level {p.lvl}", True, TEXT_COLOR)
+        lvl = font(26).render(f"Level {p.lvl} {class_name(p)}", True, TEXT_COLOR)
         surface.blit(lvl, lvl.get_rect(midtop=(panel.centerx, 100)))
         bar = pygame.Rect(panel.centerx - 150, 140, 300, 12)
         pygame.draw.rect(surface, (15, 15, 20), bar, border_radius=6)

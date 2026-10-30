@@ -13,6 +13,7 @@ what is left to cast abilities with.
 """
 from dataclasses import dataclass, field
 
+from .classes import CLASSES
 from .crafting import BLUEPRINTS, STARTER_BLUEPRINTS
 from .config import (
     START_LEVEL, START_XP, START_HP, START_AP, START_RAP, START_MAP,
@@ -80,6 +81,8 @@ class Player:
     materials: dict = field(default_factory=dict)
     # Weapon blueprints learned (weapon base ids, see crafting.py).
     blueprints: list = field(default_factory=lambda: list(STARTER_BLUEPRINTS))
+    # Class key from the hero maker (classes.py); "" = made before classes.
+    hero_class: str = ""
 
     def __post_init__(self):
         for slot in EQUIP_SLOTS:
@@ -122,7 +125,9 @@ class Player:
     # --- MP (ability casts, M4 battle menu) ---
     @property
     def max_mp(self) -> int:
-        return START_MP + MP_PER_LEVEL * (self.lvl - 1)
+        cls = CLASSES.get(self.hero_class)
+        return (START_MP + (cls.mp_bonus if cls else 0)
+                + MP_PER_LEVEL * (self.lvl - 1))
 
     def restore_mp(self, amount: int) -> int:
         """Restore up to ``amount`` MP (capped at max_mp); returns the
@@ -303,6 +308,7 @@ class Player:
         ref = lambda item: self._item_ref(item, default_charges)
         return {
             "name": self.name,
+            "hero_class": self.hero_class,
             "lvl": self.lvl,
             "xp": self.xp,
             "hp": self.hp,
@@ -347,6 +353,8 @@ class Player:
             dp=data.get("dp", START_DP),
             rdp=data.get("rdp", START_RDP),
             mdp=data.get("mdp", START_MDP),
+            hero_class=(data.get("hero_class", "")
+                        if data.get("hero_class", "") in CLASSES else ""),
         )
         p.lvl_up_counts.update(data.get("lvl_up_counts", {}))
         p.gold = max(0, int(data.get("gold", 0)))
