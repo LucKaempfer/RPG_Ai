@@ -29,6 +29,7 @@ from ..classes import CLASSES, CLASS_ORDER, make_hero
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, START_LEVEL, START_MP
 from ..player import LOOK_KEYS
 from ..items import item_by_id
+from ..lore import prologue
 from ..stat_names import LABEL
 from .inventory_screen import _wrap
 from ..savegame import save_player, name_exists, _safe_name
@@ -235,10 +236,13 @@ class HeroMakerScreen(Screen):
             self.stage = "class"
 
     def _create(self):
-        """Write the new character to disk and head for the Base."""
+        """Write the new character to disk and tell the prologue, which
+        leads on to the Base."""
         player = make_hero(_safe_name(self.text), self.look, self.hero_class)
         save_player(player)
-        return ("base", {"player": player})
+        return ("story", {"title": "Prologue", "heading": "Brackmoor",
+                          "pages": prologue(player.name),
+                          "next": ("base", {"player": player})})
 
     def _hover(self, pos):
         if self.stage == "input":

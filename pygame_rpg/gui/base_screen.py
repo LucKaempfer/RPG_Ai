@@ -6,7 +6,7 @@ pending level-ups are counted but not banked, so nothing is lost if
 the player wanders off before resolving them.  The actual level-up
 (banking XP and picking stats) happens on the level-up screen.
 
-Buttons: Inventory, View Stats, Adventure, Settings, Save & Exit.  With a saved
+Buttons: Inventory, View Stats, Journal (the story so far), Adventure, Settings, Save & Exit.  With a saved
 dungeon run (M5) the Adventure button reads "Continue (Floor N)" and
 resumes it as it was (HP included), and an extra New Adventure button
 drops it.  A new adventure starts rested (full HP / MP) on floor 1.
@@ -64,15 +64,16 @@ class BaseScreen(Screen):
             # builds the same floor, so the run can't be continued.
             delete_run(player.name)
             self.run = None
-        x, w, h = 420, 340, 46
-        self.btn_inventory = Button("Inventory", (x, 90, w, h))
-        self.btn_stats = Button("View Stats", (x, 144, w, h))
+        x, w, h, step = 420, 340, 42, 47
+        self.btn_inventory = Button("Inventory", (x, 84, w, h))
+        self.btn_stats = Button("View Stats", (x, 84 + step, w, h))
+        self.btn_journal = Button("Journal", (x, 84 + 2 * step, w, h))
         label = (f"Continue (Floor {self.run['floor']})" if self.run
                  else "Adventure")
-        self.btn_adventure = Button(label, (x, 198, w, h))
-        self.btn_new_run = Button("New Adventure", (x, 252, w, h))
-        self.btn_settings = Button("Settings", (x, 306, w, h))
-        self.btn_saveexit = Button("Save & Exit", (x, 360, w, h))
+        self.btn_adventure = Button(label, (x, 84 + 3 * step, w, h))
+        self.btn_new_run = Button("New Adventure", (x, 84 + 4 * step, w, h))
+        self.btn_settings = Button("Settings", (x, 84 + 5 * step, w, h))
+        self.btn_saveexit = Button("Save & Exit", (x, 84 + 6 * step, w, h))
         self.btn_choose = Button("Choose Stat", (x, 458, w, 52), size=28)
 
     # -- helpers ---------------------------------------------------------
@@ -83,7 +84,7 @@ class BaseScreen(Screen):
         return [b for b in self._menu() if b is not self.btn_new_run or self.run]
 
     def _menu(self):
-        return (self.btn_inventory, self.btn_stats, self.btn_adventure,
+        return (self.btn_inventory, self.btn_stats, self.btn_journal, self.btn_adventure,
                 self.btn_new_run, self.btn_settings, self.btn_saveexit)
 
     def _hover(self, pos):
@@ -123,6 +124,8 @@ class BaseScreen(Screen):
             return ("inventory", {"player": self.player})
         if btn is self.btn_stats:
             return ("stats", {"player": self.player})
+        if btn is self.btn_journal:
+            return ("journal", {"player": self.player})
         if btn is self.btn_adventure and self.run:
             self._save()
             return ("dungeon", {"player": self.player, "run": self.run})

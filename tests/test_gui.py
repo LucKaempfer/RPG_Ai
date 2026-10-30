@@ -61,6 +61,8 @@ def test_base_keyboard(display, saves):
     b.handle_event(key(pygame.K_DOWN))          # Inventory
     assert b.handle_event(key(pygame.K_RETURN)) == ("inventory", {"player": p})
     b.handle_event(key(pygame.K_DOWN))
+    b.handle_event(key(pygame.K_DOWN))          # Journal
+    assert b.handle_event(key(pygame.K_RETURN)) == ("journal", {"player": p})
     b.handle_event(key(pygame.K_DOWN))          # Adventure
     assert b.handle_event(key(pygame.K_RETURN)) == ("dungeon", {"player": p})
     b.draw(display)

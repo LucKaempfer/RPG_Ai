@@ -160,7 +160,8 @@ class BattleScreen(Screen):
             ("Abilities", ("mode", "abilities"),
              bool(self.player.equipped_abilities())),
             ("Items", ("mode", "items"), bool(b.battle_items())),
-            ("Run", ("run",), not any(e.boss for e in self.enemies)),
+            (f"Run  ({b.run_chance()}%)" if b.run_chance() else "Run",
+             ("run",), b.run_chance() > 0),
         ]
 
     def _build_buttons(self):

@@ -62,6 +62,13 @@ class Room:
     def contains(self, world_pos: Tuple[int, int]) -> bool:
         return self.rect.collidepoint(world_pos)
 
+def _ring(cells):
+    """``cells`` and their eight neighbours (a wall's look depends on
+    the cells around it)."""
+    return {(x + dx, y + dy) for x, y in cells
+            for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
+
+
 class Dungeon:
     """Handles generation and storage of rooms and corridors."""
 
@@ -74,6 +81,7 @@ class Dungeon:
         self._tile_frames: Optional[List[pygame.Surface]] = None
         self._shade: Optional[pygame.Surface] = None
         self._tile_cache: Dict[Tuple[int, int], int] = {}
+        self._layer = None          # see render(): the whole floor, drawn
 
     def generate(self, seed: Optional[int] = None):
         # A private RNG: the seed fully determines the floor and the
@@ -83,6 +91,7 @@ class Dungeon:
         self.room_map.clear()
         self.visited_corridors.clear()
         self._tile_cache = {}
+        self._layer = None
         attempts = 0
         while len(self.rooms) < NUM_ROOMS and attempts < NUM_ROOMS * 40:
             attempts += 1
@@ -386,31 +395,75 @@ class Dungeon:
         ``overrides`` maps cells to a tile index drawn instead (stairs).
         ``visible``: cells in the hero's line of sight right now; seen
         cells outside it are drawn dimmed (remembered, not watched).
+
+        The whole floor is kept drawn on one big surface (``_layer``) and
+        only the cells whose look changed (newly seen, line of sight
+        moved, an override) are redrawn there, so a frame is one blit:
+        drawing every tile every frame was too slow for a phone.
         """
-        if visible is not None and (self._shade is None
-                                    or self._shade.get_size() != (TILE_SIZE, TILE_SIZE)):
+        vis = frozenset(visible) if visible is not None else None
+        over = dict(overrides or {})
+        layer = self._layer
+        if (layer is None or layer["seen"] is not seen
+                or (vis is None) != (layer["vis"] is None)):
+            layer = self._layer = self._new_layer(seen)
+            dirty = None                       # every cell
+        else:
+            dirty = set()
+            if vis != layer["vis"]:
+                dirty |= _ring(vis ^ layer["vis"])
+            if seen is not None and len(seen) != len(layer["seen_copy"]):
+                dirty |= _ring(seen - layer["seen_copy"])
+            if over != layer["over"]:
+                dirty |= set(over) ^ set(layer["over"])
+                dirty |= {c for c in over if layer["over"].get(c) != over[c]}
+        if dirty is None or dirty:
+            self._redraw(layer, dirty, seen, vis, over)
+        layer["vis"], layer["over"] = vis, over
+        if seen is not None and len(seen) != len(layer["seen_copy"]):
+            layer["seen_copy"] = set(seen)
+        surface.blit(layer["surface"], (-camera_offset[0], -camera_offset[1]))
+
+    def _new_layer(self, seen):
+        size = (DUNGEON_WIDTH * TILE_SIZE, DUNGEON_HEIGHT * TILE_SIZE)
+        surf = pygame.Surface(size)
+        if pygame.display.get_init() and pygame.display.get_surface():
+            surf = surf.convert()
+        surf.fill((0, 0, 0))
+        return {"surface": surf, "seen": seen, "seen_copy": set(),
+                "vis": None, "over": {}}
+
+    def _cell_look(self, cell, seen, vis, over):
+        """(tile, dimmed) for a cell, or None when it stays black."""
+        x, y = cell
+        if seen is not None and cell not in seen and not (
+                cell not in self.room_map and any(
+                    (x + dx, y + dy) in seen
+                    for dx in (-1, 0, 1) for dy in (-1, 0, 1))):
+            return None
+        tile = over[cell] if cell in over else self._tile_for(cell)
+        return tile, vis is not None and not self._lit(cell, vis)
+
+    def _redraw(self, layer, cells, seen, vis, over):
+        """Redraw ``cells`` (None: all) on the layer."""
+        if self._shade is None:
             self._shade = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
             self._shade.fill((0, 0, 0, MEMORY_SHADE))
-        offset_x, offset_y = camera_offset
         tiles = self._tiles()
-        surf_w, surf_h = surface.get_size()
-        x0 = offset_x // TILE_SIZE
-        y0 = offset_y // TILE_SIZE
-        x1 = min(DUNGEON_WIDTH, x0 + (surf_w + TILE_SIZE - 1) // TILE_SIZE)
-        y1 = min(DUNGEON_HEIGHT, y0 + (surf_h + TILE_SIZE - 1) // TILE_SIZE)
-        for x in range(x0, x1):
-            for y in range(y0, y1):
-                cell = (x, y)
-                if seen is not None and cell not in seen and not (
-                        cell not in self.room_map and any(
-                            (x + dx, y + dy) in seen
-                            for dx in (-1, 0, 1) for dy in (-1, 0, 1))):
-                    continue
-                if overrides and cell in overrides:
-                    tile = overrides[cell]
-                else:
-                    tile = self._tile_for(cell)
-                pos = (x * TILE_SIZE - offset_x, y * TILE_SIZE - offset_y)
-                surface.blit(tiles[tile], pos)
-                if visible is not None and not self._lit(cell, visible):
-                    surface.blit(self._shade, pos)
+        surf = layer["surface"]
+        if cells is None:
+            cells = [(x, y) for x in range(DUNGEON_WIDTH)
+                     for y in range(DUNGEON_HEIGHT)]
+        for cell in cells:
+            x, y = cell
+            if not (0 <= x < DUNGEON_WIDTH and 0 <= y < DUNGEON_HEIGHT):
+                continue
+            pos = (x * TILE_SIZE, y * TILE_SIZE)
+            surf.fill((0, 0, 0), (pos, (TILE_SIZE, TILE_SIZE)))
+            look = self._cell_look(cell, seen, vis, over)
+            if look is None:
+                continue
+            tile, dim = look
+            surf.blit(tiles[tile], pos)
+            if dim:
+                surf.blit(self._shade, pos)

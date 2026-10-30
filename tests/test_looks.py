@@ -94,7 +94,8 @@ def test_hero_maker_look_stage(display, saves):
     assert h.stage == "confirm"
     h.draw(display)
     name, kwargs = h.handle_event(key(pygame.K_RETURN))
-    assert name == "base" and kwargs["player"].look == chosen
+    assert name == "story"                      # the prologue, then the Base
+    assert kwargs["next"][1]["player"].look == chosen
     assert S.load_player("Mira").look == chosen
 
 

@@ -81,6 +81,8 @@ def test_hero_maker_class_stage(display, saves):
     h.handle_event(key(pygame.K_RETURN))
     h.draw(display)
     name, kw = h.handle_event(key(pygame.K_RETURN))
-    assert name == "base" and kw["player"].hero_class == "archer"
+    assert name == "story" and kw["next"][0] == "base"  # prologue first
+    kw = kw["next"][1]
+    assert kw["player"].hero_class == "archer"
     assert kw["player"].equipment["weapon"].id == "bow"
     assert S.load_player("Robin").rap == CLASSES["archer"].stats["rap"]

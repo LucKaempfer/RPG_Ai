@@ -318,3 +318,29 @@ def test_group_gold_adds_up_and_no_running_from_a_boss_group():
     boss = E.make_enemy(E.BOSS_TYPE, 1, boss=True)
     b = C.Battle(hero(), [boss] + group("rat"), FixedRng(0.0))
     assert b.run() == ["You can't run from this fight!"]
+
+
+def test_run_chance_shown_and_used():
+    b = C.Battle(hero(), group("slime"), FixedRng())
+    assert b.run_chance() == C.RUN_CHANCE
+    # Each extra living enemy makes running harder; dead ones don't count.
+    foes = group("slime", "bat", "rat")
+    b = C.Battle(hero(), foes, FixedRng())
+    assert b.run_chance() == C.RUN_CHANCE - 2 * C.RUN_PER_EXTRA_ENEMY
+    foes[2].hp = 0
+    assert b.run_chance() == C.RUN_CHANCE - C.RUN_PER_EXTRA_ENEMY
+    # Trinket speed helps.
+    b = C.Battle(hero("haste_scarf"), group("slime"), FixedRng())
+    assert b.run_chance() == C.RUN_CHANCE + 10
+    # The roll is checked against the shown chance.
+    b = C.Battle(hero(), group("slime"), FixedRng(C.RUN_CHANCE - 0.1))
+    b.run()
+    assert b.state == C.FLED
+    b = C.Battle(hero(), group("slime"), FixedRng(C.RUN_CHANCE + 0.1))
+    b.run()
+    assert b.state == C.ONGOING
+
+
+def test_no_run_chance_against_the_boss():
+    boss = E.make_enemy(E.BOSS_TYPE, 1, boss=True)
+    assert C.Battle(hero(), [boss] + group("rat"), FixedRng()).run_chance() == 0

@@ -1,8 +1,10 @@
 """On-screen controls for touch screens: a D-pad and A / B / Bag / Menu.
 
-They sit in the black bars left and right of the canvas (``Display``
-keeps those bars wide enough when ``device.TOUCH`` is on) and feed the
-same inputs as the keyboard, so no screen needs to know about touch:
+In menus they sit in the black bars left and right of the canvas
+(``Display`` keeps those bars wide enough when ``device.TOUCH`` is on);
+in the dungeon, which fills the whole screen, they float over it
+half see-through in the bottom corners.  They feed the same inputs as
+the keyboard, so no screen needs to know about touch:
 
 * In the dungeon the D-pad holds the move actions (``settings.held``
   sees them through ``settings.virtual_held``) and the buttons send a
@@ -37,6 +39,7 @@ PAD_COLOR = (44, 44, 60)
 PAD_HOT = (215, 215, 245)
 RIM_COLOR = (110, 110, 140)
 LABEL_COLOR = (225, 225, 235)
+OVERLAY_ALPHA = 140           # see-through over the dungeon
 BUTTON_COLORS = {"a": (60, 120, 70), "b": (130, 60, 60),
                  "bag": (70, 70, 100), "menu": (70, 70, 100)}
 
@@ -72,13 +75,31 @@ class TouchControls:
         self.fingers = {}            # finger id -> "pad" or a button name
         self.pad_fingers = {}        # finger id -> frozenset of directions
         self.repeat = None           # [direction, seconds to next repeat]
+        self.overlay = False         # floating over the game, not in bars
+        self._layer = None           # SRCALPHA surface for the overlay
 
     # -- layout ------------------------------------------------------------
-    def layout(self, window, view):
+    def layout(self, window, view, overlay=False):
         """Place the controls in the bars beside ``view`` (the canvas
-        rect inside a ``window``-sized area)."""
+        rect inside a ``window``-sized area), or with ``overlay`` over
+        the game in the bottom corners (thumb reach)."""
         self.window, self.view = tuple(window), pygame.Rect(view)
+        self.overlay = overlay
         ww, wh = self.window
+        if overlay:
+            m = int(wh * 0.05)
+            r = int(wh * 0.19)
+            self.pad = ((m + r, wh - m - r), r)
+            rb = int(wh * 0.095)
+            rs = int(rb * 0.75)
+            ax, ay = ww - m - rb, wh - m - int(rb * 2.2)
+            self.buttons = {
+                "a": ((ax, ay), rb, "A"),
+                "b": ((ax - int(rb * 2.3), ay + int(rb * 1.2)), rb, "B"),
+                "bag": ((ax, ay - int(rb * 2.6)), rs, "Bag"),
+                "menu": ((ax - int(rb * 2.3), ay - int(rb * 1.6)), rs, "Menu"),
+            }
+            return
         bar = max(1, self.view.x)
         r = int(min(bar * 0.4, wh * 0.22))
         self.pad = ((bar // 2, int(wh * 0.62)), r)
@@ -111,6 +132,10 @@ class TouchControls:
         return None
 
     def on_control_side(self, pos):
+        """Outside the game view (the bars), where taps never reach a
+        screen.  With the overlay only the controls themselves count."""
+        if self.overlay:
+            return False
         return not self.view.collidepoint(pos)
 
     # -- input -------------------------------------------------------------
@@ -132,7 +157,8 @@ class TouchControls:
                 # SDL's copy of a finger: the finger events handled it if
                 # it was on the controls.
                 return (self.on_control_side(event.pos)
-                        or MOUSE_FINGER in self.fingers)
+                        or self.hit(event.pos) is not None
+                        or bool(self.fingers))
             if t == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 return self._down(MOUSE_FINGER, event.pos)
             if t == pygame.MOUSEMOTION and MOUSE_FINGER in self.fingers:
@@ -217,6 +243,17 @@ class TouchControls:
     def draw(self, surface):
         if not self.pad:
             return
+        if not self.overlay:
+            self._draw(surface)
+            return
+        if self._layer is None or self._layer.get_size() != surface.get_size():
+            self._layer = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        self._layer.fill((0, 0, 0, 0))
+        self._draw(self._layer)
+        self._layer.set_alpha(OVERLAY_ALPHA)
+        surface.blit(self._layer, (0, 0))
+
+    def _draw(self, surface):
         held = set().union(*self.pad_fingers.values()) if self.pad_fingers else set()
         (cx, cy), r = self.pad
         pygame.draw.circle(surface, PAD_COLOR, (cx, cy), r)

@@ -8,8 +8,8 @@ to the window with its aspect kept (black bars fill the rest), and
 mouse positions are mapped back to canvas coordinates, so no screen
 needs to know the window size.
 
-The scaling keeps the picture sharp: whenever the window is larger than
-the canvas, the canvas is first doubled with Scale2x (pixels stay hard,
+The scaling keeps the picture sharp: whenever the view is larger than
+the canvas shown, the canvas is first doubled with Scale2x (pixels stay hard,
 the stair steps of diagonal edges are rounded off) and only the rest is
 smoothed, instead of smoothing the whole way up, which made the old
 picture (text above all) look blurred.
@@ -17,13 +17,17 @@ picture (text above all) look blurred.
 The brightness and the fullscreen flag come from ``settings.current``
 (the settings screen changes them; F11 flips fullscreen and saves).
 
-Touch screens (``device.TOUCH``): the bars beside the canvas are kept at
-least ``TOUCH_BAR`` x the window height wide and hold the on-screen
-controls (``gui/touch.py``), which see the events first.  On Android the
-window is always fullscreen and the GPU does the scaling (``SCALED``):
-the window is a logical surface 600 px high (wider, to match the
-phone's shape) with the canvas unscaled in the middle.  The phone's Back
-button counts as Escape.
+Touch screens (``device.TOUCH``): the on-screen controls
+(``gui/touch.py``) see the events first.  Menus keep the 800 x 600
+canvas, with bars at least ``TOUCH_BAR`` x the window height wide beside
+it for the controls.  A screen with ``wide = True`` (the dungeon) gets a
+canvas the shape of the window instead, ``WIDE_HEIGHT`` px high, so the
+floor fills the whole screen a little zoomed in and the controls float
+over it (:meth:`Display.canvas_for`).  On Android the window is always
+fullscreen and the GPU does the scaling (``SCALED``): the window is a
+logical surface ``WIDE_HEIGHT`` px high, so the dungeon is drawn 1:1 and
+only the menus are scaled on the CPU.  The phone's Back button counts as
+Escape.
 """
 
 import pygame
@@ -37,6 +41,7 @@ FIT_WIDTH, FIT_HEIGHT = 0.9, 0.85
 MOUSE_EVENTS = (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN,
                 pygame.MOUSEBUTTONUP)
 TOUCH_BAR = 0.28   # least width of each control bar, x window height
+WIDE_HEIGHT = 420  # canvas height of wide screens on a touch screen
 SHRINK_BIAS = 2
 
 
@@ -60,15 +65,17 @@ def letterbox(window, canvas=None, side=0):
     return pygame.Rect((ww - w) // 2, (wh - h) // 2, w, h)
 
 
-def android_size(desktop, canvas=None):
+def android_size(desktop):
     """Logical window size on Android: the phone's shape (landscape),
-    at least the canvas height and wide enough for both control bars,
-    so the canvas is shown 1:1 and the GPU scales the whole window."""
-    cw, ch = canvas or (config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
+    ``WIDE_HEIGHT`` px high; the GPU scales it to the screen."""
     dw, dh = max(desktop), min(desktop)
-    aspect = dw / dh
-    w = max(cw + 2 * round(ch * TOUCH_BAR), round(ch * aspect))
-    return (w, max(ch, round(w / aspect)))
+    return (round(WIDE_HEIGHT * dw / dh), WIDE_HEIGHT)
+
+
+def wide_size(window):
+    """Size of the canvas for wide screens in a ``window``-sized area."""
+    ww, wh = window
+    return (max(1, round(WIDE_HEIGHT * ww / wh)), WIDE_HEIGHT)
 
 
 class Display:
@@ -85,12 +92,17 @@ class Display:
         self.fullscreen = device.IS_ANDROID or settings.current.fullscreen
         self.touch = TouchControls() if device.TOUCH else None
         self.screen_name = None
+        self.wide = False           # showing the wide canvas
+        self.active = self.canvas   # the canvas shown now
         self._open()
 
     def _open(self):
         if self.android_size:
-            self.window = pygame.display.set_mode(
-                self.android_size, pygame.SCALED | pygame.FULLSCREEN)
+            flags = pygame.SCALED | pygame.FULLSCREEN
+            try:   # vsync: frames land evenly, so walking looks smooth
+                self.window = pygame.display.set_mode(self.android_size, flags, vsync=1)
+            except pygame.error:
+                self.window = pygame.display.set_mode(self.android_size, flags)
         elif self.fullscreen:
             self.window = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
         else:
@@ -100,15 +112,34 @@ class Display:
 
     def _layout(self):
         self.laid_out_for = self.window.get_size()
-        side = round(self.laid_out_for[1] * TOUCH_BAR) if self.touch else 0
-        self.view = letterbox(self.laid_out_for, self.canvas.get_size(), side)
         if self.touch:
-            self.touch.layout(self.laid_out_for, self.view)
+            size = wide_size(self.laid_out_for)
+            if getattr(self, "wide_canvas", None) is None or \
+                    self.wide_canvas.get_size() != size:
+                self.wide_canvas = pygame.Surface(size)
+        if self.wide:
+            self.active = self.wide_canvas
+            self.view = pygame.Rect((0, 0), self.laid_out_for)
+        else:
+            self.active = self.canvas
+            side = round(self.laid_out_for[1] * TOUCH_BAR) if self.touch else 0
+            self.view = letterbox(self.laid_out_for, self.canvas.get_size(), side)
+        if self.touch:
+            self.touch.layout(self.laid_out_for, self.view, overlay=self.wide)
         self.scaled = pygame.Surface(self.view.size)
         self.boost = pygame.Surface(self.view.size)
-        cw, ch = self.canvas.get_size()
+        cw, ch = self.active.get_size()
         self.doubled = (pygame.Surface((cw * 2, ch * 2))
                         if self.view.w > cw or self.view.h > ch else None)
+
+    def canvas_for(self, screen):
+        """The canvas ``screen`` draws on this frame: the wide one for a
+        ``wide`` screen on a touch screen, else the 800 x 600 one."""
+        wide = bool(self.touch) and getattr(screen, "wide", False)
+        if wide != self.wide:
+            self.wide = wide
+            self._layout()
+        return self.active
 
     def toggle_fullscreen(self):
         if device.IS_ANDROID:
@@ -135,15 +166,15 @@ class Display:
         if event.type in MOUSE_EVENTS:
             data = dict(event.dict, pos=self.to_canvas(event.pos))
             if "rel" in data:
-                sx = self.canvas.get_width() / self.view.w
-                sy = self.canvas.get_height() / self.view.h
+                sx = self.active.get_width() / self.view.w
+                sy = self.active.get_height() / self.view.h
                 data["rel"] = (round(event.rel[0] * sx), round(event.rel[1] * sy))
             return pygame.event.Event(event.type, data)
         return event
 
     def to_canvas(self, pos):
         """Map a window position to the canvas (clamped to its edges)."""
-        cw, ch = self.canvas.get_size()
+        cw, ch = self.active.get_size()
         x = (pos[0] - self.view.x) * cw / self.view.w
         y = (pos[1] - self.view.y) * ch / self.view.h
         return (min(max(int(x), 0), cw - 1), min(max(int(y), 0), ch - 1))
@@ -166,14 +197,14 @@ class Display:
         pygame.display.flip()
 
     def _scale(self):
-        """The canvas into ``self.scaled`` (the view's size), sharply."""
+        """The active canvas into ``self.scaled`` (the view's size), sharply."""
         if not self.doubled:   # view no larger than the canvas
-            if self.view.size == self.canvas.get_size():
-                self.scaled.blit(self.canvas, (0, 0))
+            if self.view.size == self.active.get_size():
+                self.scaled.blit(self.active, (0, 0))
             else:
-                pygame.transform.smoothscale(self.canvas, self.view.size, self.scaled)
+                pygame.transform.smoothscale(self.active, self.view.size, self.scaled)
             return
-        pygame.transform.scale2x(self.canvas, self.doubled)
+        pygame.transform.scale2x(self.active, self.doubled)
         if self.doubled.get_size() == self.view.size:
             self.scaled.blit(self.doubled, (0, 0))
             return
