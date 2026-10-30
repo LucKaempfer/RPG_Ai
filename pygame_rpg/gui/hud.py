@@ -37,7 +37,7 @@ class Hud:
 
     def _icon(self, item):
         if item.id not in self._icons:
-            surf = self.assets.load_image(f"items/{item.id}.png")
+            surf = self.assets.item_icon(item)
             self._icons[item.id] = pygame.transform.scale(surf, (32, 32))
         return self._icons[item.id]
 

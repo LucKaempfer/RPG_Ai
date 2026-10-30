@@ -178,7 +178,7 @@ wake up rested in the Base.
 | `pygame_rpg/gui/dungeon_screen.py` | ✅ M4 | `DungeonScreen(player, floor, seed)`: `move()` with axis-separated wall collision (20 px hitbox), trinket speed bonus, walk animation by distance walked (`walk_frame()`, footsteps on `HERO_STEP_FRAMES` with a splash), idle breathing, shadows, clamped camera, fog (`seen`), enemies, chests, stairs, HUD + minimap. Saves the run (`to_run()` / `save_run()`) on floor entry, after each battle, on Esc and on quit; `run=` restores one. `step(dx, dy, dt)` is one frame and returns a transition (battle on bump, level-up after a win, next floor on the stairs); tests drive it directly. `battle_over()` is called by the battle screen. Esc saves → Base (no rest). Floor banner on arrival. |
 | `pygame_rpg/gui/battle_screen.py` | ✅ M4 | `BattleScreen`: enemy + hero sprites, HP / MP bars, ailments, log, menu (Attack / Abilities / Items / Run, sub-lists), keyboard + mouse; Floating damage / heal numbers, hero hit flash + shake. Continue resumes the floor, or on defeat rests, saves, deletes the run → Base. |
 | `pygame_rpg/gui/hud.py` | ✅ M4 | `Hud`: floor, level, weapon icon, HP / MP / XP bars, fading message log (`say()`). |
-| `pygame_rpg/assets.py` + `assets/` | M1, in use | `AssetManager`: loads PNGs, slices sheets, and generates + saves placeholder art for missing files (tileset, slime, sword/potion icons, panel). `hero_frames(look, gear)` draws the hero in code per look and visible gear (`gear_of()`) (`LOOK_OPTIONS`, `look_choice()`), cached in memory, never saved. Used by GUI screens for icons/portrait. |
+| `pygame_rpg/assets.py` + `assets/` | M1, in use | `AssetManager`: loads PNGs, slices sheets, and generates + saves placeholder art for missing files (tileset, slime, panel). `item_icon(item)` returns the item's 32x32 sprite drawn in code by `item_icons.py` (one drawing per weapon base, armour piece, consumable, trinket, ability and junk; metal brightens with the tier), cached, never saved. `hero_frames(look, gear)` draws the hero in code per look and visible gear (`gear_of()`) (`LOOK_OPTIONS`, `look_choice()`), cached in memory, never saved. Used by GUI screens for icons/portrait. |
 | `pygame_rpg/README.md` | ✅ M5 | Short player-facing readme: install, run, test, controls; points here. |
 | `pygame_rpg/audio.py` | ✅ M5 | All sound, synthesised in plain Python at start-up on a background thread (no audio files, nothing to license): `_RECIPES` maps names to small synth functions (tones, filtered noise, echo). `play(name, delay, volume)` (a name with numbered variants such as `step0..2` picks one at random), `set_ambience("sewer" / None)` (looping bubbly water built from grains + scattered drips, distant metal clanks, pipe groans, rat squeaks via `_SCATTER`), `update(dt)` from the main loop, `toggle_mute()` (M; not on the hero-name screen). Every call is a no-op if the mixer can't start. Screens set an `ambience` class attribute; inventory and level-up inherit it from `return_to`. Volumes: `SFX_VOLUME` / `AMBIENT_VOLUME` in `config.py`. |
 | `pygame_rpg/gui/effects.py` | ✅ M5 | `Particles` (burst / update / draw sparks) and `menu_key()` (Up / Down / Enter for button lists). |
@@ -215,6 +215,7 @@ pygame_rpg/
 ├── items.py           # Item dataclass + data-driven catalog
 ├── savegame.py        # JSON save/load + hero index
 ├── assets.py          # AssetManager + placeholder generators
+├── item_icons.py      # item sprites drawn in code (inventory, shop, HUD)
 ├── dungeon.py         # seeded floor generation, walkability, rendering, fog, minimap
 ├── enemies.py         # enemy types, per-floor scaling, boss room, placement
 ├── props.py           # room clutter (barrels, crates, pots...) and its placement
@@ -231,7 +232,7 @@ pygame_rpg/
 │   ├── effects.py         # Particles (sparks) + menu_key() keyboard navigation
 │   ├── battle_screen.py   # turn-based battle menu
 │   └── hud.py             # in-dungeon HUD (bars, weapon icon, message log)
-└── assets/            # tileset, hero sheet, enemy sheets, item icons, objects/chest.png,
+└── assets/            # tileset, hero sheet, enemy sheets, objects/chest.png,
                        # ui/panel.png (generated placeholders)
 ```
 
