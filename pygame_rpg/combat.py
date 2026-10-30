@@ -50,7 +50,8 @@ from dataclasses import dataclass
 from .config import (
     WEAPON_POWER_BASE, WEAPON_POWER_PER_LEVEL, UNARMED_POWER, ENEMY_HIT_MULT,
     DAMAGE_VARIANCE, ABILITY_CHANCE_BONUS, LEVEL_CHANCE_BONUS, WARD_PER_LEVEL,
-    BOMB_EFFECT_CHANCE, RUN_CHANCE, LOOT_CHANCE, WIN_HEAL_PCT, WIN_MP,
+    BOMB_EFFECT_CHANCE, RUN_CHANCE, RUN_PER_EXTRA_ENEMY, RUN_CHANCE_RANGE,
+    LOOT_CHANCE, WIN_HEAL_PCT, WIN_MP,
 )
 from .config import (
     ENEMY_GOLD, BOSS_GOLD_MULT, ENEMY_JUNK_CHANCE, BLUEPRINT_ENEMY_CHANCE,
@@ -581,6 +582,17 @@ class Battle:
                 total[k] += max(1, round(ENEMY_HIT_MULT * e.attack * v) - defense)
         return tuple(total)
 
+    def run_chance(self) -> int:
+        """% chance that running away works right now: RUN_CHANCE, less
+        for every extra living enemy, more with trinket speed.  0 when a
+        boss is in the fight."""
+        if any(e.boss for e in self.enemies):
+            return 0
+        lo, hi = RUN_CHANCE_RANGE
+        chance = (RUN_CHANCE - RUN_PER_EXTRA_ENEMY * (len(self.alive()) - 1)
+                  + self.player.bonus("speed_bonus"))
+        return max(lo, min(hi, chance))
+
     # -- hero actions ----------------------------------------------------------
     def attack(self, style=None) -> list:
         """Attack with one of the weapon's styles (``styles()``); anything
@@ -699,7 +711,7 @@ class Battle:
             return out
         if not self._start_hero_turn(out):
             return out
-        if self.rng.uniform(0, 100) < RUN_CHANCE:
+        if self.rng.uniform(0, 100) < self.run_chance():
             self.state = FLED
             self._say(out, "You got away.")
         else:
