@@ -11,14 +11,17 @@ import pygame
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from ..player import UPGRADABLE_STATS
 from ..savegame import save_player
+from ..stat_names import LABEL, ABOUT
+from .inventory_screen import _wrap
 from .screen import (
     QUIT, Screen, Button, font,
     BG_COLOR, PANEL_COLOR, TEXT_COLOR, DIM_TEXT, GOLD, BORDER_COLOR,
 )
 
-# Combat stats shown in the grid; hp gets its own row.
+# Combat stats shown in the grid (attacks left, defenses right); hp
+# gets its own row.
 GRID_STATS = tuple(s for s in UPGRADABLE_STATS if s != "hp")
-GRID_COLS = 3
+GRID_ROWS = 3
 
 
 def _bonus_text(player, stat) -> str:
@@ -79,26 +82,33 @@ class StatsScreen(Screen):
         surface.blit(xpt, xpt.get_rect(midtop=(panel.centerx, 160)))
 
         hpt = font(24).render(
-            f"HP {p.current_hp} / {p.max_hp}   "
+            f"{LABEL['hp']} {p.current_hp} / {p.max_hp}   "
             f"(base {p.hp}{_bonus_text(p, 'hp')}, "
             f"raised {p.lvl_up_counts.get('hp', 0)}x)"
-            f"     MP {p.current_mp} / {p.max_mp}",
+            f"     {LABEL['mp']} {p.current_mp} / {p.max_mp}",
             True, TEXT_COLOR)
-        surface.blit(hpt, hpt.get_rect(midtop=(panel.centerx, 205)))
+        surface.blit(hpt, hpt.get_rect(midtop=(panel.centerx, 196)))
 
-        y0 = 250
+        # Attack stats on the left, the matching defenses on the right:
+        # name and value, what it does, where the value comes from.
+        y0 = 236
         for i, stat in enumerate(GRID_STATS):
-            col, row = divmod(i, GRID_COLS)
-            x = panel.centerx - 240 + col * 240
-            y = y0 + row * 75
-            label = font(24).render(stat.upper(), True, TEXT_COLOR)
-            surface.blit(label, label.get_rect(midtop=(x, y)))
-            val = font(20).render(
-                f"{p.total(stat)}   ({getattr(p, stat)}"
-                f"{_bonus_text(p, stat)}, "
-                f"raised {p.lvl_up_counts.get(stat, 0)}x)",
-                True, DIM_TEXT)
-            surface.blit(val, val.get_rect(midtop=(x, y + 34)))
+            col, row = divmod(i, GRID_ROWS)
+            x = panel.x + 24 + col * 362
+            y = y0 + row * 76
+            label = font(24).render(LABEL[stat], True, TEXT_COLOR)
+            surface.blit(label, (x, y))
+            val = font(24).render(str(p.total(stat)), True, GOLD)
+            surface.blit(val, (x + 170, y))
+            for j, line in enumerate(_wrap(ABOUT[stat], 17, 330)[:2]):
+                surface.blit(font(17).render(line, True, DIM_TEXT),
+                             (x, y + 22 + j * 15))
+            src = font(17).render(
+                f"base {getattr(p, stat)}"
+                + (f", +{p.bonus(stat)} from gear" if p.bonus(stat) else "")
+                + f", raised {p.lvl_up_counts.get(stat, 0)}x",
+                True, (130, 130, 150))
+            surface.blit(src, (x, y + 54))
 
         wt = font(20).render(
             f"Weight {p.weight} / {p.max_weight}", True, DIM_TEXT)

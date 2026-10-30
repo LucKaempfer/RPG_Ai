@@ -373,7 +373,7 @@ def _ab(id_, name, attack_type="", damage=0, effect="", heal=0, guard=0,
     elif heal:
         desc = f"Restores {heal} HP"
     else:
-        desc = f"+{guard} DP/RDP/MDP for {duration} turns"
+        desc = f"+{guard} to every defense for {duration} turns"
     desc += f". {mp_cost} MP, cooldown {cooldown}."
     return Item(
         id=id_, name=name, kind="ability", level=level, weight=0,

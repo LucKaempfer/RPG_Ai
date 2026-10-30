@@ -19,6 +19,7 @@ from ..crafting import (
 )
 from ..items import item_by_id
 from ..savegame import save_player
+from ..stat_names import stat_line
 from .screen import (
     QUIT, Screen, Button, font,
     BG_COLOR, PANEL_COLOR, PANEL_HOT, TEXT_COLOR, DIM_TEXT, GOLD,
@@ -33,10 +34,23 @@ TABS = ("Craft", "Upgrade")
 
 
 def _stats(item) -> str:
-    parts = [f"{s.upper()} {getattr(item, s)}"
-             for s in ("ap", "rap", "map", "dp", "rdp", "mdp", "hp")
-             if getattr(item, s)]
-    return "  ".join(parts + [f"{item.weight} kg", f"Lv {item.level}"])
+    return "  ".join(stat_line(item) + [f"{item.weight} kg", f"Lv {item.level}"])
+
+
+def _blit_wrapped(surface, text, color, x, y, width, size=18):
+    """Draw ``text`` (parts split by two spaces) on as many lines as it
+    needs to fit ``width``; returns the y below the last line."""
+    line = ""
+    for part in text.split("  "):
+        trial = f"{line}  {part}" if line else part
+        if line and font(size).size(trial)[0] > width:
+            surface.blit(font(size).render(line, True, color), (x, y))
+            y += 22
+            line = "   " + part
+        else:
+            line = trial
+    surface.blit(font(size).render(line, True, color), (x, y))
+    return y + 22
 
 
 class ForgeScreen(Screen):
@@ -220,12 +234,12 @@ class ForgeScreen(Screen):
         y += 30
         surface.blit(font(18).render(FAMILY_NAMES[family(result)], True, DIM_TEXT), (x, y))
         y += 24
+        width = self.info_panel.right - x - 12
         if self.tab == 1:
-            surface.blit(font(18).render("Now:   " + _stats(sel), True, DIM_TEXT), (x, y))
-            y += 22
-        surface.blit(font(18).render(("After: " if self.tab else "") + _stats(result),
-                                     True, TEXT_COLOR), (x, y))
-        y += 36
+            y = _blit_wrapped(surface, "Now:   " + _stats(sel), DIM_TEXT, x, y, width)
+        y = _blit_wrapped(surface, ("After: " if self.tab else "") + _stats(result),
+                          TEXT_COLOR, x, y, width)
+        y += 14
         surface.blit(font(20).render("Costs", True, TEXT_COLOR), (x, y))
         y += 26
         for mat, need in mats.items():
