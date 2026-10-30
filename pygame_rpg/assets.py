@@ -23,6 +23,7 @@ Layouts (all frames are 32x32 pixels):
 * ``items/<key>.png``      single 32x32 icon
 * ``ui/<name>.png``        single UI sprite
 * ``objects/chest.png``    2 x 1 grid: 0 closed, 1 open
+* ``objects/merchant.png`` 2 x 1 grid: idle frames of the shop keeper
 * ``objects/props.png``    7 x 2 grid: one column per ``props.PROP_KINDS``,
   row 0 standing, row 1 broken
 """
@@ -155,6 +156,8 @@ class AssetManager:
             return _gen_chest()
         if name == "objects/props.png":
             return _gen_props()
+        if name == "objects/merchant.png":
+            return _gen_merchant()
         if name.startswith("ui/"):
             return _gen_ui(name.rsplit("/", 1)[-1].removesuffix(".png"))
         raise FileNotFoundError(f"no generator for asset: {name}")
@@ -808,6 +811,31 @@ def _gen_props() -> pygame.Surface:
         if kind == "barrel":
             pygame.draw.arc(f, iron, (8, 16, 16, 10), 0, math.pi, 2)
         surf.blit(f, (x0, FRAME_SIZE))
+    return surf
+
+
+def _gen_merchant() -> pygame.Surface:
+    """Two idle frames of the merchant: a hooded figure in a green robe
+    with a lantern and a fat coin purse.  The lantern flickers."""
+    surf = _new_sheet(2, 1)
+    robe, robe_dark = (56, 104, 70), (34, 70, 46)
+    for col in range(2):
+        f = pygame.Surface((FRAME_SIZE, FRAME_SIZE), pygame.SRCALPHA)
+        pygame.draw.ellipse(f, (0, 0, 0, 80), (6, 26, 20, 5))
+        pygame.draw.polygon(f, robe_dark, [(9, 28), (23, 28), (20, 11), (12, 11)])
+        pygame.draw.polygon(f, robe, [(10, 27), (22, 27), (19, 12), (13, 12)])
+        pygame.draw.circle(f, robe_dark, (16, 10), 7)                  # hood
+        pygame.draw.circle(f, (200, 160, 120), (16, 11), 4)            # face
+        for ex in (14, 18):
+            pygame.draw.rect(f, (30, 24, 20), (ex, 10, 1, 2))
+        pygame.draw.line(f, (230, 230, 225), (14, 14), (18, 14), 2)     # beard
+        pygame.draw.circle(f, (200, 160, 60), (11, 21), 4)             # purse
+        pygame.draw.circle(f, (150, 110, 40), (11, 21), 4, 1)
+        pygame.draw.line(f, (90, 90, 96), (23, 14), (25, 18), 1)       # lantern
+        glow = (255, 210, 110) if col == 0 else (255, 180, 80)
+        pygame.draw.rect(f, glow, (23, 18, 4, 5))
+        pygame.draw.rect(f, (90, 90, 96), (23, 18, 4, 5), 1)
+        surf.blit(f, (col * FRAME_SIZE, 0))
     return surf
 
 

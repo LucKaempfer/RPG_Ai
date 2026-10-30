@@ -37,6 +37,15 @@ dips when a foot lands), driven by the distance walked rather than time so the f
 each footstep plays the splash sound and kicks up a few drops. The hero and enemies cast soft
 shadows, and each enemy breathes on its own beat.
 
+**Shop room:** every floor has one safe room (`special_rooms.py`: own RNG, never the entrance
+or the lair; no enemies, chests or props) with a merchant on a rug near the top wall. E next to
+them opens the shop screen (`gui/shop_screen.py`, rules in `shop.py`): health potions, rations and
+mana potions at the floor's tier never run out, plus four pieces of gear rolled from the seed (up
+to floor + 1) that sell out. Prices: gear base × the level's triangle number (weapon 20 / 60 /
+120 / 200), consumables 8 × level; the merchant buys junk at its value and anything else at a
+quarter of the price. The minimap marks the shop once visited. Run saves keep `shop_sold`;
+`RUN_VERSION` is 4 (the shop changes enemy, chest and prop placement).
+
 **Money and junk:** every won fight pays gold (`ENEMY_GOLD` 3-8 × floor, the boss ×5) and
 has a 25 % chance of a piece of junk; smashed props hold coins (30 %, 1-4 × floor) or junk
 (12 %). `Player.gold` is saved and shown in the HUD, the inventory and the Base. Junk is a new
@@ -60,7 +69,7 @@ so floors, enemies and chests are unchanged and old runs still load.
 **Play-test round 2 (PR #9):** the dungeon is a sewer. A new `sewer/tiles_v2.png` has mossy
 flagstones, slimy brick walls with pipes, stains and moss, puddles, drains, bones, grated
 walkways, thin iron gates on doorways and manhole stairs, and there is torch-light darkness. Walls block line of
-sight, corridors are shorter, there is a Rat enemy, and the boss is a Rat King. `RUN_VERSION` is 3.
+sight, corridors are shorter, there is a Rat enemy, and the boss is a Rat King. `RUN_VERSION` was 3 (now 4, see Shop room).
 
 **Play-test round 1 (done, PR #8):** single doors with corridors routed around rooms, fights
 start on entering an occupied room, inventory from the dungeon (I), damage previews, attack
@@ -128,6 +137,9 @@ wake up rested in the Base.
 | `pygame_rpg/gui/screen.py` | ✅ M3 | `Screen` base class, `Button`, cached `font()`, shared palette, `QUIT` sentinel. |
 | `pygame_rpg/gui/*.py` (8 screens) | ✅ M3 | `title_screen`, `tutorial_screen`, `hero_maker`, `hero_chooser`, `base_screen`, `inventory_screen`, `stats_screen`, `level_up_screen` (takes `return_to`: resume a dungeon floor instead of the Base). |
 | `pygame_rpg/dungeon.py` | ✅ M4 | Seeded generation (private `rng`, same seed = same floor): 60 × 44 tiles, up to 13 rooms with `ROOM_GAP` free tiles between them; rooms are linked by a minimum spanning tree over wall-to-wall gaps (shortest corridors that still reach every room) with A*-routed corridors from a door on the wall facing the target to a door on the target, never entering another room or the ring around it, so walls stay solid and every door is a single tile (one door per wall, reused). `door_outside()` gives the corridor cell outside a door. `visible_from()` (line of sight), `is_walkable()`, `spawn_point()`, sewer-tileset rendering (`sewer/tiles_v2.png`, doorways drawn as a thin gate on the corridor side, per-cell variants cached in `_tile_cache`) with camera offset, fog (`seen` cells + their walls), dimming outside `visible`, `overrides` for the manhole stairs, minimap of visited rooms + walked corridors. |
+| `pygame_rpg/special_rooms.py` | ✅ | `SPECIAL_KINDS`, `special_rooms(dungeon, seed)` (kind → room, own RNG), `keeper_cell(room)` (interior, clear of doors and the centre). |
+| `pygame_rpg/shop.py` | ✅ | `price()`, `sell_price()`, `roll_stock(seed, floor)`, `buy(player, stock, sold, index)`, `sell(player, item)`; no drawing. |
+| `pygame_rpg/gui/shop_screen.py` | ✅ | `ShopScreen(player, stock, sold, return_to)`: goods and backpack side by side, keyboard + mouse, saves the hero after each trade. |
 | `pygame_rpg/props.py` | ✅ | `Prop` (kind, cell, broken, hp; `solid` while standing, `hit()`), `PROP_HP`, `PROP_MATERIALS`, `salvage()`, `PROP_KINDS` (sheet order), `edge_cells()`, `place_props(dungeon, seed)` with its own `Random(f"props-{seed}")`. |
 | `pygame_rpg/enemies.py` | ✅ M4 | `EnemyType` (frozen data) for slime, bat, goblin, skeleton + `BOSS_TYPE`; `make_enemy()` scales per floor; `boss_room()` (farthest from room 0); `place_enemies()` with the dungeon's rng. |
 | `pygame_rpg/combat.py` | ✅ M4 | `Battle`: pure rules, no drawing. `attack()`, `cast()`, `use_item()`, `run()`, ailments (`AILMENTS`), cooldowns, Shield guard, wards, XP + loot on win. |
@@ -174,6 +186,8 @@ pygame_rpg/
 ├── dungeon.py         # seeded floor generation, walkability, rendering, fog, minimap
 ├── enemies.py         # enemy types, per-floor scaling, boss room, placement
 ├── props.py           # room clutter (barrels, crates, pots...) and its placement
+├── special_rooms.py   # the floor's shop room and where its keeper stands
+├── shop.py            # prices, stock, buy / sell rules
 ├── combat.py          # turn-based battle rules: damage, ailments, cooldowns, XP, loot
 ├── audio.py           # synthesised sound effects + sewer ambience, play()/set_ambience()
 ├── gui/
@@ -197,6 +211,7 @@ tests/
 ├── test_dungeon.py        # no overlap, connectivity, seeding, boss + entrance rules
 ├── test_saves.py          # player + run round trips, migration, broken run file
 ├── test_gui.py            # keyboard menus, particles, battle end animations, enemy sheets
+├── test_shop.py           # safe shop room, merchant, prices, stock, buying / selling, saves
 ├── test_money.py          # gold per win / floor, junk drops, saves, coins and junk in props
 ├── test_props.py          # props on edges away from doors, nothing cut off, seeded, blocking
 ├── test_looks.py          # character customization: look stage, look in saves, frames per look
@@ -251,7 +266,7 @@ and saves are data, so items are always stored by id. `saves/index.json` is the 
 V3 `saved_chars.txt` equivalent).
 
 **Run saves** (`saves/runs/<name>.json`, M5): `version` (`RUN_VERSION`; a mismatch drops the run), `floor, seed, x, y, facing, beaten` (indices into
-the seeded enemy placement), `chests` (opened flags), `props` (indices of broken props), `stairs`, `seen` (fog cells), `visited`
+the seeded enemy placement), `chests` (opened flags), `props` (indices of broken props), `shop_sold` (bought-out stock indices), `stairs`, `seen` (fog cells), `visited`
 (room indices), `corridors` (minimap). The seed rebuilds the floor, enemies and chests; the save
 only records what changed. Chest loot after a reload is rolled fresh.
 

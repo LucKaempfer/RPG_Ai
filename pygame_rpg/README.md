@@ -21,7 +21,7 @@ python -m pytest
 * Menus: mouse, or Up / Down + Enter; Esc goes back.
 * New hero: type a name, then pick a look (Up / Down choose, Left / Right change, R random).
 * Dungeon: arrows / WASD to walk, Space (or F) to swing your weapon or shoot your bow / wand at
-  barrels, crates and other clutter (they break into crafting materials), bump into an enemy to fight, Esc returns to the Base (the run
+  barrels, crates and other clutter (they break into crafting materials), E next to the merchant to trade (one shop room per floor), bump into an enemy to fight, Esc returns to the Base (the run
   is kept: *Continue (Floor N)*).
 * Battle: Attack / Abilities / Items / Run.
 * M: mute / unmute sound (effects and the sewer ambience).
