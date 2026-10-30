@@ -7,8 +7,10 @@ use the menu's Target row to aim at another one.  Left: the hero
 (back view x4, HP / MP bars, ailments, shield).  Bottom left: the
 battle log.  Bottom right: the menu.
 
-Menu: Attack / Abilities / Items / Run.  Attack opens the attack styles
-(Strike / Slash / Bash / Heavy), Abilities the 4 ability slots with MP
+Menu: Attack / Abilities / Items / Run.  Attack opens the attacks the
+equipped weapon offers (a bow: Shot / Aimed Shot / Volley / Barbed
+Arrow; a sword: Strike / Slash / Thrust / Cleave; see
+``combat.FAMILY_STYLES``), Abilities the 4 ability slots with MP
 cost and cooldown, Items the backpack's battle consumables; Back or Esc
 returns to the main menu.  Every damaging entry shows the damage it
 would deal to the target now, and the hero panel shows what all the
@@ -129,9 +131,11 @@ class BattleScreen(Screen):
             return [("Continue", ("continue",), True)]
         if self.mode == "attack":
             rows = []
-            for key, st in STYLES.items():
+            for key in b.styles():
+                st = STYLES[key]
                 lo, hi = b.attack_preview(key)
-                rows.append((f"{st.name} {lo}-{hi}  ({st.note})",
+                each = " each" if st.sweep and len(b.alive()) > 1 else ""
+                rows.append((f"{st.name} {lo}-{hi}{each}  ({st.note})",
                              ("attack", key), True))
             return rows + [("Back", ("back",), True)]
         if self.mode == "abilities":
@@ -191,7 +195,7 @@ class BattleScreen(Screen):
         elif kind == "back":
             self.mode, self.focus = "main", 0
         elif kind == "attack":
-            out = b.attack(action[1] if len(action) > 1 else "strike")
+            out = b.attack(action[1] if len(action) > 1 else None)
             self.mode = "main"
         elif kind == "cast":
             out = b.cast(action[1])
@@ -232,8 +236,8 @@ class BattleScreen(Screen):
             audio.play("ailment")
         elif kind == "attack":
             hit = any(e.hp < before for e, before in zip(self.enemies, hp_before))
-            audio.play(action[1] if hit and len(action) > 1
-                       else "strike" if hit else "miss")
+            key = action[1] if len(action) > 1 else b.styles()[0]
+            audio.play(STYLES[key].sound if hit else "miss")
         elif kind == "cast":
             a = action[1]
             audio.play("magic" if a.damage else "heal" if a.heal else "guard")
