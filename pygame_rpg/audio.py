@@ -33,7 +33,9 @@ import marshal
 import math
 import random
 import shutil
+import sys
 import threading
+import time
 from array import array
 
 import pygame
@@ -550,16 +552,28 @@ class Audio:
         cached = _load_cache(folder)
         synth = _Synth(freq)
         pcms = {}
-        # The loop first: it is what the dungeon needs immediately.
-        for name in ["sewer"] + [k for k in _RECIPES if k != "sewer"]:
-            try:
-                if cached is not None:
-                    pcm = cached[name]
-                else:
-                    pcm = pcms[name] = _to_pcm(_RECIPES[name](synth), channels)
-                self.sounds[name] = pygame.mixer.Sound(buffer=pcm)
-            except pygame.error:
-                return
+        # Synthesis is pure Python on this thread and shares the GIL with
+        # the game: hand it back to the game loop every 1 ms instead of
+        # every 5 ms, and pause between sounds, so frames don't stutter
+        # while it runs (it is slow on a phone, and only happens until the
+        # cache exists).
+        switch = sys.getswitchinterval()
+        if cached is None:
+            sys.setswitchinterval(0.001)
+        try:
+            # The loop first: it is what the dungeon needs immediately.
+            for name in ["sewer"] + [k for k in _RECIPES if k != "sewer"]:
+                try:
+                    if cached is not None:
+                        pcm = cached[name]
+                    else:
+                        pcm = pcms[name] = _to_pcm(_RECIPES[name](synth), channels)
+                        time.sleep(0.01)
+                    self.sounds[name] = pygame.mixer.Sound(buffer=pcm)
+                except pygame.error:
+                    return
+        finally:
+            sys.setswitchinterval(switch)
         if cached is None:
             _save_cache(folder, pcms)
 

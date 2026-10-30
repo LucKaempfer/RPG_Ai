@@ -35,6 +35,12 @@ on-screen keyboard, going to the background calls `Screen.suspend` (the dungeon 
 synthesised sounds are cached in `saves/cache/`. `buildozer.spec` + the local recipe
 `android/p4a-recipes/pygame-ce` build it; `.github/workflows/android.yml` runs the tests and builds
 the APK on every push / PR (download it from the run's *Artifacts*).
+On a touch screen the dungeon (`wide = True`) gets its own canvas the shape of the screen,
+`WIDE_HEIGHT` (420) px high, so the floor fills the phone and is zoomed in, with the controls
+floating over it; menus keep the 800 × 600 canvas between the control bars
+(`Display.canvas_for`). Screens that set `wide` must draw to their surface's size, not
+`SCREEN_WIDTH` / `SCREEN_HEIGHT`. `Dungeon.render` keeps the whole floor drawn on one surface
+and redraws only changed cells, so a frame is one blit.
 
 **Character customization:** the hero maker has a look stage between the name and the
 confirm (skin, hair style incl. helmet / hood, hair colour, tunic colour, with a walking preview
