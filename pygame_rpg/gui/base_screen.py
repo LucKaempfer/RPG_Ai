@@ -6,7 +6,7 @@ pending level-ups are counted but not banked, so nothing is lost if
 the player wanders off before resolving them.  The actual level-up
 (banking XP and picking stats) happens on the level-up screen.
 
-Buttons: Inventory, View Stats, Adventure, Save & Exit.  With a saved
+Buttons: Inventory, View Stats, Adventure, Settings, Save & Exit.  With a saved
 dungeon run (M5) the Adventure button reads "Continue (Floor N)" and
 resumes it as it was (HP included), and an extra New Adventure button
 drops it.  A new adventure starts rested (full HP / MP) on floor 1.
@@ -63,15 +63,16 @@ class BaseScreen(Screen):
             # builds the same floor, so the run can't be continued.
             delete_run(player.name)
             self.run = None
-        x, w = 420, 340
-        self.btn_inventory = Button("Inventory", (x, 100, w, 48))
-        self.btn_stats = Button("View Stats", (x, 158, w, 48))
+        x, w, h = 420, 340, 46
+        self.btn_inventory = Button("Inventory", (x, 90, w, h))
+        self.btn_stats = Button("View Stats", (x, 144, w, h))
         label = (f"Continue (Floor {self.run['floor']})" if self.run
                  else "Adventure")
-        self.btn_adventure = Button(label, (x, 216, w, 48))
-        self.btn_new_run = Button("New Adventure", (x, 274, w, 48))
-        self.btn_saveexit = Button("Save & Exit", (x, 332, w, 48))
-        self.btn_choose = Button("Choose Stat", (x, 440, w, 52), size=28)
+        self.btn_adventure = Button(label, (x, 198, w, h))
+        self.btn_new_run = Button("New Adventure", (x, 252, w, h))
+        self.btn_settings = Button("Settings", (x, 306, w, h))
+        self.btn_saveexit = Button("Save & Exit", (x, 360, w, h))
+        self.btn_choose = Button("Choose Stat", (x, 458, w, 52), size=28)
 
     # -- helpers ---------------------------------------------------------
     def _active_buttons(self):
@@ -82,7 +83,7 @@ class BaseScreen(Screen):
 
     def _menu(self):
         return (self.btn_inventory, self.btn_stats, self.btn_adventure,
-                self.btn_new_run, self.btn_saveexit)
+                self.btn_new_run, self.btn_settings, self.btn_saveexit)
 
     def _hover(self, pos):
         for btn in self._active_buttons():
@@ -129,6 +130,8 @@ class BaseScreen(Screen):
             self.player.rest()
             self._save()
             return ("dungeon", {"player": self.player})
+        if btn is self.btn_settings:
+            return ("settings", {"return_to": self})
         if btn is self.btn_saveexit:
             self._save()
             return QUIT
@@ -196,7 +199,7 @@ class BaseScreen(Screen):
             note = font(26).render(
                 f"LEVEL UP! ({self.pending_ups} pending)", True, GOLD)
             surface.blit(note, note.get_rect(
-                midtop=(self.btn_choose.rect.centerx, 398)))
+                midtop=(self.btn_choose.rect.centerx, 424)))
             self.btn_choose.draw(surface, hot=(self.btn_choose is self.hot))
         hint = font(18).render(
             "Up/Down + Enter or click.  Esc: save & return to title", True, DIM_TEXT)

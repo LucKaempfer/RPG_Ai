@@ -49,6 +49,8 @@ def test_title_keyboard(display):
     t.handle_event(key(pygame.K_DOWN))          # focus 0 -> 1
     assert t.handle_event(key(pygame.K_RETURN)) == ("tutorial", {"next": "hero_chooser"})
     t.handle_event(key(pygame.K_DOWN))
+    assert t.handle_event(key(pygame.K_RETURN)) == ("settings", {"return_to": t})
+    t.handle_event(key(pygame.K_DOWN))
     assert t.handle_event(key(pygame.K_RETURN)) is QUIT
 
 

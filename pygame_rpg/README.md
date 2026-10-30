@@ -28,5 +28,8 @@ python -m pytest
 * M: mute / unmute sound (effects and the sewer ambience).
 * Window: drag the edges or maximise to resize (the picture keeps its shape); F11 toggles
   fullscreen.
+* Settings (title screen or Base): brightness, ambience and effects volume, fullscreen, and
+  the dungeon keys (two per action; Enter on a slot, then press the new key). Saved in
+  `saves/settings.json`. Esc, F11 and M can't be rebound.
 
 Everything else (architecture, rules, numbers, roadmap) is in `DEVELOPMENT.md` at the repo root.

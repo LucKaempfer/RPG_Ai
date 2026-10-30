@@ -40,7 +40,7 @@ import random
 
 import pygame
 
-from .. import audio
+from .. import audio, settings
 from ..assets import (
     AssetManager, gear_of, HERO_COLS, HERO_IDLE_COLS, HERO_WALK_COLS, HERO_STEP_FRAMES,
     HERO_ATTACK_COLS,
@@ -152,6 +152,18 @@ def _shadow(size):
         _SHADOWS[size] = surf
     return _SHADOWS[size]
 
+
+
+def controls_hint():
+    """The bottom-line key hint, following the player's key bindings."""
+    moves = ("up", "left", "down", "right")
+    if all(settings.current.keys[a] == settings.DEFAULT_KEYS[a] for a in moves):
+        move = "Arrows / WASD"
+    else:
+        move = " ".join(settings.action_label(a) for a in moves)
+    a = settings.action_label
+    return (f"{move}: move    {a('attack')}: attack    {a('interact')}: talk"
+            f"    {a('inventory')}: inventory    Esc: Base")
 
 class DungeonScreen(Screen):
     name = "dungeon"
@@ -603,12 +615,12 @@ class DungeonScreen(Screen):
             save_player(self.player)
             self.save_run()
             return QUIT
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
+        if settings.pressed(event, "interact"):
             return self.interact()
-        if event.type == pygame.KEYDOWN and event.key in (pygame.K_SPACE, pygame.K_f):
+        if settings.pressed(event, "attack"):
             self.attack()
             return None
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_i:
+        if settings.pressed(event, "inventory"):
             return ("inventory", {"player": self.player, "return_to": self})
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             save_player(self.player)
@@ -648,10 +660,8 @@ class DungeonScreen(Screen):
 
     def handle_update(self, dt):
         keys = pygame.key.get_pressed()
-        dx = ((keys[pygame.K_RIGHT] or keys[pygame.K_d])
-              - (keys[pygame.K_LEFT] or keys[pygame.K_a]))
-        dy = ((keys[pygame.K_DOWN] or keys[pygame.K_s])
-              - (keys[pygame.K_UP] or keys[pygame.K_w]))
+        dx = settings.held(keys, "right") - settings.held(keys, "left")
+        dy = settings.held(keys, "down") - settings.held(keys, "up")
         return self.step(dx, dy, dt)
 
     # -- drawing ---------------------------------------------------------
@@ -739,8 +749,9 @@ class DungeonScreen(Screen):
         near = self.keeper_near()
         if near:
             x, y = self._centre(self.keepers[near])
-            tip = font(20).render("E: trade" if near == "shop" else "E: forge",
-                                  True, (235, 200, 90))
+            use = settings.action_label("interact")
+            tip = font(20).render(f"{use}: trade" if near == "shop"
+                                  else f"{use}: forge", True, (235, 200, 90))
             surface.blit(tip, tip.get_rect(midbottom=(x - ox, y - oy - 18)))
 
         self.hud.draw(surface, self.player, self.floor)
@@ -763,7 +774,6 @@ class DungeonScreen(Screen):
                 pygame.draw.rect(surface, MINIMAP_MARK[kind],
                                  (mm_pos[0] + cx * MINIMAP_SCALE - 2,
                                   mm_pos[1] + cy * MINIMAP_SCALE - 2, 5, 5))
-        hint = font(18).render(
-            "Arrows / WASD: move    Space: attack    E: talk    I: inventory    Esc: Base", True, DIM_TEXT)
+        hint = font(18).render(controls_hint(), True, DIM_TEXT)
         surface.blit(hint, hint.get_rect(bottomright=(
             SCREEN_WIDTH - 12, SCREEN_HEIGHT - 10)))
