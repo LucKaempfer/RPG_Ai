@@ -8,16 +8,20 @@ A dungeon run in progress (M5) lives next to it in
 ``saves/runs/<name>.json``; ``gui/dungeon_screen.py`` decides what goes
 in it.  Kept in a subfolder so the index fallback's ``*.json`` scan of
 ``saves/`` never mistakes it for a character.
+
+``saves/`` sits under ``device.data_dir()``: the working directory on a
+desktop, the app's private storage on Android.
 """
 import json
 import re
 from pathlib import Path
 
+from . import device
 from .config import SAVE_DIR
 from .items import CATALOG, item_by_id
 from .player import Player
 
-SAVE_ROOT = Path(SAVE_DIR)
+SAVE_ROOT = device.data_dir() / SAVE_DIR
 INDEX_FILE = SAVE_ROOT / "index.json"
 
 _NAME_RE = re.compile(r"^[\w .-]{1,20}$")

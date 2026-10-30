@@ -21,16 +21,24 @@ Use the module-level helpers:
 
 If the mixer can't start (no sound device, or the dummy driver in a
 broken state) every call is a no-op, so the game and tests run silent.
+
+The built sounds are cached as raw PCM in ``saves/cache/audio-<key>/``
+(``<key>`` changes with the mixer format and the synthesis code), so
+later starts skip the synthesis; that matters on a phone, where it is
+slow.  A missing, partial or unwritable cache just means building.
 """
 
+import hashlib
+import marshal
 import math
 import random
+import shutil
 import threading
 from array import array
 
 import pygame
 
-from . import settings
+from . import savegame, settings
 
 RATE = 22050          # mixer frequency asked for in pre_init()
 AMBIENT_FADE = 800    # ms to fade the ambience loop in / out
@@ -446,15 +454,61 @@ _SCATTER = {
 }
 
 
-def _to_sound(buf, channels, peak=0.9):
-    """Float buffer -> pygame Sound (int16, ``channels`` interleaved)."""
+def _to_pcm(buf, channels, peak=0.9):
+    """Float buffer -> int16 PCM bytes, ``channels`` interleaved."""
     top = max((abs(x) for x in buf), default=0.0)
     scale = 32767 * peak / top if top > 1.0 else 32767 * peak
     pcm = array("h")
     for x in buf:
         v = int(x * scale)
         pcm.extend((v,) * channels)
-    return pygame.mixer.Sound(buffer=pcm.tobytes())
+    return pcm.tobytes()
+
+
+# --- cache --------------------------------------------------------------------
+def _code_key():
+    """Fingerprint of the synthesis code: every function and _Synth
+    method in this module (works from .pyc files too, as in the APK)."""
+    h = hashlib.sha1()
+    funcs = [v for v in globals().values() if callable(getattr(v, "__code__", None))]
+    funcs += [v for v in vars(_Synth).values()
+              if callable(getattr(v, "__code__", None))]
+    for f in sorted(funcs, key=lambda f: f.__qualname__):
+        h.update(f.__qualname__.encode())
+        h.update(marshal.dumps(f.__code__.co_code))
+        h.update(repr(f.__code__.co_consts).encode())
+    return h.hexdigest()[:12]
+
+
+def cache_root():
+    return savegame.SAVE_ROOT / "cache"
+
+
+def _cache_folder(freq, channels):
+    return cache_root() / f"audio-{freq}-{channels}-{_code_key()}"
+
+
+def _load_cache(folder):
+    """{name: pcm bytes} for every recipe, or None unless all are there."""
+    try:
+        return {name: (folder / f"{name}.pcm").read_bytes() for name in _RECIPES}
+    except OSError:
+        return None
+
+
+def _save_cache(folder, pcms):
+    """Write the cache (dropping caches of older code or formats)."""
+    try:
+        root = folder.parent
+        if root.exists():
+            for old in root.glob("audio-*"):
+                if old != folder:
+                    shutil.rmtree(old, ignore_errors=True)
+        folder.mkdir(parents=True, exist_ok=True)
+        for name, pcm in pcms.items():
+            (folder / f"{name}.pcm").write_bytes(pcm)
+    except OSError:
+        pass   # no cache; the next start builds again
 
 
 # --- runtime ----------------------------------------------------------------
@@ -492,13 +546,22 @@ class Audio:
             self._build(freq, channels)
 
     def _build(self, freq, channels):
+        folder = _cache_folder(freq, channels)
+        cached = _load_cache(folder)
         synth = _Synth(freq)
+        pcms = {}
         # The loop first: it is what the dungeon needs immediately.
         for name in ["sewer"] + [k for k in _RECIPES if k != "sewer"]:
             try:
-                self.sounds[name] = _to_sound(_RECIPES[name](synth), channels)
+                if cached is not None:
+                    pcm = cached[name]
+                else:
+                    pcm = pcms[name] = _to_pcm(_RECIPES[name](synth), channels)
+                self.sounds[name] = pygame.mixer.Sound(buffer=pcm)
             except pygame.error:
                 return
+        if cached is None:
+            _save_cache(folder, pcms)
 
     def _get(self, name):
         if name in self.sounds:
@@ -549,6 +612,15 @@ class Audio:
         else:
             self._start_loop()
 
+    def pause(self):
+        """The app went to the background: silence everything."""
+        if self.ok:
+            pygame.mixer.pause()
+
+    def resume(self):
+        if self.ok:
+            pygame.mixer.unpause()
+
     def update(self, dt):
         if not self.ok:
             return
@@ -587,6 +659,8 @@ play = _audio.play
 set_ambience = _audio.set_ambience
 toggle_mute = _audio.toggle_mute
 refresh_volume = _audio.refresh_volume
+pause = _audio.pause
+resume = _audio.resume
 update = _audio.update
 
 

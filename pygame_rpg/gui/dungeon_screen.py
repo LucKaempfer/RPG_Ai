@@ -40,7 +40,7 @@ import random
 
 import pygame
 
-from .. import audio, settings
+from .. import audio, device, settings
 from ..assets import (
     AssetManager, gear_of, HERO_COLS, HERO_IDLE_COLS, HERO_WALK_COLS, HERO_STEP_FRAMES,
     HERO_ATTACK_COLS,
@@ -155,7 +155,10 @@ def _shadow(size):
 
 
 def controls_hint():
-    """The bottom-line key hint, following the player's key bindings."""
+    """The bottom-line key hint, following the player's key bindings
+    (or naming the on-screen controls on a touch screen)."""
+    if device.TOUCH:
+        return "D-pad: move    A: attack    B: talk    Bag: inventory    Menu: Base"
     moves = ("up", "left", "down", "right")
     if all(settings.current.keys[a] == settings.DEFAULT_KEYS[a] for a in moves):
         move = "Arrows / WASD"
@@ -627,6 +630,12 @@ class DungeonScreen(Screen):
             self.save_run()
             return ("base", {"player": self.player})
         return None
+
+    def suspend(self):
+        """The app is going to the background (a phone may close it
+        there): keep the hero and the run."""
+        save_player(self.player)
+        self.save_run()
 
     def step(self, dx, dy, dt):
         """One frame of play with the given input; returns a transition

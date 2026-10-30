@@ -105,8 +105,11 @@ class AssetManager:
 
     def save_image(self, surface: pygame.Surface, name: str):
         p = self.path(name)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        pygame.image.save(surface, str(p))
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            pygame.image.save(surface, str(p))
+        except (OSError, pygame.error):
+            pass   # read-only install (e.g. an APK): keep it in memory only
 
     # -- loading -------------------------------------------------------
     def load_image(self, name: str) -> pygame.Surface:
