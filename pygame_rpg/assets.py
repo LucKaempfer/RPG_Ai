@@ -13,8 +13,8 @@ Layouts (all frames are 32x32 pixels):
 * ``tileset.png``          10 x 1 grid, one tile per index (see TILE_*);
   the original stone set, kept for real art / other screens
 * ``sewer/tiles_v2.png``   20 x 1 grid, the dungeon's sewer set (SEWER_*)
-* hero frames (``AssetManager.hero_frames(look)``, drawn in code per
-  character look, not a file): 10 x 4 grid
+* hero frames (``AssetManager.hero_frames(look, gear)``, drawn in code
+  per character look and visible gear (``gear_of``), not a file): 10 x 4 grid
     columns: 0-1 idle, 2-7 walk (one full stride: left foot, right
     foot), 8-9 attack
     rows:    0 down, 1 up, 2 left, 3 right
@@ -133,13 +133,15 @@ class AssetManager:
             self._cache[key] = _slice(self.load_image(name), cols, rows)
         return self._cache[key]
 
-    def hero_frames(self, look=None):
+    def hero_frames(self, look=None, gear=None):
         """The hero's frames (HERO_COLS x HERO_ROWS, row-major) drawn in
-        ``look`` (a ``Player.look`` dict).  Drawn in code and cached per
-        look; nothing is saved to disk."""
-        key = ("hero", tuple(sorted((look or {}).items())))
+        ``look`` (a ``Player.look`` dict) wearing ``gear`` (``gear_of``
+        the hero's equipment; None = nothing).  Drawn in code and cached
+        per look and gear; nothing is saved to disk."""
+        gear = gear or NO_GEAR
+        key = ("hero", tuple(sorted((look or {}).items())), gear)
         if key not in self._cache:
-            self._cache[key] = _slice(_gen_hero_sheet(look), HERO_COLS, HERO_ROWS)
+            self._cache[key] = _slice(_gen_hero_sheet(look, gear), HERO_COLS, HERO_ROWS)
         return self._cache[key]
 
     # -- placeholder generation ---------------------------------------
@@ -417,25 +419,74 @@ def _shade(color, d):
     return tuple(max(0, min(255, c + d)) for c in color)
 
 
-def _gen_hero_sheet(look=None) -> pygame.Surface:
-    """Draw the hero in ``look`` for every (direction, phase) cell."""
+# Visible gear: (weapon family, weapon ailment, head, torso, hands, feet)
+# with "leather" / "iron" (or None) per armour slot; see gear_of().
+NO_GEAR = (None, "", None, None, None, None)
+GEAR_COLORS = {"leather": ((116, 76, 42), (78, 50, 28)),
+               "iron": ((152, 156, 166), (96, 100, 108))}
+STEEL, STEEL_DARK, WOOD = (205, 210, 220), (120, 124, 132), (120, 82, 46)
+ORB_COLORS = {"burning": (255, 140, 60), "poison": (120, 220, 90),
+              "electrocuted": (140, 200, 255)}
+
+
+def gear_of(equipment) -> tuple:
+    """What of ``equipment`` (a ``Player.equipment`` dict) shows on the
+    hero: the weapon's family (``crafting.family``: blade, blunt, ranged,
+    magic) and ailment, and leather / iron per armour slot."""
+    from .crafting import family
+    weapon = equipment.get("weapon")
+    worn = [equipment.get(s) for s in ("head", "torso", "hands", "feet")]
+    return ((family(weapon) if weapon else None),
+            (weapon.effect if weapon else ""),
+            *[family(i) if i is not None else None for i in worn])
+
+
+def _gen_hero_sheet(look=None, gear=NO_GEAR) -> pygame.Surface:
+    """Draw the hero in ``look`` and ``gear`` for every (direction,
+    phase) cell."""
     surf = _new_sheet(HERO_COLS, HERO_ROWS)
     for row in range(HERO_ROWS):
         for col in range(HERO_COLS):
             px, py = col * FRAME_SIZE, row * FRAME_SIZE
-            _draw_hero_frame(surf, px, py, row, col, look or {})
+            _draw_hero_frame(surf, px, py, row, col, look or {}, gear)
     return surf
 
 
+def _draw_weapon(surf, kind, fx, hx, hy, ahead):
+    """The equipped weapon held upright in a hand at (hx, hy); ``ahead``
+    (+1 / -1) is the side a bow's belly faces."""
+    if kind == "blade":
+        pygame.draw.line(surf, STEEL, (hx, hy - 1), (hx, hy - 10), 2)
+        pygame.draw.line(surf, STEEL_DARK, (hx - 2, hy - 1), (hx + 2, hy - 1), 1)
+        pygame.draw.rect(surf, WOOD, (hx - 1, hy, 2, 2))
+    elif kind == "blunt":
+        pygame.draw.line(surf, WOOD, (hx, hy + 2), (hx, hy - 7), 2)
+        pygame.draw.rect(surf, STEEL_DARK, (hx - 2, hy - 10, 5, 4))
+    elif kind == "ranged":
+        box = pygame.Rect(hx - 3, hy - 9, 6, 16)
+        if ahead > 0:
+            pygame.draw.arc(surf, WOOD, box, -1.4, 1.4, 2)
+        else:
+            pygame.draw.arc(surf, WOOD, box, 1.75, 4.55, 2)
+        pygame.draw.line(surf, (220, 220, 210), (hx, hy - 8), (hx, hy + 6), 1)
+    elif kind == "magic":
+        pygame.draw.line(surf, WOOD, (hx, hy + 4), (hx, hy - 9), 2)
+        pygame.draw.circle(surf, ORB_COLORS.get(fx, (170, 130, 255)), (hx, hy - 11), 2)
+
+
 def _draw_hero_frame(surf: pygame.Surface, px: int, py: int,
-                     direction: int, col: int, look: dict):
+                     direction: int, col: int, look: dict, gear=NO_GEAR):
     """Draw one 32x32 hero frame at (px, py) facing ``direction``.
 
     Walk frames are one stride: legs step out and back on a sine, the
     arms swing against the legs, and the body dips when a foot lands and
     rises as the legs pass.  Idle frames breathe (the torso sinks a
-    pixel); every frame has a soft shadow at the feet."""
+    pixel); every frame has a soft shadow at the feet.  ``gear`` adds the
+    weapon in hand, a helmet or cap, a vest or chain mail, gloves and
+    boots."""
+    weapon, fx, head, torso, hands, feet = gear
     skin = look_choice(look, "skin")[1]
+    hand = GEAR_COLORS[hands][0] if hands else skin
     tunic = look_choice(look, "tunic")[1]
     x, y = px + 16, py + 16  # centre of the frame
     attacking = col in HERO_ATTACK_COLS
@@ -450,7 +501,7 @@ def _draw_hero_frame(surf: pygame.Surface, px: int, py: int,
     # Shadow under the feet.
     pygame.draw.ellipse(surf, (0, 0, 0, 80), (x - 8, y + 11, 16, 5))
     # Legs and boots.
-    pants, boots = (62, 54, 48), (46, 32, 24)
+    pants, boots = (62, 54, 48), (GEAR_COLORS[feet][0] if feet else (46, 32, 24))
     if side_view:
         # Seen from the side the legs scissor forward and back.
         for k in (-1, 1):
@@ -469,10 +520,24 @@ def _draw_hero_frame(surf: pygame.Surface, px: int, py: int,
     top = y - 4 + bob
     breathe = 1 if (col in HERO_IDLE_COLS and col % 2) else 0
     top += breathe
+    # Seen from behind, the weapon (in the right hand, on screen-left)
+    # sits behind the body.
+    if weapon and direction == HERO_DIR_UP:
+        _draw_weapon(surf, weapon, fx, x - 7, top + 6, -1)
     width = 10 if side_view else 12
     body = pygame.Rect(x - width // 2, top, width, 11 - breathe)
     pygame.draw.rect(surf, tunic, body, border_radius=3)
     pygame.draw.rect(surf, _shade(tunic, -50), body, 1, border_radius=3)
+    if torso == "iron":                         # chain mail over the tunic
+        mail = body.inflate(-2, -2)
+        pygame.draw.rect(surf, GEAR_COLORS["iron"][0], mail, border_radius=2)
+        for mx in range(mail.left + 1, mail.right - 1, 2):
+            for my in range(mail.top + 1 + (mx % 4 == 0), mail.bottom - 1, 2):
+                surf.set_at((mx, my), GEAR_COLORS["iron"][1])
+    elif torso == "leather":                    # a leather vest, tunic at the sides
+        vest = pygame.Rect(body.x + 2, body.y + 1, body.w - 4, body.h - 3)
+        pygame.draw.rect(surf, GEAR_COLORS["leather"][0], vest, border_radius=2)
+        pygame.draw.rect(surf, GEAR_COLORS["leather"][1], vest, 1, border_radius=2)
     pygame.draw.line(surf, (92, 62, 36), (body.left, body.bottom - 4),
                      (body.right - 1, body.bottom - 4), 2)
     # Arms swing against the legs.
@@ -481,16 +546,31 @@ def _draw_hero_frame(surf: pygame.Surface, px: int, py: int,
         off = -round(3 * swing) * ahead
         ax = x + 2 * ahead
         pygame.draw.line(surf, sleeve, (ax, top + 2), (ax + off, top + 6), 3)
-        pygame.draw.rect(surf, skin, (ax + off - 1, top + 6, 3, 3))
+        pygame.draw.rect(surf, hand, (ax + off - 1, top + 6, 3, 3))
+        if weapon:
+            # Held a little ahead of the body so it doesn't cross the face.
+            _draw_weapon(surf, weapon, fx, ax + off + 3 * ahead, top + 8, ahead)
     else:
         for k, ax in ((-1, x - 7), (1, x + 7)):
             lift = round(1.5 * swing * k)
             pygame.draw.rect(surf, sleeve, (ax - 1, top + 1 - lift, 3, 6))
-            pygame.draw.rect(surf, skin, (ax - 1, top + 7 - lift, 3, 2))
+            pygame.draw.rect(surf, hand, (ax - 1, top + 7 - lift, 3, 2))
+            if weapon and k == 1 and direction == HERO_DIR_DOWN:
+                _draw_weapon(surf, weapon, fx, ax, top + 7 - lift, 1)
     # Head (bobs with the body, a pixel less than the torso).
     hy = y - 10 + bob
     pygame.draw.circle(surf, skin, (x, hy), 6)
     _draw_hair(surf, x, hy, direction, look, tunic, skin)
+    if head == "iron":                          # an iron helmet over the hair
+        steel = GEAR_COLORS["iron"][0]
+        pygame.draw.ellipse(surf, steel, (x - 7, hy - 8, 14, 10 if direction != HERO_DIR_UP else 14))
+        pygame.draw.line(surf, GEAR_COLORS["iron"][1], (x - 7, hy), (x + 6, hy), 1)
+        if direction == HERO_DIR_DOWN:
+            pygame.draw.line(surf, GEAR_COLORS["iron"][1], (x, hy), (x, hy + 3), 1)
+    elif head == "leather":                     # a leather cap with a brim
+        cap, edge = GEAR_COLORS["leather"]
+        pygame.draw.ellipse(surf, cap, (x - 6, hy - 8, 12, 7))
+        pygame.draw.line(surf, edge, (x - 7, hy - 2), (x + 6, hy - 2), 2)
     if direction == HERO_DIR_DOWN:
         for ex in (x - 2, x + 2):
             pygame.draw.rect(surf, (25, 20, 20), (ex, hy, 1, 2))

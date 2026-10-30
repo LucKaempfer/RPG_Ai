@@ -24,7 +24,7 @@ import pygame
 
 from .. import audio
 from ..assets import (
-    AssetManager, HERO_COLS, HERO_IDLE_COLS, HERO_DIR_UP,
+    AssetManager, gear_of, HERO_COLS, HERO_IDLE_COLS, HERO_DIR_UP,
     ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, ENEMY_HURT, ENEMY_DEATH,
 )
 from ..combat import Battle, STYLES, AFFLICTED, ONGOING, WON, LOST, FLED
@@ -83,7 +83,7 @@ class BattleScreen(Screen):
         self.panel_menu = pygame.Rect(510, 404, 266, 176)
 
         assets = AssetManager()
-        hero = assets.hero_frames(player.look)
+        hero = assets.hero_frames(player.look, gear_of(player.equipment))
         self.hero_frames = [
             pygame.transform.scale(hero[HERO_DIR_UP * HERO_COLS + c], (128, 128))
             for c in HERO_IDLE_COLS]
