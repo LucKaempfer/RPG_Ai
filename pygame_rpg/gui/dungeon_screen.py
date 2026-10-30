@@ -24,6 +24,10 @@ fog of war, and what stands on the floor:
   forge screen (craft weapons from blueprints, upgrade them;
   ``crafting.py``).  Blueprints drop from the boss, sometimes from
   enemies, chests and smashed props.
+* lost writings (``lore.py``): books, notes, scrolls, letters and
+  slates on floors 1-5 that tell the story; walking onto one opens the
+  story reader and files it in the hero's journal.  Beating the floor-5
+  boss tells the epilogue.
 * stairs: appear in the boss's room once the boss is beaten; stepping
   on them builds the next, harder floor.
 
@@ -36,6 +40,7 @@ Esc returns to the Base *without* resting; the Base's Continue picks
 the run up again, New Adventure (or a defeat) ends it.
 """
 
+import math
 import random
 
 import pygame
@@ -59,6 +64,8 @@ from ..dungeon import (
 )
 from ..enemies import place_enemies, boss_room, cell_of, BOSS_TYPE
 from ..items import roll_loot, roll_junk, item_by_id
+from ..lore import (lore_cells, CHAPTERS, LORE_FLOORS, EPILOGUE,
+                    EPILOGUE_TITLE)
 from ..props import place_props, salvage, PROP_KINDS
 from ..shop import roll_stock
 from ..special_rooms import special_rooms, keeper_cell
@@ -154,6 +161,55 @@ def _shadow(size):
 
 
 
+_LORE_SPRITES = {}
+
+
+def _lore_sprite(kind):
+    """A lost writing lying on the floor, drawn in code (20 x 20)."""
+    if kind in _LORE_SPRITES:
+        return _LORE_SPRITES[kind]
+    img = pygame.Surface((20, 20), pygame.SRCALPHA)
+    paper, ink, edge = (226, 210, 172), (90, 70, 50), (120, 90, 56)
+    if kind == "book":
+        pygame.draw.rect(img, (110, 44, 36), (2, 3, 16, 14), border_radius=2)
+        pygame.draw.rect(img, paper, (4, 4, 13, 12))
+        pygame.draw.rect(img, (140, 58, 46), (2, 3, 14, 12), border_radius=2)
+        pygame.draw.line(img, (200, 160, 80), (5, 6), (12, 6), 1)
+        pygame.draw.line(img, (200, 160, 80), (5, 12), (12, 12), 1)
+    elif kind == "scroll":
+        pygame.draw.rect(img, paper, (4, 5, 12, 10))
+        pygame.draw.rect(img, edge, (2, 4, 16, 3), border_radius=1)
+        pygame.draw.rect(img, edge, (2, 13, 16, 3), border_radius=1)
+        for y in (9, 11):
+            pygame.draw.line(img, ink, (6, y), (14, y), 1)
+    elif kind == "tablet":
+        pygame.draw.rect(img, (70, 70, 78), (3, 2, 14, 16), border_radius=3)
+        pygame.draw.rect(img, (40, 40, 46), (3, 2, 14, 16), 1, border_radius=3)
+        for y in (6, 9, 12, 15):
+            pygame.draw.line(img, (150, 150, 160), (6, y), (14, y), 1)
+    else:                                   # note / letter
+        pygame.draw.polygon(img, paper, [(3, 4), (16, 2), (17, 16), (4, 18)])
+        pygame.draw.polygon(img, edge, [(3, 4), (16, 2), (17, 16), (4, 18)], 1)
+        if kind == "letter":
+            pygame.draw.circle(img, (160, 30, 30), (10, 11), 3)   # wax seal
+        else:
+            for y in (7, 10, 13):
+                pygame.draw.line(img, ink, (6, y), (14, y - 1), 1)
+    _LORE_SPRITES[kind] = img
+    return img
+
+
+def _lore_halo(alpha):
+    """A soft warm glow under a writing, so it can be spotted."""
+    key = ("halo", alpha // 10)
+    if key not in _LORE_SPRITES:
+        img = pygame.Surface((36, 36), pygame.SRCALPHA)
+        for r, a in ((18, 0.35), (13, 0.6), (8, 1.0)):
+            pygame.draw.circle(img, (255, 220, 140, int(alpha * a)), (18, 18), r)
+        _LORE_SPRITES[key] = img
+    return _LORE_SPRITES[key]
+
+
 def controls_hint():
     """The bottom-line key hint, following the player's key bindings
     (or naming the on-screen controls on a touch screen)."""
@@ -210,12 +266,22 @@ class DungeonScreen(Screen):
         self.shop_stock = roll_stock(seed, floor)
         self.shop_sold = set()               # stock indices bought out
         self.prop_at = {p.cell: p for p in self.props}
+        # Lost writings not found yet: [(entry, cell)].
+        blocked = ({cell_of(e) for e in self.enemies}
+                   | {c for c, _ in self.chests} | set(self.keepers.values()))
+        self.lore = [(e, c) for e, c in lore_cells(self.dungeon, seed, floor, blocked)
+                     if e.id not in player.lore]
+        self.story = None                    # story transition to show next
         self.stairs = None                   # cell, once the boss is beaten
         self.check_levels = False
         self.banner_t = BANNER_TIME
         self.fx = Particles()
         self.hud = Hud()
         self.hud.say(f"Floor {floor}: beat the {BOSS_TYPE.name} to open the stairs.")
+        if self.lore:
+            n = len(self.lore)
+            self.hud.say(f"{n} lost writing{'s' if n > 1 else ''} lie{'' if n > 1 else 's'}"
+                         " somewhere on this floor.")
         self._mark_visited()
         assets = AssetManager()
         self.assets = assets
@@ -457,6 +523,13 @@ class DungeonScreen(Screen):
             if any(e.boss for e in foes):
                 self.stairs = boss_room(self.dungeon).rect.center
                 self.hud.say("Stairs down have appeared!")
+                if self.floor == LORE_FLOORS and "epilogue" not in self.player.lore:
+                    self.player.lore.append("epilogue")
+                    save_player(self.player)
+                    self.story = ("story", {"title": EPILOGUE_TITLE,
+                                            "heading": "Brackmoor",
+                                            "pages": list(EPILOGUE),
+                                            "return_to": self})
             self.check_levels = True
         elif battle.state == FLED:
             # Back out through the nearest door; the room stays hostile.
@@ -485,6 +558,23 @@ class DungeonScreen(Screen):
                 found = self._find_blueprint(BLUEPRINT_CHEST_CHANCE)
                 if found:
                     self.hud.say(f"Chest: a blueprint for the {found}!")
+
+    def _read_lore(self):
+        """Pick up the writing the hero walks onto: it goes into the
+        journal (saved at once) and opens in the story reader."""
+        for i, (entry, cell) in enumerate(self.lore):
+            if self._near(*self._centre(cell)):
+                del self.lore[i]
+                self.player.lore.append(entry.id)
+                save_player(self.player)
+                self.moving = False
+                audio.play("chest", volume=0.6)
+                self.fx.burst(*self._centre(cell), (226, 210, 172), count=16)
+                self.hud.say(f"Found: {entry.title} (reread it in the Base's Journal)")
+                return ("story", {"title": entry.title, "pages": list(entry.pages),
+                                  "heading": f"Floor {entry.floor}: {CHAPTERS[entry.floor]}",
+                                  "return_to": self})
+        return None
 
     # -- special rooms -------------------------------------------------------
     def keeper_near(self):
@@ -656,9 +746,15 @@ class DungeonScreen(Screen):
             self.check_levels = False
             if pending_levels(self.player) > 0:
                 return ("level_up", {"player": self.player, "return_to": self})
+        if self.story is not None:
+            story, self.story = self.story, None
+            return story
         self.move(dx, dy, dt)
         self._update_shots(dt)
         self._open_chests()
+        story = self._read_lore()
+        if story is not None:
+            return story
         foes = self.room_enemies()
         if foes:
             self.moving = False
@@ -691,6 +787,16 @@ class DungeonScreen(Screen):
                 x, y = self._centre(cell)
                 img = self.chest_frames[1 if opened else 0]
                 surface.blit(img, img.get_rect(center=(x - ox, y - oy)))
+
+        glow = 0.5 + 0.5 * math.sin(self.anim_t * 3)
+        for entry, cell in self.lore:
+            if cell not in self.visible:            # only while in sight
+                continue
+            x, y = self._centre(cell)
+            halo = _lore_halo(int(60 + 70 * glow))
+            surface.blit(halo, halo.get_rect(center=(x - ox, y - oy)))
+            img = _lore_sprite(entry.kind)
+            surface.blit(img, img.get_rect(center=(x - ox, y - oy - 2 * glow)))
 
         for prop in self.props:
             if prop.cell not in self.seen:

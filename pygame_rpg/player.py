@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 
 from .classes import CLASSES
 from .crafting import BLUEPRINTS, STARTER_BLUEPRINTS
+from .lore import LORE_IDS
 from .config import (
     START_LEVEL, START_XP, START_HP, START_AP, START_RAP, START_MAP,
     START_DP, START_RDP, START_MDP, START_MP, MP_PER_LEVEL,
@@ -83,6 +84,8 @@ class Player:
     blueprints: list = field(default_factory=lambda: list(STARTER_BLUEPRINTS))
     # Class key from the hero maker (classes.py); "" = made before classes.
     hero_class: str = ""
+    # Story writings found (lore.py entry ids, plus "epilogue" once seen).
+    lore: list = field(default_factory=list)
 
     def __post_init__(self):
         for slot in EQUIP_SLOTS:
@@ -325,6 +328,7 @@ class Player:
             "gold": self.gold,
             "materials": dict(self.materials),
             "blueprints": list(self.blueprints),
+            "lore": list(self.lore),
             "equipment": {slot: ref(item)
                           for slot, item in self.equipment.items()},
             "inventory": [ref(i) for i in self.inventory],
@@ -339,7 +343,7 @@ class Player:
         renamed, and items in unknown slots or in a slot they don't fit
         go back to the backpack.  A save without a ``look`` gets the
         default look, one without ``materials`` an empty pouch, one without ``blueprints``
-        the starter blueprints.  A missing ``current_hp`` /
+        the starter blueprints, one without ``lore`` no writings found.  A missing ``current_hp`` /
         ``current_mp`` means full HP / MP.
         """
         p = cls(
@@ -361,6 +365,9 @@ class Player:
         known = data.get("blueprints")
         if isinstance(known, list):
             p.blueprints = [b for b in known if b in BLUEPRINTS]
+        found = data.get("lore")
+        if isinstance(found, list):
+            p.lore = [i for i in found if i in LORE_IDS]
         mats = data.get("materials", {})
         if isinstance(mats, dict):
             p.materials.update({k: max(0, v) for k, v in mats.items()

@@ -36,6 +36,18 @@ synthesised sounds are cached in `saves/cache/`. `buildozer.spec` + the local re
 `android/p4a-recipes/pygame-ce` build it; `.github/workflows/android.yml` runs the tests and builds
 the APK on every push / PR (download it from the run's *Artifacts*).
 
+**Story and lore (`lore.py`):** making a hero now tells a five-page prologue (Brackmoor, the
+Undercourse sewers, a crown that turns rats into kings) in the new story reader
+(`gui/story_screen.py`: parchment page, Left / Right / Enter, Esc or B closes) before the Base.
+Floors 1-5 each hold three lost writings (book, note, scroll, letter or slate, 15 in all, told in
+order by chapter: The Upper Drains, The Overflow, The Old Cisterns, The Bone Galleries, The Throne
+Below). They lie on interior cells, one per room, never in the entrance room, picked by their own
+RNG (`lore-{seed}`), drawn in code with a pulsing glow while in sight. Walking onto one opens the
+reader and files it in `Player.lore` (ids, saved at once; found ones are left out of later runs).
+Beating the floor-5 boss tells the epilogue once (`"epilogue"` in `Player.lore`); floors 6+ carry
+on without lore. The Base has a **Journal** button (`gui/journal_screen.py`) to reread the
+prologue, every writing found ("? ? ?" for the rest) and the epilogue. No `RUN_VERSION` change.
+
 **Character customization:** the hero maker has a look stage between the name and the
 confirm (skin, hair style incl. helmet / hood, hair colour, tunic colour, with a walking preview
 and a Random button). The hero is drawn in code from `Player.look` (`AssetManager.hero_frames`),
@@ -237,12 +249,14 @@ pygame_rpg/
 ├── special_rooms.py   # the floor's shop room and where its keeper stands
 ├── shop.py            # prices, stock, buy / sell rules
 ├── crafting.py        # blueprints, crafting and upgrading weapons at the anvil
+├── lore.py            # the story: prologue, lost writings per floor, epilogue, placement
 ├── combat.py          # turn-based battle rules: damage, ailments, cooldowns, XP, loot
 ├── audio.py           # synthesised sound effects + sewer ambience, play()/set_ambience()
 ├── gui/
 │   ├── screen.py      # Screen base, Button, fonts, palette, QUIT
 │   ├── title_screen.py, tutorial_screen.py, hero_maker.py, hero_chooser.py
 │   ├── base_screen.py, inventory_screen.py, stats_screen.py, level_up_screen.py
+│   ├── story_screen.py, journal_screen.py  # story reader, journal of found writings
 │   ├── dungeon_screen.py  # walk the floor: fog, enemies, chests, stairs
 │   ├── effects.py         # Particles (sparks) + menu_key() keyboard navigation
 │   ├── battle_screen.py   # turn-based battle menu
@@ -265,6 +279,7 @@ tests/
 ├── test_money.py          # gold per win / floor, junk drops, saves, coins and junk in props
 ├── test_props.py          # props on edges away from doors, nothing cut off, seeded, blocking
 ├── test_looks.py          # character customization: look stage, look in saves, frames per look
+├── test_lore.py           # story: writings per floor, placement, pickup, journal, epilogue, saves
 ├── test_smoke_scripts.py  # runs the two scripts below as pytest cases
 ├── m2_smoke_test.py       # end-to-end item / inventory checks (plain script)
 └── m4_smoke_test.py       # end-to-end dungeon / battle / run-save checks (plain script)
@@ -307,7 +322,7 @@ name a group (`player.SLOT_GROUPS`) and take the first free slot of it. Equippin
 equipped even above the gate.
 
 **Saves** (`saves/<name>.json`): `name, lvl, xp, hp, current_hp, ap, rap, map, dp, rdp, mdp,
-current_mp, lvl_up_counts, look {skin, hair, hair_color, tunic: option index}, gold, materials {wood, iron, cloth, bone, stone: count}, blueprints [weapon base id, ...], equipment {slot: ref | null}, inventory [ref, ...]`. A `ref` is an item id, or
+current_mp, lvl_up_counts, look {skin, hair, hair_color, tunic: option index}, gold, lore [writing id | "epilogue", ...], materials {wood, iron, cloth, bone, stone: count}, blueprints [weapon base id, ...], equipment {slot: ref | null}, inventory [ref, ...]`. A `ref` is an item id, or
 `{"id": ..., "charges": n}` for a consumable with used charges.
 **Old saves keep loading:** a missing `current_hp` / `current_mp` means full HP / MP, a missing `look` the default look; legacy slot `accessory` maps
 to `trinket1`; an item in an unknown slot (e.g. the old `armor` slot) or a slot it doesn't fit

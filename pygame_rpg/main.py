@@ -1,9 +1,10 @@
 # pygame_rpg/main.py
 """Entry point: the state machine that runs every GUI screen.
 
-Flow: Title -> Tutorial -> Hero Maker -> Hero Chooser -> Base,
-with the Base branching into Inventory, Stats, Level-Up and the
-Dungeon (Adventure).
+Flow: Title -> Tutorial -> Hero Maker -> Prologue (story) -> Base,
+with the Base branching into Inventory, Stats, Journal, Level-Up and
+the Dungeon (Adventure).  Lost writings found in the dungeon open the
+story reader too (``lore.py``).
 
 Screens never reference each other directly.  Each one's
 ``handle_event`` (and, for things that happen on their own such as
@@ -54,6 +55,8 @@ from .gui.battle_screen import BattleScreen
 from .gui.shop_screen import ShopScreen
 from .gui.forge_screen import ForgeScreen
 from .gui.settings_screen import SettingsScreen
+from .gui.story_screen import StoryScreen
+from .gui.journal_screen import JournalScreen
 
 
 def build_screen(name, display, kwargs=None):
@@ -70,16 +73,23 @@ def build_screen(name, display, kwargs=None):
         return HeroMakerScreen(display)
     if name == "hero_chooser":
         return HeroChooserScreen(display)
+    if name == "story":
+        return StoryScreen(display, kwargs["title"], kwargs["pages"],
+                           next=kwargs.get("next"),
+                           heading=kwargs.get("heading", ""),
+                           return_to=kwargs.get("return_to"))
     if name == "settings":
         return SettingsScreen(display, return_to=kwargs.get("return_to"))
     if name in ("base", "inventory", "stats", "level_up", "dungeon",
-                "battle", "shop", "forge"):
+                "battle", "shop", "forge", "journal"):
         player = kwargs.get("player")
         if name == "base":
             return BaseScreen(display, player)
         if name == "inventory":
             return InventoryScreen(display, player,
                                    return_to=kwargs.get("return_to"))
+        if name == "journal":
+            return JournalScreen(display, player)
         if name == "stats":
             return StatsScreen(display, player)
         if name == "shop":
