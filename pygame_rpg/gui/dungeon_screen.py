@@ -17,6 +17,9 @@ fog of war, and what stands on the floor:
   the weapon at the prop in front, or shoots an arrow / bolt with a
   ranged or magic weapon; a prop breaks after a few hits and leaves
   crafting materials in the hero's pouch.
+* the shop (``special_rooms.py``, ``shop.py``): one safe room per floor
+  with a merchant; E next to them opens the shop screen.  Gear bought
+  there stays sold out for the floor.
 * stairs: appear in the boss's room once the boss is beaten; stepping
   on them builds the next, harder floor.
 
@@ -51,6 +54,8 @@ from ..dungeon import (
 from ..enemies import place_enemies, boss_room, cell_of, BOSS_TYPE
 from ..items import roll_loot, roll_junk
 from ..props import place_props, salvage, PROP_KINDS
+from ..shop import roll_stock
+from ..special_rooms import special_rooms, keeper_cell
 from ..savegame import save_player, save_run
 from .base_screen import pending_levels
 from .effects import Particles
@@ -79,6 +84,9 @@ SIGHT = 8
 # LIGHT_DARK alpha at LIGHT_OUTER px.
 LIGHT_INNER, LIGHT_OUTER, LIGHT_DARK = 120, 420, 190
 
+# Talking to a room's keeper (the merchant): centre distance in px.
+TALK = 52
+
 # Attacking props: seconds between attacks, how long the swing shows,
 # how far ahead a melee swing reaches (px from the hero's centre), and
 # shots (px per second, range in px).
@@ -106,6 +114,7 @@ SHOT_COLORS = {"ranged": (200, 170, 110), "burning": (255, 140, 60),
                "magic": (170, 130, 255)}
 
 MINIMAP_SCALE = 2
+MINIMAP_MARK = {"shop": (230, 190, 90)}
 BANNER_TIME = 2.0   # seconds the "Floor N" banner shows on arrival
 
 
@@ -167,10 +176,18 @@ class DungeonScreen(Screen):
         self.visited = []
         self.seen = set()
         self.visible = set()                 # in line of sight right now
-        self.enemies = place_enemies(self.dungeon, floor)
+        # Special rooms (the shop) are safe: no enemies, chests or props.
+        self.special = special_rooms(self.dungeon, seed)
+        safe = list(self.special.values())
+        self.enemies = [e for e in place_enemies(self.dungeon, floor)
+                        if not any(r.contains(cell_of(e)) for r in safe)]
         self.all_enemies = list(self.enemies)   # placement order, for saves
         self.chests = self._place_chests()   # [cell, opened]
-        self.props = place_props(self.dungeon, seed)
+        self.props = [p for p in place_props(self.dungeon, seed)
+                      if not any(r.contains(p.cell) for r in safe)]
+        self.keepers = {kind: keeper_cell(room) for kind, room in self.special.items()}
+        self.shop_stock = roll_stock(seed, floor)
+        self.shop_sold = set()               # stock indices bought out
         self.prop_at = {p.cell: p for p in self.props}
         self.stairs = None                   # cell, once the boss is beaten
         self.check_levels = False
@@ -187,6 +204,7 @@ class DungeonScreen(Screen):
                 self.enemy_frames[e.type.sprite] = assets.load_sheet(
                     f"enemies/{e.type.sprite}.png", ENEMY_COLS, ENEMY_ROWS)
         self.chest_frames = assets.load_sheet("objects/chest.png", 2, 1)
+        self.keeper_frames = {"shop": assets.load_sheet("objects/merchant.png", 2, 1)}
         self.prop_frames = assets.load_sheet("objects/props.png",
                                              len(PROP_KINDS), 2)
         self._prop_shade = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
@@ -207,6 +225,7 @@ class DungeonScreen(Screen):
                        if not e.alive],
             "chests": [opened for _, opened in self.chests],
             "props": [i for i, p in enumerate(self.props) if p.broken],
+            "shop_sold": sorted(self.shop_sold),
             "stairs": self.stairs is not None,
             "seen": sorted(self.seen),
             "visited": [rooms.index(r) for r in self.visited],
@@ -220,6 +239,8 @@ class DungeonScreen(Screen):
         self.enemies = [e for e in self.all_enemies if e.alive]
         for chest, opened in zip(self.chests, run.get("chests", [])):
             chest[1] = bool(opened)
+        self.shop_sold = {i for i in run.get("shop_sold", [])
+                          if 0 <= i < len(self.shop_stock)}
         for i in run.get("props", []):
             if 0 <= i < len(self.props):
                 self.props[i].broken, self.props[i].hp = True, 0
@@ -250,7 +271,8 @@ class DungeonScreen(Screen):
         lair = boss_room(self.dungeon)
         taken = {(int(e.x // TILE_SIZE), int(e.y // TILE_SIZE))
                  for e in self.enemies}
-        rooms = [r for r in self.dungeon.rooms[1:] if r is not lair]
+        rooms = [r for r in self.dungeon.rooms[1:]
+                 if r is not lair and r not in self.special.values()]
         chests = []
         for room in rng.sample(rooms, min(CHESTS_PER_FLOOR, len(rooms))):
             r = room.rect
@@ -291,6 +313,8 @@ class DungeonScreen(Screen):
                     return False
                 prop = self.prop_at.get(cell)
                 if prop is not None and prop.solid:
+                    return False
+                if cell in self.keepers.values():
                     return False
         return True
 
@@ -349,6 +373,8 @@ class DungeonScreen(Screen):
         if room is not None:
             if room not in self.visited:
                 self.visited.append(room)
+                if room is self.special.get("shop"):
+                    self.hud.say("A merchant has set up shop here. Press E to trade.")
         else:
             self.dungeon.visited_corridors.add(cell)
         # A gate stays shut until you step through it: on a door cell the
@@ -419,6 +445,25 @@ class DungeonScreen(Screen):
                     self.hud.say(f"Chest: {item.name} ({item.rarity})")
                 else:
                     self.hud.say(f"Chest: {item.name}, too heavy to carry")
+
+    # -- special rooms -------------------------------------------------------
+    def keeper_near(self):
+        """The kind of special room whose keeper the hero stands next to
+        (None if nobody is in reach)."""
+        for kind, cell in self.keepers.items():
+            x, y = self._centre(cell)
+            if abs(self.x - x) <= TALK and abs(self.y - y) <= TALK:
+                return kind
+        return None
+
+    def interact(self):
+        """E: talk to the keeper in reach; returns a transition or None."""
+        if self.keeper_near() == "shop":
+            self.moving = False
+            audio.play("click")
+            return ("shop", {"player": self.player, "stock": self.shop_stock,
+                             "sold": self.shop_sold, "return_to": self})
+        return None
 
     # -- attacking props -----------------------------------------------------
     def attack(self) -> None:
@@ -520,6 +565,8 @@ class DungeonScreen(Screen):
             save_player(self.player)
             self.save_run()
             return QUIT
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
+            return self.interact()
         if event.type == pygame.KEYDOWN and event.key in (pygame.K_SPACE, pygame.K_f):
             self.attack()
             return None
@@ -593,6 +640,19 @@ class DungeonScreen(Screen):
             if prop.cell not in self.visible:       # remembered, not in sight
                 surface.blit(self._prop_shade, pos)
 
+        for kind, cell in self.keepers.items():
+            if cell not in self.seen:
+                continue
+            x, y = self._centre(cell)
+            rug = pygame.Rect(0, 0, 2 * TILE_SIZE + 8, TILE_SIZE)
+            rug.center = (x - ox, y - oy + 8)
+            pygame.draw.rect(surface, (78, 34, 34), rug, border_radius=4)
+            pygame.draw.rect(surface, (150, 116, 56), rug, 2, border_radius=4)
+            img = self.keeper_frames[kind][int(self.anim_t / 0.5) % 2]
+            surface.blit(img, img.get_rect(center=(x - ox, y - oy)))
+            if cell not in self.visible:
+                surface.blit(self._prop_shade, (cell[0] * TILE_SIZE - ox, cell[1] * TILE_SIZE - oy))
+
         for i, e in enumerate(self.enemies):
             if cell_of(e) not in self.visible:      # walls hide enemies
                 continue
@@ -635,6 +695,11 @@ class DungeonScreen(Screen):
 
         light = _light_mask()
         surface.blit(light, light.get_rect(center=(int(self.x) - ox, int(self.y) - oy)))
+        near = self.keeper_near()
+        if near:
+            x, y = self._centre(self.keepers[near])
+            tip = font(20).render("E: trade", True, (235, 200, 90))
+            surface.blit(tip, tip.get_rect(midbottom=(x - ox, y - oy - 18)))
 
         self.hud.draw(surface, self.player, self.floor)
         if self.banner_t > 0:
@@ -647,10 +712,16 @@ class DungeonScreen(Screen):
             surface.blit(shadow, r.move(2, 2))
             surface.blit(img, r)
         mm_w = DUNGEON_WIDTH * MINIMAP_SCALE
-        self.dungeon.draw_minimap(
-            surface, self.visited, (SCREEN_WIDTH - mm_w - 10, 10),
-            self.cell(), scale=MINIMAP_SCALE)
+        mm_pos = (SCREEN_WIDTH - mm_w - 10, 10)
+        self.dungeon.draw_minimap(surface, self.visited, mm_pos,
+                                  self.cell(), scale=MINIMAP_SCALE)
+        for kind, room in self.special.items():         # mark the shop
+            if room in self.visited:
+                cx, cy = room.rect.center
+                pygame.draw.rect(surface, MINIMAP_MARK[kind],
+                                 (mm_pos[0] + cx * MINIMAP_SCALE - 2,
+                                  mm_pos[1] + cy * MINIMAP_SCALE - 2, 5, 5))
         hint = font(18).render(
-            "Arrows / WASD: move    Space: attack    I: inventory    Esc: Base", True, DIM_TEXT)
+            "Arrows / WASD: move    Space: attack    E: talk    I: inventory    Esc: Base", True, DIM_TEXT)
         surface.blit(hint, hint.get_rect(bottomright=(
             SCREEN_WIDTH - 12, SCREEN_HEIGHT - 10)))
