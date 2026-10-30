@@ -3,6 +3,8 @@
 
 Left: the merchant's goods (price; potions never run out, gear is one
 of each).  Right: the hero's backpack with what each item sells for.
+Below: the selected item's details: level, weight, what it does, and
+for gear its stats next to what the hero wears in that slot now.
 Left / Right pick a side, Up / Down an item, Enter (or the Buy / Sell
 button) trades, Esc returns to the floor.  The dungeon floor passes
 itself as ``return_to`` along with its stock and the set of sold-out
@@ -16,7 +18,9 @@ from ..assets import AssetManager
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from ..savegame import save_player
 from ..shop import buy, sell, price, sell_price
-from .inventory_screen import RARITY_COLOR
+from ..combat import weapon_type
+from ..stat_names import SHORT, stat_diffs
+from .inventory_screen import RARITY_COLOR, _wrap
 from .screen import (
     QUIT, Screen, Button, font,
     BG_COLOR, PANEL_COLOR, PANEL_HOT, TEXT_COLOR, DIM_TEXT, GOLD,
@@ -24,7 +28,7 @@ from .screen import (
 )
 
 ROW_H = 36
-ROWS = 10
+ROWS = 7
 GOOD = (130, 210, 130)
 BAD = (235, 110, 100)
 
@@ -49,6 +53,7 @@ class ShopScreen(Screen):
         self._icons = {}
         self.panels = (pygame.Rect(24, 90, 368, ROWS * ROW_H + 50),
                        pygame.Rect(408, 90, 368, ROWS * ROW_H + 50))
+        self.detail = pygame.Rect(24, 400, 752, 102)
         self.btn_buy = Button("Buy", (24, 540, 140, 36), size=22)
         self.btn_sell = Button("Sell", (408, 540, 140, 36), size=22)
         self.btn_back = Button("Back", (636, 540, 140, 36), size=22)
@@ -155,6 +160,58 @@ class ShopScreen(Screen):
             self._icons[key] = pygame.transform.scale(surf, (size, size))
         return self._icons[key]
 
+    def selected(self):
+        """The item under the cursor on the active side, or None."""
+        rows = self.stock if self.side == 0 else self.player.inventory
+        i = self.index[self.side]
+        return rows[i] if 0 <= i < len(rows) else None
+
+    def _draw_detail(self, surface):
+        """Details of the selected item: name, level / kind / weight,
+        stat changes against the equipped item, and its description."""
+        box = self.detail
+        pygame.draw.rect(surface, PANEL_COLOR, box, border_radius=8)
+        pygame.draw.rect(surface, BORDER_COLOR, box, width=2, border_radius=8)
+        item, p = self.selected(), self.player
+        if item is None:
+            return
+        x, y = box.x + 12, box.y + 8
+        name = font(22).render(item.name, True, GOLD if item.rarity == "common"
+                               else RARITY_COLOR.get(item.rarity, GOLD))
+        surface.blit(name, (x, y))
+        kind = (f"{weapon_type(item)} weapon" + (f", causes {item.effect}" if item.effect else "")
+                if item.kind == "weapon" else item.kind)
+        info = f"{item.rarity} {kind}  ·  level {item.level}  ·  {item.weight} kg"
+        tag = font(18).render(info, True, DIM_TEXT)
+        surface.blit(tag, (x + name.get_width() + 14, y + 3))
+        if p.slot_for(item) is not None and item.level > p.lvl:
+            need = font(18).render(f"Needs level {item.level}", True, BAD)
+            surface.blit(need, need.get_rect(topright=(box.right - 12, y + 3)))
+        elif p.slot_of(item) is not None:
+            worn = font(18).render("Equipped", True, GOOD)
+            surface.blit(worn, worn.get_rect(topright=(box.right - 12, y + 3)))
+        y += 28
+        diffs = [] if p.slot_of(item) is not None else stat_diffs(p, item)
+        if diffs:
+            cur = p.equipment.get(p.slot_for(item))
+            head = font(18).render("vs " + (cur.name if cur else "nothing") + ":",
+                                   True, DIM_TEXT)
+            surface.blit(head, (x, y))
+            cx = x + head.get_width() + 10
+            for stat, old, new in diffs:
+                color = GOOD if new > old else BAD if new < old else TEXT_COLOR
+                chip = font(18).render(f"{SHORT[stat]} {old} -> {new}", True, color)
+                if cx + chip.get_width() > box.right - 12:
+                    break
+                surface.blit(chip, (cx, y))
+                cx += chip.get_width() + 18
+            y += 22
+        text = (f"Junk. The merchant pays {sell_price(item)} gold for it."
+                if item.kind == "junk" else item.description)
+        for line in _wrap(text, 18, box.w - 24)[:3 if not diffs else 2]:
+            surface.blit(font(18).render(line, True, TEXT_COLOR), (x, y))
+            y += 20
+
     def draw(self, surface):
         surface.fill(BG_COLOR)
         title = font(32).render("Merchant", True, GOLD)
@@ -194,6 +251,7 @@ class ShopScreen(Screen):
                 tag = font(18).render(f"{cost} g", True, GOLD if available else DIM_TEXT)
                 surface.blit(tag, tag.get_rect(midright=(r.right - 8, r.centery)))
 
+        self._draw_detail(surface)
         msg = font(20).render(self.message, True, GOOD if self.message_ok else BAD)
         surface.blit(msg, msg.get_rect(midtop=(SCREEN_WIDTH // 2, 508)))
         for btn in (self.btn_buy, self.btn_sell, self.btn_back):

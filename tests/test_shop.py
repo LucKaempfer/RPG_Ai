@@ -103,3 +103,23 @@ def test_trading_through_the_screens(display, saves):
     # Sold-out gear survives the run save, the gold the hero save.
     again = DungeonScreen(display, S.load_player("Trader"), run=d.to_run())
     assert again.shop_sold == {3} and again.player.gold == p.gold
+
+
+def test_shop_shows_stats_of_the_selected_item(display):
+    from pygame_rpg.stat_names import stat_diffs
+    from pygame_rpg.gui.shop_screen import ShopScreen
+    p = Player(name="T")
+    p.inventory.append(I.item_by_id("sword"))
+    p.equip(p.inventory[0])
+    sword3 = I.item_by_id("sword_3")
+    assert stat_diffs(p, sword3) == [("power", 6, 10), ("ap", 1, 3), ("dp", 1, 3)]
+    assert stat_diffs(p, I.item_by_id("potion")) == []
+    stock = [I.item_by_id("potion"), sword3, I.item_by_id("chainmail")]
+    s = ShopScreen(display, p, stock, set())
+    for i in range(len(stock)):
+        s.index[0] = i
+        assert s.selected() is stock[i]
+        s.draw(display)
+    s.side = 1
+    assert s.selected() is None          # empty backpack
+    s.draw(display)
