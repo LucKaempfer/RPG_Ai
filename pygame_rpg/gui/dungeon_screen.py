@@ -30,7 +30,7 @@ import pygame
 
 from .. import audio
 from ..assets import (
-    AssetManager, HERO_COLS, HERO_IDLE_COLS, HERO_WALK_COLS,
+    AssetManager, HERO_COLS, HERO_IDLE_COLS, HERO_WALK_COLS, HERO_STEP_FRAMES,
     HERO_DIR_DOWN, HERO_DIR_UP, HERO_DIR_LEFT, HERO_DIR_RIGHT,
     ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, SEWER_MANHOLE,
 )
@@ -50,12 +50,16 @@ WALK_SPEED = 160
 # Collision box: smaller than a tile so the hero fits through
 # one-tile corridors without snagging on corners.
 HITBOX = 20
-# Seconds per walk/idle animation frame.
-FRAME_TIME = 0.12
+# Seconds per idle animation frame.  Walk frames follow the distance
+# walked instead (one stride = two footsteps = all HERO_WALK_COLS), so
+# the feet never slide, whatever the speed.
+FRAME_TIME = 0.4
 # Centre distance at which the hero touches a chest.
 TOUCH = 24
-# Pixels walked per footstep sound.
+# Pixels walked per footstep (half a stride).
 STRIDE = 34
+# Little splash at the feet on every footstep.
+SPLASH_COLOR = (120, 150, 120)
 # How far (in tiles) the hero sees.  Walls block the view (line of
 # sight); what was seen stays on the map but is drawn dimmed.
 SIGHT = 8
@@ -84,6 +88,18 @@ def _light_mask():
     return _LIGHT
 
 
+_SHADOWS = {}
+
+
+def _shadow(size):
+    """Soft dark ellipse that grounds a sprite ``size`` px wide (cached)."""
+    if size not in _SHADOWS:
+        surf = pygame.Surface((size * 3 // 4, size // 5 + 2), pygame.SRCALPHA)
+        pygame.draw.ellipse(surf, (0, 0, 0, 90), surf.get_rect())
+        _SHADOWS[size] = surf
+    return _SHADOWS[size]
+
+
 class DungeonScreen(Screen):
     name = "dungeon"
     ambience = "sewer"
@@ -105,7 +121,7 @@ class DungeonScreen(Screen):
         self.facing = HERO_DIR_DOWN
         self.moving = False
         self.anim_t = 0.0
-        self.stride = 0.0   # pixels walked since the last footstep sound
+        self.walked = 0.0   # pixels walked in this stride (walk frames, footsteps)
         self.visited = []
         self.seen = set()
         self.visible = set()                 # in line of sight right now
@@ -230,6 +246,8 @@ class DungeonScreen(Screen):
         """
         self.moving = bool(dx or dy)
         if not self.moving:
+            # Standing still: the next walk starts with a footstep.
+            self.walked = 2 * STRIDE - 1
             return
         if dx and dy:  # same speed diagonally
             dx, dy = dx * 0.7071, dy * 0.7071
@@ -248,13 +266,22 @@ class DungeonScreen(Screen):
             self.facing = HERO_DIR_DOWN if dy > 0 else HERO_DIR_UP
         self._mark_visited()
 
+    def walk_frame(self) -> int:
+        """Index into HERO_WALK_COLS for the distance walked so far."""
+        n = len(HERO_WALK_COLS)
+        return int(self.walked / (2 * STRIDE) * n) % n
+
     def _footsteps(self, old):
-        """Splash every STRIDE pixels walked; a door creaks when the
-        hero steps onto its tile."""
-        self.stride += abs(self.x - old[0]) + abs(self.y - old[1])
-        if self.stride >= STRIDE:
-            self.stride -= STRIDE
+        """A splash whenever a foot lands (the walk frame reaches one of
+        HERO_STEP_FRAMES); a door creaks when the hero steps onto its
+        tile."""
+        before = self.walk_frame()
+        self.walked = (self.walked + abs(self.x - old[0]) + abs(self.y - old[1])) % (2 * STRIDE)
+        now = self.walk_frame()
+        if now != before and now in HERO_STEP_FRAMES:
             audio.play("step", volume=0.6)
+            self.fx.burst(self.x, self.y + 12, SPLASH_COLOR, count=5,
+                          speed=45, life=0.3, size=2)
         doors = self.dungeon.door_tiles
         before = (int(old[0] // TILE_SIZE), int(old[1] // TILE_SIZE))
         if self.cell() in doors and before != self.cell():
@@ -391,7 +418,6 @@ class DungeonScreen(Screen):
         overrides = {self.stairs: SEWER_MANHOLE} if self.stairs else None
         self.dungeon.render(surface, (ox, oy), seen=self.seen,
                             overrides=overrides, visible=self.visible)
-        blink = int(self.anim_t / 0.4) % 2
 
         for cell, opened in self.chests:
             if cell in self.seen:
@@ -399,18 +425,26 @@ class DungeonScreen(Screen):
                 img = self.chest_frames[1 if opened else 0]
                 surface.blit(img, img.get_rect(center=(x - ox, y - oy)))
 
-        for e in self.enemies:
+        for i, e in enumerate(self.enemies):
             if cell_of(e) not in self.visible:      # walls hide enemies
                 continue
-            img = self.enemy_frames[e.type.sprite][ENEMY_IDLE[blink]]
+            # Each enemy breathes on its own beat (offset by its index).
+            t = self.anim_t + i * 0.37
+            img = self.enemy_frames[e.type.sprite][ENEMY_IDLE[int(t / 0.4) % 2]]
+            size = 48 if e.boss else 32
             if e.boss:
                 img = pygame.transform.scale(img, (48, 48))
-            surface.blit(img, img.get_rect(center=(e.x - ox, e.y - oy)))
+            sx, sy = e.x - ox, e.y - oy
+            surface.blit(_shadow(size), _shadow(size).get_rect(
+                center=(sx, sy + size * 0.38)))
+            surface.blit(img, img.get_rect(center=(sx, sy)))
 
         self.fx.draw(surface, (ox, oy))
 
-        cols = HERO_WALK_COLS if self.moving else HERO_IDLE_COLS
-        col = cols[int(self.anim_t / FRAME_TIME) % len(cols)]
+        if self.moving:
+            col = HERO_WALK_COLS[self.walk_frame()]
+        else:
+            col = HERO_IDLE_COLS[int(self.anim_t / FRAME_TIME) % len(HERO_IDLE_COLS)]
         frame = self.frames[self.facing * HERO_COLS + col]
         surface.blit(frame, frame.get_rect(
             center=(int(self.x) - ox, int(self.y) - oy)))
