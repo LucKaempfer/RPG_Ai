@@ -1,5 +1,5 @@
 # pygame_rpg/gui/title_screen.py
-"""Title screen: logo + New Hero / Saved Heroes / Exit.
+"""Title screen: logo + New Hero / Saved Heroes / Settings / Exit.
 
 The logo is drawn in code (outlined title, crossed swords, rising
 embers) so it needs no asset file.  Mouse or keyboard (Up / Down +
@@ -37,7 +37,8 @@ class TitleScreen(Screen):
         self.buttons = [
             Button("New Hero", (cx - 130, cy - 40, 260, 48)),
             Button("Saved Heroes", (cx - 130, cy + 24, 260, 48)),
-            Button("Exit", (cx - 130, cy + 88, 260, 48)),
+            Button("Settings", (cx - 130, cy + 88, 260, 48)),
+            Button("Exit", (cx - 130, cy + 152, 260, 48)),
         ]
         self.hot = None
         self.focus = None
@@ -69,6 +70,8 @@ class TitleScreen(Screen):
         if btn is self.buttons[1]:
             return ("tutorial", {"next": "hero_chooser"})
         if btn is self.buttons[2]:
+            return ("settings", {"return_to": self})
+        if btn is self.buttons[3]:
             return QUIT
         return None
 

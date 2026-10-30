@@ -92,5 +92,6 @@ BLUEPRINT_PROP_CHANCE = 3
 PROPS_PER_ROOM = (1, 3)    # min, max scenery props per room (+1 per 30 cells)
 
 # --- Audio (audio.py synthesises everything; M mutes in game) ---
+# Defaults only: the settings screen changes them (settings.py).
 SFX_VOLUME = 0.7       # 0..1, all one-shot effects
 AMBIENT_VOLUME = 0.35  # 0..1, the sewer water loop and its drips

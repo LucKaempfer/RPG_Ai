@@ -24,11 +24,15 @@ played while they are shown).  M toggles mute.
 Window: screens draw on a fixed 800 x 600 canvas; ``gui/display.py``
 scales it into a resizable window (F11: fullscreen) and maps the mouse
 back onto the canvas.
+
+Settings (``settings.py``, ``gui/settings_screen.py``): brightness,
+volumes, fullscreen and the dungeon keys, saved in
+``saves/settings.json``; reached from the title screen and the Base.
 """
 
 import pygame
 
-from . import audio, config
+from . import audio, config, settings
 from .gui.display import Display
 from .gui.screen import QUIT
 from .gui.title_screen import TitleScreen
@@ -43,6 +47,7 @@ from .gui.dungeon_screen import DungeonScreen
 from .gui.battle_screen import BattleScreen
 from .gui.shop_screen import ShopScreen
 from .gui.forge_screen import ForgeScreen
+from .gui.settings_screen import SettingsScreen
 
 
 def build_screen(name, display, kwargs=None):
@@ -59,6 +64,8 @@ def build_screen(name, display, kwargs=None):
         return HeroMakerScreen(display)
     if name == "hero_chooser":
         return HeroChooserScreen(display)
+    if name == "settings":
+        return SettingsScreen(display, return_to=kwargs.get("return_to"))
     if name in ("base", "inventory", "stats", "level_up", "dungeon",
                 "battle", "shop", "forge"):
         player = kwargs.get("player")
@@ -91,6 +98,7 @@ def main():
     audio.pre_init()
     pygame.init()
     audio.init()
+    settings.load()
     display = Display()
     screen = display.canvas
     pygame.display.set_caption("Dungeon Crawler")

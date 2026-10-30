@@ -30,7 +30,7 @@ from array import array
 
 import pygame
 
-from . import config
+from . import settings
 
 RATE = 22050          # mixer frequency asked for in pre_init()
 AMBIENT_FADE = 800    # ms to fade the ambience loop in / out
@@ -174,7 +174,7 @@ def _notes(text):
 
 
 # Each recipe takes a _Synth and returns a buffer.  Kept short and
-# quiet-ish; config.SFX_VOLUME scales them all.
+# quiet-ish; the effects volume setting scales them all.
 def _step(s, pitch):
     # A splashy footstep in shallow sewer water.
     thud = s.env(s.lowpass(s.noise(0.09), 0.08 * pitch), attack=0.004, decay=40)
@@ -517,7 +517,7 @@ class Audio:
         if sound is not None:
             ch = sound.play()
             if ch is not None:
-                ch.set_volume(config.SFX_VOLUME * volume)
+                ch.set_volume(settings.current.effects_volume * volume)
 
     def set_ambience(self, name):
         if not self.ok or name == self.ambience:
@@ -531,7 +531,13 @@ class Audio:
         sound = self.sounds.get(self.ambience) if self.ambience else None
         if sound is not None and not self.muted:
             self.loop_channel.play(sound, loops=-1, fade_ms=AMBIENT_FADE)
-            self.loop_channel.set_volume(config.AMBIENT_VOLUME)
+            self.loop_channel.set_volume(settings.current.ambience_volume)
+
+    def refresh_volume(self):
+        """Apply a changed ambience volume to the loop already playing
+        (effects pick up theirs on the next play)."""
+        if self.ok:
+            self.loop_channel.set_volume(settings.current.ambience_volume)
 
     def toggle_mute(self):
         self.muted = not self.muted
@@ -568,7 +574,7 @@ class Audio:
                         # Random pan and distance.
                         far = self.rng.uniform(0.3, 1.0)
                         pan = self.rng.random()
-                        v = config.AMBIENT_VOLUME * far
+                        v = settings.current.ambience_volume * far
                         ch.set_volume(v * (1 - pan) * 2 if pan > 0.5 else v,
                                       v * pan * 2 if pan < 0.5 else v)
                 left = self.rng.expovariate(1 / mean)
@@ -580,6 +586,7 @@ init = _audio.init
 play = _audio.play
 set_ambience = _audio.set_ambience
 toggle_mute = _audio.toggle_mute
+refresh_volume = _audio.refresh_volume
 update = _audio.update
 
 

@@ -7,11 +7,14 @@ maximised, and F11 toggles fullscreen.  Each frame the canvas is scaled
 to the window with its aspect kept (black bars fill the rest), and
 mouse positions are mapped back to canvas coordinates, so no screen
 needs to know the window size.
+
+The brightness and the fullscreen flag come from ``settings.current``
+(the settings screen changes them; F11 flips fullscreen and saves).
 """
 
 import pygame
 
-from .. import config
+from .. import config, settings
 
 # Share of the desktop the window may take when it opens (the rest is
 # left for the title bar and the taskbar).
@@ -49,7 +52,7 @@ class Display:
         scale = fit_scale(desktop)
         self.window_size = (round(config.SCREEN_WIDTH * scale),
                             round(config.SCREEN_HEIGHT * scale))
-        self.fullscreen = False
+        self.fullscreen = settings.current.fullscreen
         self._open()
 
     def _open(self):
@@ -64,10 +67,11 @@ class Display:
         self.laid_out_for = self.window.get_size()
         self.view = letterbox(self.laid_out_for, self.canvas.get_size())
         self.scaled = pygame.Surface(self.view.size)
+        self.boost = pygame.Surface(self.view.size)
 
     def toggle_fullscreen(self):
-        self.fullscreen = not self.fullscreen
-        self._open()
+        settings.current.fullscreen = not settings.current.fullscreen
+        settings.save()
 
     def handle_event(self, event):
         """Window housekeeping for one event.  Returns the event for the
@@ -99,14 +103,31 @@ class Display:
 
     def present(self):
         """Scale the canvas into the window and show it."""
+        if self.fullscreen != settings.current.fullscreen:
+            self.fullscreen = settings.current.fullscreen
+            self._open()
         if self.window.get_size() != self.laid_out_for:
             # A resize the event queue did not report (e.g. fullscreen).
             self._layout()
         if self.view.size == self.canvas.get_size():
-            frame = self.canvas
+            self.scaled.blit(self.canvas, (0, 0))
         else:
             pygame.transform.smoothscale(self.canvas, self.view.size, self.scaled)
-            frame = self.scaled
+        self._brighten(settings.current.brightness)
         self.window.fill((0, 0, 0))
-        self.window.blit(frame, self.view)
+        self.window.blit(self.scaled, self.view)
         pygame.display.flip()
+
+    def _brighten(self, level):
+        """Scale every colour of the frame by ``level`` (1 = unchanged).
+        Black stays black, so the fog of war stays dark."""
+        if level < 1:
+            v = int(255 * level)
+            self.scaled.fill((v, v, v), special_flags=pygame.BLEND_RGB_MULT)
+        elif level > 1:
+            # frame + frame x (level - 1), clipped at white.
+            v = min(255, int(255 * (level - 1)))
+            self.boost.blit(self.scaled, (0, 0))
+            self.boost.fill((v, v, v), special_flags=pygame.BLEND_RGB_MULT)
+            self.scaled.blit(self.boost, (0, 0),
+                             special_flags=pygame.BLEND_RGB_ADD)
