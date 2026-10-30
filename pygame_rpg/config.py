@@ -42,7 +42,7 @@ BASE_MAX_WEIGHT = 50
 SAVE_DIR = "saves"
 # Bumped whenever the same seed would build a different floor; run saves
 # from another version are dropped (the hero just starts a new run).
-RUN_VERSION = 4
+RUN_VERSION = 5
 
 # --- Rarity (M2 wiring; loot rolls in M4) ---
 # Relative spawn weights for a loot roll.  A rarity with no matching
@@ -84,6 +84,11 @@ ENEMY_JUNK_CHANCE = 25     # % a beaten enemy also drops a piece of junk
 PROP_GOLD = (1, 4)
 PROP_GOLD_CHANCE = 30      # % a smashed prop holds some coins
 PROP_JUNK_CHANCE = 12      # % it holds a piece of junk
+# Weapon blueprints (crafting.py): the boss always drops one the hero
+# doesn't know yet; otherwise these % chances.
+BLUEPRINT_ENEMY_CHANCE = 10
+BLUEPRINT_CHEST_CHANCE = 30
+BLUEPRINT_PROP_CHANCE = 3
 PROPS_PER_ROOM = (1, 3)    # min, max scenery props per room (+1 per 30 cells)
 
 # --- Audio (audio.py synthesises everything; M mutes in game) ---

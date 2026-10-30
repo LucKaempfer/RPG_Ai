@@ -37,6 +37,7 @@ from .gui.level_up_screen import LevelUpScreen
 from .gui.dungeon_screen import DungeonScreen
 from .gui.battle_screen import BattleScreen
 from .gui.shop_screen import ShopScreen
+from .gui.forge_screen import ForgeScreen
 
 
 def build_screen(name, display, kwargs=None):
@@ -54,7 +55,7 @@ def build_screen(name, display, kwargs=None):
     if name == "hero_chooser":
         return HeroChooserScreen(display)
     if name in ("base", "inventory", "stats", "level_up", "dungeon",
-                "battle", "shop"):
+                "battle", "shop", "forge"):
         player = kwargs.get("player")
         if name == "base":
             return BaseScreen(display, player)
@@ -66,6 +67,8 @@ def build_screen(name, display, kwargs=None):
         if name == "shop":
             return ShopScreen(display, player, kwargs["stock"], kwargs["sold"],
                               return_to=kwargs.get("return_to"))
+        if name == "forge":
+            return ForgeScreen(display, player, return_to=kwargs.get("return_to"))
         if name == "battle":
             return BattleScreen(display, player, kwargs["enemy"],
                                 kwargs["dungeon"])

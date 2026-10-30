@@ -20,6 +20,10 @@ fog of war, and what stands on the floor:
 * the shop (``special_rooms.py``, ``shop.py``): one safe room per floor
   with a merchant; E next to them opens the shop screen.  Gear bought
   there stays sold out for the floor.
+* the forge: another safe room with an anvil; E next to it opens the
+  forge screen (craft weapons from blueprints, upgrade them;
+  ``crafting.py``).  Blueprints drop from the boss, sometimes from
+  enemies, chests and smashed props.
 * stairs: appear in the boss's room once the boss is beaten; stepping
   on them builds the next, harder floor.
 
@@ -47,12 +51,14 @@ from ..combat import WON, FLED, weapon_type
 from ..config import (
     SCREEN_WIDTH, SCREEN_HEIGHT, CHESTS_PER_FLOOR, RUN_VERSION,
     PROP_GOLD, PROP_GOLD_CHANCE, PROP_JUNK_CHANCE,
+    BLUEPRINT_CHEST_CHANCE, BLUEPRINT_PROP_CHANCE,
 )
+from ..crafting import roll_blueprint
 from ..dungeon import (
     Dungeon, TILE_SIZE, DUNGEON_WIDTH, DUNGEON_HEIGHT, MEMORY_SHADE,
 )
 from ..enemies import place_enemies, boss_room, cell_of, BOSS_TYPE
-from ..items import roll_loot, roll_junk
+from ..items import roll_loot, roll_junk, item_by_id
 from ..props import place_props, salvage, PROP_KINDS
 from ..shop import roll_stock
 from ..special_rooms import special_rooms, keeper_cell
@@ -114,7 +120,7 @@ SHOT_COLORS = {"ranged": (200, 170, 110), "burning": (255, 140, 60),
                "magic": (170, 130, 255)}
 
 MINIMAP_SCALE = 2
-MINIMAP_MARK = {"shop": (230, 190, 90)}
+MINIMAP_MARK = {"shop": (230, 190, 90), "anvil": (240, 120, 50)}
 BANNER_TIME = 2.0   # seconds the "Floor N" banner shows on arrival
 
 
@@ -204,7 +210,8 @@ class DungeonScreen(Screen):
                 self.enemy_frames[e.type.sprite] = assets.load_sheet(
                     f"enemies/{e.type.sprite}.png", ENEMY_COLS, ENEMY_ROWS)
         self.chest_frames = assets.load_sheet("objects/chest.png", 2, 1)
-        self.keeper_frames = {"shop": assets.load_sheet("objects/merchant.png", 2, 1)}
+        self.keeper_frames = {"shop": assets.load_sheet("objects/merchant.png", 2, 1),
+                              "anvil": assets.load_sheet("objects/anvil.png", 2, 1)}
         self.prop_frames = assets.load_sheet("objects/props.png",
                                              len(PROP_KINDS), 2)
         self._prop_shade = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
@@ -375,6 +382,8 @@ class DungeonScreen(Screen):
                 self.visited.append(room)
                 if room is self.special.get("shop"):
                     self.hud.say("A merchant has set up shop here. Press E to trade.")
+                elif room is self.special.get("anvil"):
+                    self.hud.say("An anvil glows here. Press E to craft and upgrade.")
         else:
             self.dungeon.visited_corridors.add(cell)
         # A gate stays shut until you step through it: on a door cell the
@@ -417,6 +426,9 @@ class DungeonScreen(Screen):
                          f" +{battle.gold_gained} gold")
             for item in battle.loot:
                 self.hud.say(f"Found: {item.name}")
+            if battle.blueprint:
+                self.hud.say(f"Blueprint: {item_by_id(battle.blueprint).name}"
+                             " (craft it at an anvil)")
             if battle.enemy.boss:
                 self.stairs = boss_room(self.dungeon).rect.center
                 self.hud.say("Stairs down have appeared!")
@@ -445,6 +457,9 @@ class DungeonScreen(Screen):
                     self.hud.say(f"Chest: {item.name} ({item.rarity})")
                 else:
                     self.hud.say(f"Chest: {item.name}, too heavy to carry")
+                found = self._find_blueprint(BLUEPRINT_CHEST_CHANCE)
+                if found:
+                    self.hud.say(f"Chest: a blueprint for the {found}!")
 
     # -- special rooms -------------------------------------------------------
     def keeper_near(self):
@@ -458,12 +473,27 @@ class DungeonScreen(Screen):
 
     def interact(self):
         """E: talk to the keeper in reach; returns a transition or None."""
-        if self.keeper_near() == "shop":
+        kind = self.keeper_near()
+        if kind is not None:
             self.moving = False
             audio.play("click")
+        if kind == "shop":
             return ("shop", {"player": self.player, "stock": self.shop_stock,
                              "sold": self.shop_sold, "return_to": self})
+        if kind == "anvil":
+            return ("forge", {"player": self.player, "return_to": self})
         return None
+
+    def _find_blueprint(self, chance):
+        """Maybe learn a new weapon blueprint (``chance`` %); returns its
+        weapon name or None."""
+        if self.dungeon.rng.uniform(0, 100) >= chance:
+            return None
+        base = roll_blueprint(self.dungeon.rng, self.player.blueprints)
+        if base is None:
+            return None
+        self.player.blueprints.append(base)
+        return item_by_id(base).name
 
     # -- attacking props -----------------------------------------------------
     def attack(self) -> None:
@@ -556,6 +586,9 @@ class DungeonScreen(Screen):
                 found.append(junk.name)
             else:
                 found.append(f"{junk.name} (too heavy)")
+        bp = self._find_blueprint(BLUEPRINT_PROP_CHANCE)
+        if bp:
+            found.append(f"{bp} blueprint")
         what = ", ".join(found) or "nothing useful"
         self.hud.say(f"{prop.kind.capitalize()} smashed: {what}")
 
@@ -646,9 +679,12 @@ class DungeonScreen(Screen):
             x, y = self._centre(cell)
             rug = pygame.Rect(0, 0, 2 * TILE_SIZE + 8, TILE_SIZE)
             rug.center = (x - ox, y - oy + 8)
-            pygame.draw.rect(surface, (78, 34, 34), rug, border_radius=4)
-            pygame.draw.rect(surface, (150, 116, 56), rug, 2, border_radius=4)
-            img = self.keeper_frames[kind][int(self.anim_t / 0.5) % 2]
+            if kind == "shop":                      # the merchant's rug
+                pygame.draw.rect(surface, (78, 34, 34), rug, border_radius=4)
+                pygame.draw.rect(surface, (150, 116, 56), rug, 2, border_radius=4)
+            else:                                   # soot around the forge
+                pygame.draw.ellipse(surface, (26, 24, 22), rug)
+            img = self.keeper_frames[kind][int(self.anim_t / (0.5 if kind == "shop" else 0.15)) % 2]
             surface.blit(img, img.get_rect(center=(x - ox, y - oy)))
             if cell not in self.visible:
                 surface.blit(self._prop_shade, (cell[0] * TILE_SIZE - ox, cell[1] * TILE_SIZE - oy))
@@ -698,7 +734,8 @@ class DungeonScreen(Screen):
         near = self.keeper_near()
         if near:
             x, y = self._centre(self.keepers[near])
-            tip = font(20).render("E: trade", True, (235, 200, 90))
+            tip = font(20).render("E: trade" if near == "shop" else "E: forge",
+                                  True, (235, 200, 90))
             surface.blit(tip, tip.get_rect(midbottom=(x - ox, y - oy - 18)))
 
         self.hud.draw(surface, self.player, self.floor)
@@ -715,7 +752,7 @@ class DungeonScreen(Screen):
         mm_pos = (SCREEN_WIDTH - mm_w - 10, 10)
         self.dungeon.draw_minimap(surface, self.visited, mm_pos,
                                   self.cell(), scale=MINIMAP_SCALE)
-        for kind, room in self.special.items():         # mark the shop
+        for kind, room in self.special.items():   # mark the shop and forge
             if room in self.visited:
                 cx, cy = room.rect.center
                 pygame.draw.rect(surface, MINIMAP_MARK[kind],

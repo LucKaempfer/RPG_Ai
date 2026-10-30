@@ -16,6 +16,7 @@ def display():
     pygame.init()
     yield pygame.display.set_mode((800, 600))
     pygame.quit()
+    screen._FONTS.clear()       # don't leave dead fonts for the next module
 
 
 def _win(enemy, seed, player=None):
