@@ -42,7 +42,7 @@ import pygame
 
 from .. import audio
 from ..assets import (
-    AssetManager, HERO_COLS, HERO_IDLE_COLS, HERO_WALK_COLS, HERO_STEP_FRAMES,
+    AssetManager, gear_of, HERO_COLS, HERO_IDLE_COLS, HERO_WALK_COLS, HERO_STEP_FRAMES,
     HERO_ATTACK_COLS,
     HERO_DIR_DOWN, HERO_DIR_UP, HERO_DIR_LEFT, HERO_DIR_RIGHT,
     ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, SEWER_MANHOLE,
@@ -203,7 +203,7 @@ class DungeonScreen(Screen):
         self.hud.say(f"Floor {floor}: beat the {BOSS_TYPE.name} to open the stairs.")
         self._mark_visited()
         assets = AssetManager()
-        self.frames = assets.hero_frames(player.look)
+        self.assets = assets
         self.enemy_frames = {}
         for e in self.enemies:
             if e.type.sprite not in self.enemy_frames:
@@ -219,6 +219,11 @@ class DungeonScreen(Screen):
         if run is not None:
             self._restore(run)
         self.save_run()
+
+    def hero_frames(self):
+        """The hero's frames in their look and current gear (cached per
+        combination, so a new weapon or armour shows at once)."""
+        return self.assets.hero_frames(self.player.look, gear_of(self.player.equipment))
 
     # -- run saves -------------------------------------------------------
     def to_run(self) -> dict:
@@ -720,7 +725,7 @@ class DungeonScreen(Screen):
             col = HERO_WALK_COLS[self.walk_frame()]
         else:
             col = HERO_IDLE_COLS[int(self.anim_t / FRAME_TIME) % len(HERO_IDLE_COLS)]
-        frame = self.frames[self.facing * HERO_COLS + col]
+        frame = self.hero_frames()[self.facing * HERO_COLS + col]
         surface.blit(frame, frame.get_rect(
             center=(int(self.x) - ox, int(self.y) - oy)))
         if self.swing_t > SWING_TIME / 3 and self.swing_melee:

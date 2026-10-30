@@ -37,6 +37,13 @@ dips when a foot lands), driven by the distance walked rather than time so the f
 each footstep plays the splash sound and kicks up a few drops. The hero and enemies cast soft
 shadows, and each enemy breathes on its own beat.
 
+**Gear on the hero:** the equipped weapon and armour are drawn on the hero everywhere the
+hero shows (dungeon, battle, Base portrait). `assets.gear_of(equipment)` reduces the equipment to
+(weapon family, weapon ailment, leather / iron per armour slot), and `hero_frames(look, gear)`
+caches one sheet per look + gear: a sword, mace, bow or staff (orb coloured by its element) in the
+right hand, an iron helmet or leather cap, chain mail or a leather vest, gloves and boots. The
+dungeon looks the frames up each draw, so a change in the inventory or at the anvil shows at once.
+
 **Armour at the anvil:** blueprints now cover the eight armour bases too (Leather Cap … Iron
 Boots), so they drop like weapon blueprints and the forge crafts and upgrades armour the same
 way. Leather armour costs cloth 2 + bone 1, iron armour iron 2 + stone 1, times the piece's base
@@ -165,7 +172,7 @@ wake up rested in the Base.
 | `pygame_rpg/gui/dungeon_screen.py` | ✅ M4 | `DungeonScreen(player, floor, seed)`: `move()` with axis-separated wall collision (20 px hitbox), trinket speed bonus, walk animation by distance walked (`walk_frame()`, footsteps on `HERO_STEP_FRAMES` with a splash), idle breathing, shadows, clamped camera, fog (`seen`), enemies, chests, stairs, HUD + minimap. Saves the run (`to_run()` / `save_run()`) on floor entry, after each battle, on Esc and on quit; `run=` restores one. `step(dx, dy, dt)` is one frame and returns a transition (battle on bump, level-up after a win, next floor on the stairs); tests drive it directly. `battle_over()` is called by the battle screen. Esc saves → Base (no rest). Floor banner on arrival. |
 | `pygame_rpg/gui/battle_screen.py` | ✅ M4 | `BattleScreen`: enemy + hero sprites, HP / MP bars, ailments, log, menu (Attack / Abilities / Items / Run, sub-lists), keyboard + mouse; Floating damage / heal numbers, hero hit flash + shake. Continue resumes the floor, or on defeat rests, saves, deletes the run → Base. |
 | `pygame_rpg/gui/hud.py` | ✅ M4 | `Hud`: floor, level, weapon icon, HP / MP / XP bars, fading message log (`say()`). |
-| `pygame_rpg/assets.py` + `assets/` | M1, in use | `AssetManager`: loads PNGs, slices sheets, and generates + saves placeholder art for missing files (tileset, slime, sword/potion icons, panel). `hero_frames(look)` draws the hero in code per look (`LOOK_OPTIONS`, `look_choice()`), cached in memory, never saved. Used by GUI screens for icons/portrait. |
+| `pygame_rpg/assets.py` + `assets/` | M1, in use | `AssetManager`: loads PNGs, slices sheets, and generates + saves placeholder art for missing files (tileset, slime, sword/potion icons, panel). `hero_frames(look, gear)` draws the hero in code per look and visible gear (`gear_of()`) (`LOOK_OPTIONS`, `look_choice()`), cached in memory, never saved. Used by GUI screens for icons/portrait. |
 | `pygame_rpg/README.md` | ✅ M5 | Short player-facing readme: install, run, test, controls; points here. |
 | `pygame_rpg/audio.py` | ✅ M5 | All sound, synthesised in plain Python at start-up on a background thread (no audio files, nothing to license): `_RECIPES` maps names to small synth functions (tones, filtered noise, echo). `play(name, delay, volume)` (a name with numbered variants such as `step0..2` picks one at random), `set_ambience("sewer" / None)` (looping bubbly water built from grains + scattered drips, distant metal clanks, pipe groans, rat squeaks via `_SCATTER`), `update(dt)` from the main loop, `toggle_mute()` (M; not on the hero-name screen). Every call is a no-op if the mixer can't start. Screens set an `ambience` class attribute; inventory and level-up inherit it from `return_to`. Volumes: `SFX_VOLUME` / `AMBIENT_VOLUME` in `config.py`. |
 | `pygame_rpg/gui/effects.py` | ✅ M5 | `Particles` (burst / update / draw sparks) and `menu_key()` (Up / Down / Enter for button lists). |

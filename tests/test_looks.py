@@ -104,3 +104,32 @@ def test_walk_frames_follow_the_distance(display, saves, monkeypatch):
     assert abs(steps.count("step") - walked / D.STRIDE) <= 2
     d.move(0, 0, 1 / 60)
     assert not d.moving
+
+
+def test_gear_shows_on_the_hero(display, saves):
+    from pygame_rpg import items as I
+    from pygame_rpg.assets import gear_of, NO_GEAR
+    from pygame_rpg.gui.dungeon_screen import DungeonScreen
+    p = Player(name="Knight")
+    assert gear_of(p.equipment) == NO_GEAR
+    for item_id in ("mace_2", "iron_helmet", "leather_vest", "iron_gauntlets", "leather_boots"):
+        item = I.item_by_id(item_id)
+        p.inventory.append(item)
+        p.lvl = 4
+        p.equip(item)
+    assert gear_of(p.equipment) == ("blunt", "stun", "iron", "leather", "iron", "leather")
+    wand = I.item_by_id("electric_wand")
+    p.inventory.append(wand)
+    p.equip(wand)
+    assert gear_of(p.equipment)[:2] == ("magic", "electrocuted")
+    a = AssetManager()
+    bare, geared = a.hero_frames(p.look), a.hero_frames(p.look, gear_of(p.equipment))
+    assert bare is not geared
+    assert any(pygame.image.tobytes(b, "RGBA") != pygame.image.tobytes(g, "RGBA")
+               for b, g in zip(bare, geared))
+    # The dungeon picks up a gear change without being rebuilt.
+    d = DungeonScreen(display, p, seed=1)
+    before = d.hero_frames()
+    p.unequip("head")
+    assert d.hero_frames() is not before
+    d.draw(display)
