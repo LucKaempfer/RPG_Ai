@@ -25,10 +25,15 @@ damage over time, and stun / electrocuted skip that turn.  Weapon and
 ability tiers raise the chance (+5 per level above 1, abilities +20);
 a ward trinket cuts the chance by 25% per ward level (level 4 = immune).
 
-Attack styles (``STYLES``) trade damage for ailments: Strike is the plain
-hit with the weapon's own ailment; Slash cuts for less but makes the
-target bleed more often; Bash hits a bit softer with a good stun chance;
-Heavy hits hardest but can miss and causes no ailment.
+Attack styles (``STYLES``) depend on the weapon: every weapon
+(``WEAPON_STYLES``, by level-1 id; tiers share it) offers its own four,
+the first being the plain hit with the weapon's own ailment.  The others
+trade damage for something: a likelier ailment, ignoring part of the
+enemy's defense (``pierce``), several weaker hits (``hits``), hitting
+every enemy at once (``sweep``), double damage on a target that already
+has an ailment (``exploit``), healing from the damage (``drain``), extra
+defense during the enemies' reply (``guard``), or a big hit that can
+miss.  Staff and wand power spells cost MP (``mp``).
 
 Previews: ``attack_preview`` / ``cast_preview`` give the min-max damage an
 action would deal right now, ``incoming_preview`` the enemy's next hit
@@ -80,19 +85,177 @@ AFFLICTED = {"bleeding": "bleeding", "poison": "poisoned", "burning": "burning",
 @dataclass(frozen=True)
 class AttackStyle:
     name: str
-    mult: float          # damage multiplier
+    mult: float          # damage multiplier (per hit)
     effect: str = None   # ailment it causes; None = the weapon's own
     chance: int = 0      # extra ailment chance (%)
     miss: int = 0        # chance to miss (%)
     note: str = ""       # one-line description for the menu
+    pierce: float = 0.0  # share of the enemy's defense it ignores
+    hits: int = 1        # hits on the target (each rolls damage + ailment)
+    sweep: bool = False  # hits every living enemy instead of the target
+    exploit: float = 0.0  # extra multiplier on a target that has an ailment
+    drain: int = 0       # % of the damage dealt healed back
+    guard: int = 0       # + to every defense during the enemies' reply
+    mp: int = 0          # MP the attack costs
+    sound: str = "strike"
 
 
+def _s(name, mult, sound, note, **kw):
+    return AttackStyle(name, mult, note=note, sound=sound, **kw)
+
+
+# Every attack in the game, by key.  Each weapon (by level-1 id) offers
+# its own four (``WEAPON_STYLES``); the first one is its plain hit with
+# the weapon's own ailment.
 STYLES = {
-    "strike": AttackStyle("Strike", 1.0, note="weapon ailment"),
-    "slash": AttackStyle("Slash", 0.75, "bleeding", 30, note="more bleeding"),
-    "bash": AttackStyle("Bash", 0.8, "stun", 15, note="may stun"),
-    "heavy": AttackStyle("Heavy", 1.35, "", 0, 25, note="25% miss"),
+    # bare hands
+    "punch": _s("Punch", 1.0, "strike", "plain hit"),
+    "kick": _s("Kick", 0.8, "bash", "may stun", effect="stun", chance=15),
+    "haymaker": _s("Haymaker", 1.35, "heavy", "25% miss", effect="", miss=25),
+    # sword: the all-rounder
+    "strike": _s("Strike", 1.0, "strike", "weapon ailment"),
+    "slash": _s("Slash", 0.75, "slash", "more bleeding", effect="bleeding", chance=30),
+    "thrust": _s("Thrust", 0.9, "strike", "ignores half armor", pierce=0.5),
+    "parry": _s("Parry", 0.6, "strike", "+4 defense", guard=4),
+    # saber: quick curved cuts
+    "cut": _s("Cut", 1.0, "slash", "weapon ailment"),
+    "twin_cut": _s("Twin Cuts", 0.55, "slash", "2 quick cuts", hits=2),
+    "draw_cut": _s("Draw Cut", 0.75, "slash", "deep bleeding", effect="bleeding", chance=35),
+    "flourish": _s("Flourish", 0.6, "slash", "all foes", sweep=True),
+    # greatsword: slow, huge swings
+    "hew": _s("Hew", 1.0, "heavy", "weapon ailment"),
+    "cleave": _s("Cleave", 0.65, "slash", "all foes", sweep=True),
+    "overhead": _s("Overhead", 1.5, "heavy", "30% miss", effect="", miss=30),
+    "pommel": _s("Pommel Bash", 0.7, "bash", "may stun", effect="stun", chance=20),
+    # dagger: fast and dirty
+    "stab": _s("Stab", 1.0, "strike", "weapon ailment"),
+    "flurry": _s("Flurry", 0.4, "slash", "3 quick stabs", hits=3),
+    "backstab": _s("Backstab", 0.8, "strike", "x2 on ailing foe", exploit=1.0),
+    "venom_edge": _s("Venom Edge", 0.7, "slash", "poisons", effect="poison", chance=30),
+    # spear: reach and armor piercing
+    "jab": _s("Jab", 1.0, "strike", "weapon ailment"),
+    "impale": _s("Impale", 0.9, "heavy", "ignores armor", pierce=1.0),
+    "sweep": _s("Sweep", 0.6, "slash", "all foes", sweep=True),
+    "brace": _s("Brace", 0.6, "strike", "+5 defense", guard=5),
+    # warhammer: crushing power
+    "smash": _s("Smash", 1.0, "bash", "weapon ailment"),
+    "slam": _s("Ground Slam", 0.55, "heavy", "all foes", sweep=True),
+    "armor_break": _s("Armor Break", 0.85, "heavy", "ignores armor", pierce=1.0),
+    "colossal": _s("Colossal Swing", 1.6, "heavy", "35% miss", effect="", miss=35),
+    # mace: steady blows
+    "bash": _s("Bash", 1.0, "bash", "weapon ailment"),
+    "crush": _s("Crush", 0.9, "heavy", "ignores half armor", pierce=0.5),
+    "daze": _s("Daze", 0.7, "bash", "likely stun", effect="stun", chance=25),
+    "flail": _s("Flail", 0.55, "bash", "hits twice", hits=2),
+    # club: crude brawling
+    "whack": _s("Whack", 1.0, "bash", "weapon ailment"),
+    "clobber": _s("Clobber", 0.8, "bash", "may stun", effect="stun", chance=15),
+    "wild_swing": _s("Wild Swing", 1.4, "heavy", "25% miss", effect="", miss=25),
+    "shove": _s("Shove", 0.5, "bash", "+4 defense", guard=4),
+    # bow: range and volleys
+    "shot": _s("Shot", 1.0, "shoot", "weapon ailment"),
+    "aimed": _s("Aimed Shot", 0.9, "shoot", "ignores armor", pierce=1.0),
+    "volley": _s("Volley", 0.6, "shoot", "all foes", sweep=True),
+    "barbed": _s("Barbed Arrow", 0.75, "shoot", "more bleeding",
+                 effect="bleeding", chance=30),
+    # crossbow: heavy bolts
+    "bolt": _s("Bolt", 1.0, "shoot", "weapon ailment"),
+    "heavy_bolt": _s("Heavy Bolt", 1.4, "shoot", "20% miss", miss=20, pierce=0.5),
+    "piercer": _s("Armor Piercer", 0.9, "shoot", "no armor", pierce=1.0),
+    "pin": _s("Pin Down", 0.7, "shoot", "likely stun", effect="stun", chance=25),
+    # blowpipe: poisons and tricks
+    "dart": _s("Dart", 1.0, "shoot", "weapon ailment"),
+    "poison_dart": _s("Poison Dart", 0.6, "shoot", "strong poison", effect="poison", chance=40),
+    "darts": _s("Twin Darts", 0.5, "shoot", "2 quick darts", hits=2),
+    "sleep_dart": _s("Sleep Dart", 0.4, "shoot", "very likely stun", effect="stun", chance=35),
+    # boomerang: comes back around
+    "throw": _s("Throw", 1.0, "shoot", "weapon ailment"),
+    "ricochet": _s("Ricochet", 0.6, "shoot", "all foes", sweep=True),
+    "round_trip": _s("Round Trip", 0.55, "shoot", "hits twice", hits=2),
+    "knockout": _s("Knockout", 0.7, "bash", "likely stun", effect="stun", chance=25),
+    # slingshot: stones
+    "pebble": _s("Pebble", 1.0, "shoot", "weapon ailment"),
+    "headshot": _s("Headshot", 0.7, "bash", "likely stun", effect="stun", chance=25),
+    "scatter": _s("Scattershot", 0.6, "shoot", "all foes", sweep=True),
+    "rock": _s("Big Rock", 1.35, "heavy", "25% miss", effect="", miss=25),
+    # whip: control
+    "lash": _s("Lash", 1.0, "slash", "weapon ailment"),
+    "crack": _s("Crack", 0.7, "bash", "likely stun", effect="stun", chance=25),
+    "wide_lash": _s("Wide Lash", 0.6, "slash", "all foes", sweep=True),
+    "lacerate": _s("Lacerate", 0.75, "slash", "makes them bleed",
+                   effect="bleeding", chance=30),
+    # poisonous staff: plagues
+    "toxic_bolt": _s("Toxic Bolt", 1.0, "magic", "weapon ailment"),
+    "venom_cloud": _s("Venom Cloud", 0.6, "magic", "all, 3 MP", sweep=True, mp=3),
+    "plague": _s("Plague", 1.4, "magic", "strong, 5 MP", chance=20, mp=5),
+    "wither": _s("Wither", 0.8, "magic", "x2 on ailing foe", exploit=1.0),
+    # poisonous wand: siphoning
+    "toxic_dart": _s("Toxic Dart", 1.0, "magic", "weapon ailment"),
+    "needles": _s("Twin Needles", 0.5, "magic", "2 quick bolts", hits=2),
+    "siphon": _s("Siphon", 0.8, "magic", "heals you 50%", drain=50),
+    "envenom": _s("Envenom", 0.6, "magic", "strong poison", effect="poison", chance=40),
+    # fiery staff: big fire
+    "firebolt": _s("Firebolt", 1.0, "magic", "weapon ailment"),
+    "flame_wave": _s("Flame Wave", 0.6, "magic", "all, 3 MP", sweep=True, mp=3),
+    "meteor": _s("Meteor", 1.7, "magic", "5 MP, 25% miss", miss=25, mp=5),
+    "ignite": _s("Ignite", 0.7, "magic", "sets ablaze", effect="burning", chance=30),
+    # fiery wand: quick sparks
+    "ember": _s("Ember", 1.0, "magic", "weapon ailment"),
+    "fire_darts": _s("Fire Darts", 0.4, "magic", "3 quick bolts", hits=3),
+    "flare": _s("Flare", 0.5, "magic", "blinds: stun", effect="stun", chance=25),
+    "kindle": _s("Kindle", 0.7, "magic", "strong burning", effect="burning", chance=35),
+    # electric staff: storms
+    "spark": _s("Spark", 1.0, "magic", "weapon ailment"),
+    "chain": _s("Chain Lightning", 0.6, "magic", "all, 3 MP", sweep=True, mp=3),
+    "storm": _s("Thunderstorm", 0.9, "magic", "all, 5 MP", sweep=True, mp=5),
+    "static_ward": _s("Static Ward", 0.5, "magic", "+5 defense", guard=5),
+    # electric wand: precise shocks
+    "zap": _s("Zap", 1.0, "magic", "weapon ailment"),
+    "arc": _s("Arc", 0.55, "magic", "2 quick bolts", hits=2),
+    "shock": _s("Shock", 0.6, "magic", "likely shock", effect="electrocuted", chance=35),
+    "overload": _s("Overload", 1.0, "magic", "no armor, 3 MP", pierce=1.0, mp=3),
 }
+
+WEAPON_STYLES = {
+    None: ("punch", "kick", "haymaker"),
+    "sword": ("strike", "slash", "thrust", "parry"),
+    "saber": ("cut", "twin_cut", "draw_cut", "flourish"),
+    "greatsword": ("hew", "cleave", "overhead", "pommel"),
+    "dagger": ("stab", "flurry", "backstab", "venom_edge"),
+    "spear": ("jab", "impale", "sweep", "brace"),
+    "warhammer": ("smash", "slam", "armor_break", "colossal"),
+    "mace": ("bash", "crush", "daze", "flail"),
+    "club": ("whack", "clobber", "wild_swing", "shove"),
+    "bow": ("shot", "aimed", "volley", "barbed"),
+    "crossbow": ("bolt", "heavy_bolt", "piercer", "pin"),
+    "blowpipe": ("dart", "poison_dart", "darts", "sleep_dart"),
+    "boomerang": ("throw", "ricochet", "round_trip", "knockout"),
+    "slingshot": ("pebble", "headshot", "scatter", "rock"),
+    "whip": ("lash", "crack", "wide_lash", "lacerate"),
+    "poisonous_staff": ("toxic_bolt", "venom_cloud", "plague", "wither"),
+    "poisonous_wand": ("toxic_dart", "needles", "siphon", "envenom"),
+    "fiery_staff": ("firebolt", "flame_wave", "meteor", "ignite"),
+    "fiery_wand": ("ember", "fire_darts", "flare", "kindle"),
+    "electric_staff": ("spark", "chain", "storm", "static_ward"),
+    "electric_wand": ("zap", "arc", "shock", "overload"),
+}
+
+
+def styles_for(weapon) -> tuple:
+    """The attack keys a weapon (or bare hands, ``None``) offers; the
+    first is its plain hit.  Unknown weapons fall back by type."""
+    if weapon is None:
+        return WEAPON_STYLES[None]
+    head, _, tail = weapon.id.rpartition("_")
+    base = head if head and tail.isdigit() else weapon.id
+    if base not in WEAPON_STYLES:
+        kind = weapon_type(weapon)
+        base = ("bow" if kind == "ranged"
+                else {"poison": "poisonous_staff", "electrocuted": "electric_staff"}
+                .get(weapon.effect, "fiery_staff") if kind == "magic"
+                else "mace" if weapon.effect == "stun" else "sword")
+    return WEAPON_STYLES[base]
+
 
 STAT_FOR = {"melee": "ap", "ranged": "rap", "magic": "map"}
 DEFENSE_FOR = {"melee": "dp", "ranged": "rdp", "magic": "mdp"}
@@ -138,6 +301,7 @@ class Battle:
         self.statuses = {}        # hero ailments: name -> turns left
         self.guard = 0            # Shield bonus to every defense
         self.guard_turns = 0
+        self.brace = 0            # attack-style defense for this round
         self.xp_gained = 0
         self.gold_gained = 0
         self.blueprint = None     # weapon base id of a blueprint found
@@ -226,23 +390,30 @@ class Battle:
                 del statuses[name]
         return skip
 
-    def _hit_range(self, stat, power, mult=1.0):
+    def _defense(self, enemy, pierce=0.0) -> int:
+        return round(enemy.defense * (1 - pierce))
+
+    def _hit_range(self, stat, power, mult=1.0, pierce=0.0):
         base = self.player.total(stat) + power
         lo, hi = DAMAGE_VARIANCE
-        return tuple(max(1, round(base * v * mult) - self.enemy.defense)
+        defense = self._defense(self.enemy, pierce)
+        return tuple(max(1, round(base * v * mult) - defense)
                      for v in (lo, hi))
 
     def _hit_enemy(self, out, stat, power, effect, chance_bonus, what,
-                   mult=1.0):
-        e = self.enemy
+                   mult=1.0, enemy=None, pierce=0.0, exploit=0.0):
+        e = enemy or self.enemy
+        if exploit and e.statuses:
+            mult *= 1 + exploit
         dmg = max(1, round(self._vary(self.player.total(stat) + power) * mult)
-                  - e.defense)
+                  - self._defense(e, pierce))
         e.hp = max(0, e.hp - dmg)
         self._say(out, f"{what} hits the {self.name_of(e)} for {dmg}.")
         if e.alive:
-            self._try_ailment(out, effect, chance_bonus, on_hero=False)
+            self._try_ailment(out, effect, chance_bonus, on_hero=False, enemy=e)
         else:
             self._fallen(out, e)
+        return dmg
 
     def _fallen(self, out, enemy):
         """Log an enemy going down while others still fight."""
@@ -283,12 +454,14 @@ class Battle:
             if skip:
                 self._say(out, f"The {name} can't move!")
             else:
-                defense = self.player.total(DEFENSE_FOR[e.type.attack_type]) + self.guard
+                defense = (self.player.total(DEFENSE_FOR[e.type.attack_type])
+                           + self.guard + self.brace)
                 dmg = max(1, round(self._vary(ENEMY_HIT_MULT * e.attack)) - defense)
                 self.player.current_hp = max(0, self.player.current_hp - dmg)
                 self._say(out, f"The {name} hits you for {dmg}.")
                 if self.player.current_hp > 0:
                     self._try_ailment(out, e.type.effect, 0, on_hero=True)
+        self.brace = 0
         if not self.alive():
             self._win(out)
             return
@@ -368,10 +541,28 @@ class Battle:
                 weapon.effect, LEVEL_CHANCE_BONUS * (weapon.level - 1),
                 f"Your {weapon.name}")
 
-    def attack_preview(self, style="strike"):
-        """(min, max) damage of an attack in ``style`` right now."""
+    def styles(self) -> tuple:
+        """Attack keys the hero's weapon offers (first = plain hit)."""
+        return styles_for(self.player.equipment.get("weapon"))
+
+    def _style(self, style):
+        keys = self.styles()
+        return style if style in keys else keys[0]
+
+    def attack_preview(self, style=None):
+        """(min, max) damage of an attack in ``style`` on the target right
+        now (all its hits together; a sweep deals this to each enemy,
+        give or take their defense).  No style = the weapon's plain hit."""
+        st = STYLES[self._style(style)]
         stat, power, *_ = self._weapon()
-        return self._hit_range(stat, power, STYLES[style].mult)
+        mult = st.mult * (1 + st.exploit if st.exploit and self.enemy.statuses else 1)
+        lo, hi = self._hit_range(stat, power, mult, st.pierce)
+        return lo * st.hits, hi * st.hits
+
+    def can_attack(self, style=None) -> bool:
+        """The hero can use ``style`` now (enough MP for a spell)."""
+        return (self.state == ONGOING
+                and self.player.current_mp >= STYLES[self._style(style)].mp)
 
     def cast_preview(self, ability):
         """(min, max) damage of ``ability``; None if it deals none."""
@@ -391,21 +582,39 @@ class Battle:
         return tuple(total)
 
     # -- hero actions ----------------------------------------------------------
-    def attack(self, style="strike") -> list:
+    def attack(self, style=None) -> list:
+        """Attack with one of the weapon's styles (``styles()``); anything
+        else, or no style, is the weapon's plain hit."""
         out = []
-        if self.state != ONGOING or not self._start_hero_turn(out):
-            return out
+        style = self._style(style)
         st = STYLES[style]
+        if not self.can_attack(style):
+            return out
+        if not self._start_hero_turn(out):
+            return out
+        self.player.current_mp -= st.mp
         stat, power, effect, bonus, what = self._weapon()
         if st.effect is not None:
             effect = st.effect
-        if style != "strike":
+        if style != self.styles()[0]:
             what = f"{what} ({st.name})"
+        if st.guard:
+            self.brace = st.guard
+            self._say(out, f"You brace yourself: +{st.guard} defense this round.")
         if st.miss and self.rng.uniform(0, 100) < st.miss:
             self._say(out, f"{what} misses!")
         else:
-            self._hit_enemy(out, stat, power, effect, bonus + st.chance, what,
-                            st.mult)
+            dealt = 0
+            for e in (self.alive() if st.sweep else [self.enemy]):
+                for _ in range(st.hits):
+                    if e.alive:
+                        dealt += self._hit_enemy(
+                            out, stat, power, effect, bonus + st.chance, what,
+                            st.mult, enemy=e, pierce=st.pierce, exploit=st.exploit)
+            if st.drain:
+                healed = self.player.heal(dealt * st.drain // 100)
+                if healed:
+                    self._say(out, f"You drain {healed} HP.")
         self._end_hero_turn(out)
         return out
 

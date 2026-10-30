@@ -20,7 +20,8 @@ Layouts (all frames are 32x32 pixels):
     rows:    0 down, 1 up, 2 left, 3 right
 * ``enemies/<name>.png``   8 x 1 grid:
     0-1 idle, 2-3 attack, 4-5 hurt, 6-7 death
-* ``items/<key>.png``      single 32x32 icon
+* item icons (``AssetManager.item_icon(item)``, drawn in code per item
+  by ``item_icons.py``, not a file): single 32x32 icon
 * ``ui/<name>.png``        single UI sprite
 * ``objects/chest.png``    2 x 1 grid: 0 closed, 1 open
 * ``objects/merchant.png`` 2 x 1 grid: idle frames of the shop keeper
@@ -32,6 +33,8 @@ Layouts (all frames are 32x32 pixels):
 import math
 import pygame
 from pathlib import Path
+
+from .item_icons import draw_item_icon
 
 # All generated/loaded art lives here (sibling of this file).
 ASSETS_DIR = Path(__file__).parent / "assets"
@@ -147,6 +150,14 @@ class AssetManager:
             self._cache[key] = _slice(_gen_hero_sheet(look, gear), HERO_COLS, HERO_ROWS)
         return self._cache[key]
 
+    def item_icon(self, item):
+        """32x32 icon of ``item`` (an ``items.Item``), drawn in code and
+        cached per id; nothing is saved to disk."""
+        key = ("icon", item.id)
+        if key not in self._cache:
+            self._cache[key] = draw_item_icon(item)
+        return self._cache[key]
+
     # -- placeholder generation ---------------------------------------
     def _generate(self, name: str) -> pygame.Surface:
         """Dispatch to the right generator for a missing file."""
@@ -156,8 +167,6 @@ class AssetManager:
             return _gen_sewer_tiles()
         if name.startswith("enemies/"):
             return _gen_enemy_sheet(name.rsplit("/", 1)[-1].removesuffix(".png"))
-        if name.startswith("items/"):
-            return _gen_item_icon(name.rsplit("/", 1)[-1].removesuffix(".png"))
         if name == "objects/chest.png":
             return _gen_chest()
         if name == "objects/props.png":
@@ -722,18 +731,6 @@ ENEMY_COLORS = {
 }
 _DEFAULT_ENEMY = ((160, 160, 160), (120, 120, 120))
 
-# Placeholder tint per item key.
-ITEM_COLORS = {
-    "potion": (220, 60, 70),
-    "health_potion": (220, 60, 70),
-    "bloodcrystal": (200, 30, 60),
-    "key": (220, 200, 90),
-    "saber": (180, 190, 210),
-    "spear": (160, 150, 130),
-    "dagger": (170, 180, 200),
-}
-
-
 def _gen_enemy_sheet(name: str) -> pygame.Surface:
     body, dark = ENEMY_COLORS.get(name, _DEFAULT_ENEMY)
     surf = _new_sheet(ENEMY_COLS, ENEMY_ROWS)
@@ -845,15 +842,6 @@ def _draw_enemy_frame(surf: pygame.Surface, px: int, py: int,
         pygame.draw.ellipse(surf, dark, (x - 10, y - 8, 20, h), 2)
         pygame.draw.circle(surf, eye, (x - 4, y - 2), 2)
         pygame.draw.circle(surf, eye, (x + 4, y - 2), 2)
-
-
-def _gen_item_icon(key: str) -> pygame.Surface:
-    color = ITEM_COLORS.get(key, (180, 140, 90))
-    surf = pygame.Surface((FRAME_SIZE, FRAME_SIZE), pygame.SRCALPHA)
-    pygame.draw.rect(surf, (30, 30, 35, 255), (1, 1, 30, 30), border_radius=6)
-    pygame.draw.rect(surf, (*color, 255), (5, 5, 22, 22), border_radius=4)
-    pygame.draw.line(surf, (255, 255, 255, 120), (8, 9), (13, 9), 2)  # sheen
-    return surf
 
 
 def _gen_chest() -> pygame.Surface:

@@ -193,7 +193,7 @@ wake up rested in the Base.
 | `pygame_rpg/gui/dungeon_screen.py` | ✅ M4 | `DungeonScreen(player, floor, seed)`: `move()` with axis-separated wall collision (20 px hitbox), trinket speed bonus, walk animation by distance walked (`walk_frame()`, footsteps on `HERO_STEP_FRAMES` with a splash), idle breathing, shadows, clamped camera, fog (`seen`), enemies, chests, stairs, HUD + minimap. Saves the run (`to_run()` / `save_run()`) on floor entry, after each battle, on Esc and on quit; `run=` restores one. `step(dx, dy, dt)` is one frame and returns a transition (battle on bump, level-up after a win, next floor on the stairs); tests drive it directly. `battle_over()` is called by the battle screen. Esc saves → Base (no rest). Floor banner on arrival. |
 | `pygame_rpg/gui/battle_screen.py` | ✅ M4 | `BattleScreen`: enemy + hero sprites, HP / MP bars, ailments, log, menu (Attack / Abilities / Items / Run, sub-lists), keyboard + mouse; Floating damage / heal numbers, hero hit flash + shake. Continue resumes the floor, or on defeat rests, saves, deletes the run → Base. |
 | `pygame_rpg/gui/hud.py` | ✅ M4 | `Hud`: floor, level, weapon icon, HP / MP / XP bars, fading message log (`say()`). |
-| `pygame_rpg/assets.py` + `assets/` | M1, in use | `AssetManager`: loads PNGs, slices sheets, and generates + saves placeholder art for missing files (tileset, slime, sword/potion icons, panel). `hero_frames(look, gear)` draws the hero in code per look and visible gear (`gear_of()`) (`LOOK_OPTIONS`, `look_choice()`), cached in memory, never saved. Used by GUI screens for icons/portrait. |
+| `pygame_rpg/assets.py` + `assets/` | M1, in use | `AssetManager`: loads PNGs, slices sheets, and generates + saves placeholder art for missing files (tileset, slime, panel). `item_icon(item)` returns the item's 32x32 sprite drawn in code by `item_icons.py` (one drawing per weapon base, armour piece, consumable, trinket, ability and junk; metal brightens with the tier), cached, never saved. `hero_frames(look, gear)` draws the hero in code per look and visible gear (`gear_of()`) (`LOOK_OPTIONS`, `look_choice()`), cached in memory, never saved. Used by GUI screens for icons/portrait. |
 | `pygame_rpg/README.md` | ✅ M5 | Short player-facing readme: install, run, test, controls; points here. |
 | `pygame_rpg/audio.py` | ✅ M5 | All sound, synthesised in plain Python at start-up on a background thread (no audio files, nothing to license): `_RECIPES` maps names to small synth functions (tones, filtered noise, echo). `play(name, delay, volume)` (a name with numbered variants such as `step0..2` picks one at random), `set_ambience("sewer" / None)` (looping bubbly water built from grains + scattered drips, distant metal clanks, pipe groans, rat squeaks via `_SCATTER`), `update(dt)` from the main loop, `toggle_mute()` (M; not on the hero-name screen). Every call is a no-op if the mixer can't start. Screens set an `ambience` class attribute; inventory and level-up inherit it from `return_to`. Volumes: `SFX_VOLUME` / `AMBIENT_VOLUME` in `config.py`. |
 | `pygame_rpg/gui/effects.py` | ✅ M5 | `Particles` (burst / update / draw sparks) and `menu_key()` (Up / Down / Enter for button lists). |
@@ -230,6 +230,7 @@ pygame_rpg/
 ├── items.py           # Item dataclass + data-driven catalog
 ├── savegame.py        # JSON save/load + hero index
 ├── assets.py          # AssetManager + placeholder generators
+├── item_icons.py      # item sprites drawn in code (inventory, shop, HUD)
 ├── dungeon.py         # seeded floor generation, walkability, rendering, fog, minimap
 ├── enemies.py         # enemy types, per-floor scaling, boss room, placement
 ├── props.py           # room clutter (barrels, crates, pots...) and its placement
@@ -246,7 +247,7 @@ pygame_rpg/
 │   ├── effects.py         # Particles (sparks) + menu_key() keyboard navigation
 │   ├── battle_screen.py   # turn-based battle menu
 │   └── hud.py             # in-dungeon HUD (bars, weapon icon, message log)
-└── assets/            # tileset, hero sheet, enemy sheets, item icons, objects/chest.png,
+└── assets/            # tileset, hero sheet, enemy sheets, objects/chest.png,
                        # ui/panel.png (generated placeholders)
 ```
 
@@ -399,9 +400,16 @@ play-testing.
   `total()`). Weapon power = 4 + 2 × level (unarmed 2); ability power = `damage` ÷ 2; bombs deal
   `damage` flat. Enemy hit = 2 × attack × 0.85-1.15 − hero `dp` / `rdp` / `mdp` (by enemy attack type)
   − Shield guard, minimum 1.
-* **Attack styles** (`combat.STYLES`, chosen under *Attack*): Strike ×1.0 with the weapon's own
-  ailment; Slash ×0.75, causes bleeding at +30 %; Bash ×0.8, causes stun at +15 %; Heavy ×1.35,
-  no ailment, 25 % miss. The style's ailment replaces the weapon's.
+* **Attack styles** (`combat.STYLES`, chosen under *Attack*): every weapon has its own four
+  (`combat.WEAPON_STYLES`, by level-1 id; tiers share their base's set), bare hands get Punch /
+  Kick / Haymaker. E.g. bow: Shot / Aimed Shot / Volley / Barbed Arrow; dagger: Stab / Flurry /
+  Backstab / Venom Edge; fiery staff: Firebolt / Flame Wave / Meteor / Ignite. The first style
+  is the plain ×1.0 hit with the weapon's own ailment; the others use: a likelier ailment
+  (×0.4-0.8, +15-40 %), `pierce` (ignores half or all of the enemy's defense), `hits` (2-3
+  weaker hits), `sweep` (every living enemy), `exploit` (×2 on a target with an ailment),
+  `drain` (heals 50 % of the damage), `guard` (+4/+5 defense during the enemies' reply) or a big
+  hit (×1.35-1.7, 20-35 % miss). Staff and wand power spells cost 3-5 MP (`mp`) and grey out
+  without it. A style's ailment replaces the weapon's.
 * **Previews:** every attack style and damaging ability shows its min-max damage against this
   enemy, and the hero panel shows the enemy's next hit (`attack_preview`, `cast_preview`,
   `incoming_preview`).

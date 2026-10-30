@@ -156,7 +156,7 @@ class ShopScreen(Screen):
     def _icon(self, item, size=24):
         key = (item.id, size)
         if key not in self._icons:
-            surf = self.assets.load_image(f"items/{item.id}.png")
+            surf = self.assets.item_icon(item)
             self._icons[key] = pygame.transform.scale(surf, (size, size))
         return self._icons[key]
 

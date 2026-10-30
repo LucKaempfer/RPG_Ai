@@ -274,7 +274,7 @@ class InventoryScreen(Screen):
         """Item icon scaled to ``size`` pixels (cached per id+size)."""
         key = (item.id, size)
         if key not in self._icons:
-            surf = self.assets.load_image(f"items/{item.id}.png")
+            surf = self.assets.item_icon(item)
             if surf.get_size() != (size, size):
                 surf = pygame.transform.scale(surf, (size, size))
             self._icons[key] = surf

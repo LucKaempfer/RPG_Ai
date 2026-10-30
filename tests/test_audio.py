@@ -38,7 +38,7 @@ def test_every_play_name_has_a_sound():
     wanted = {"step", "door", "chest", "encounter", "stairs", "level_up",
               "miss", "hurt", "magic", "heal", "guard", "potion", "bomb",
               "ailment", "run", "fail", "victory", "defeat", "click",
-              *C.STYLES}
+              *(st.sound for st in C.STYLES.values())}
     for want in wanted:
         assert want in names or f"{want}0" in names, want
     for name, _ in audio._SCATTER["sewer"]:
@@ -77,13 +77,13 @@ def test_battle_sounds(display, saves, played):
     foes[0].hp = foes[0].max_hp = 999
     played.clear()
     bs.battle.rng = random.Random(1)
-    bs._do(("attack", "bash"))
+    bs._do(("attack", "kick"))       # bare hands: Kick sounds like a bash
     assert played[0] in ("bash", "ailment") and "hurt" in played
     foes[0].hp = 1
     played.clear()
     bs.battle.statuses.clear()
-    bs._do(("attack", "slash"))
-    assert played == ["slash", "victory"]
+    bs._do(("attack", "punch"))
+    assert played == ["strike", "victory"]
 
 
 def test_dungeon_sounds(display, saves, played):
