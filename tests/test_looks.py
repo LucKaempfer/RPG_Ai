@@ -79,3 +79,27 @@ def test_hero_maker_look_stage(display, saves):
     name, kwargs = h.handle_event(key(pygame.K_RETURN))
     assert name == "base" and kwargs["player"].look == chosen
     assert S.load_player("Mira").look == chosen
+
+
+def test_walk_frames_follow_the_distance(display, saves, monkeypatch):
+    """The walk cycle advances with the pixels walked, and a footstep
+    (sound + splash) lands twice per stride."""
+    from pygame_rpg import audio
+    from pygame_rpg.assets import HERO_WALK_COLS
+    from pygame_rpg.gui import dungeon_screen as D
+    steps = []
+    monkeypatch.setattr(audio, "play", lambda name, delay=0.0, volume=1.0: steps.append(name))
+    p = Player(name="Walker")
+    d = D.DungeonScreen(display, p, seed=3)
+    seen_frames = set()
+    walked = 0.0
+    for _ in range(400):
+        x, y = d.x, d.y
+        d.move(1, 0, 1 / 60) if d._fits(d.x + 3, d.y) else d.move(-1, 0, 1 / 60)
+        walked += abs(d.x - x) + abs(d.y - y)
+        seen_frames.add(d.walk_frame())
+        d.draw(display)
+    assert seen_frames == set(range(len(HERO_WALK_COLS)))
+    assert abs(steps.count("step") - walked / D.STRIDE) <= 2
+    d.move(0, 0, 1 / 60)
+    assert not d.moving

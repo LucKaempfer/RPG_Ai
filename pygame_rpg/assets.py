@@ -14,8 +14,9 @@ Layouts (all frames are 32x32 pixels):
   the original stone set, kept for real art / other screens
 * ``sewer/tiles_v2.png``   20 x 1 grid, the dungeon's sewer set (SEWER_*)
 * hero frames (``AssetManager.hero_frames(look)``, drawn in code per
-  character look, not a file): 8 x 4 grid
-    columns: 0-1 idle, 2-5 walk, 6-7 attack
+  character look, not a file): 10 x 4 grid
+    columns: 0-1 idle, 2-7 walk (one full stride: left foot, right
+    foot), 8-9 attack
     rows:    0 down, 1 up, 2 left, 3 right
 * ``enemies/<name>.png``   8 x 1 grid:
     0-1 idle, 2-3 attack, 4-5 hurt, 6-7 death
@@ -65,10 +66,13 @@ SEWER_COLS, SEWER_ROWS = 20, 1
 # ---------------------------------------------------------------------------
 # Hero sheet layout: 8 x 4 grid.
 # ---------------------------------------------------------------------------
-HERO_COLS, HERO_ROWS = 8, 4
+HERO_COLS, HERO_ROWS = 10, 4
 HERO_IDLE_COLS = (0, 1)
-HERO_WALK_COLS = (2, 3, 4, 5)
-HERO_ATTACK_COLS = (6, 7)
+# One stride: the left foot lands on the first walk frame, the right
+# foot on the fourth (HERO_STEP_FRAMES, indices into HERO_WALK_COLS).
+HERO_WALK_COLS = (2, 3, 4, 5, 6, 7)
+HERO_STEP_FRAMES = (0, 3)
+HERO_ATTACK_COLS = (8, 9)
 HERO_DIR_DOWN, HERO_DIR_UP, HERO_DIR_LEFT, HERO_DIR_RIGHT = 0, 1, 2, 3
 
 # ---------------------------------------------------------------------------
@@ -415,37 +419,66 @@ def _gen_hero_sheet(look=None) -> pygame.Surface:
 
 def _draw_hero_frame(surf: pygame.Surface, px: int, py: int,
                      direction: int, col: int, look: dict):
-    """Draw one 32x32 hero frame at (px, py) facing ``direction``."""
+    """Draw one 32x32 hero frame at (px, py) facing ``direction``.
+
+    Walk frames are one stride: legs step out and back on a sine, the
+    arms swing against the legs, and the body dips when a foot lands and
+    rises as the legs pass.  Idle frames breathe (the torso sinks a
+    pixel); every frame has a soft shadow at the feet."""
     skin = look_choice(look, "skin")[1]
     tunic = look_choice(look, "tunic")[1]
     x, y = px + 16, py + 16  # centre of the frame
     attacking = col in HERO_ATTACK_COLS
-    # Bob the body slightly on alternate frames for a life-like idle/walk.
-    bob = 1 if (col % 2 == 1) else 0
     side_view = direction in (HERO_DIR_LEFT, HERO_DIR_RIGHT)
+    ahead = 1 if direction == HERO_DIR_RIGHT else -1
+    if col in HERO_WALK_COLS:
+        phase = 2 * math.pi * HERO_WALK_COLS.index(col) / len(HERO_WALK_COLS)
+        swing = math.cos(phase)                 # +1 / -1: a foot lands
+        bob = 1 if abs(swing) > 0.7 else 0      # dip on landing
+    else:
+        swing, bob = 0.0, 0
+    # Shadow under the feet.
+    pygame.draw.ellipse(surf, (0, 0, 0, 80), (x - 8, y + 11, 16, 5))
     # Legs and boots.
-    for lx in ((x,) if side_view else (x - 3, x + 3)):
-        pygame.draw.rect(surf, (62, 54, 48), (lx - 2, y + 6, 4, 6))
-        pygame.draw.rect(surf, (46, 32, 24), (lx - 2, y + 11, 4, 3))
+    pants, boots = (62, 54, 48), (46, 32, 24)
+    if side_view:
+        # Seen from the side the legs scissor forward and back.
+        for k in (-1, 1):
+            off = round(3.5 * swing * k) * ahead
+            shade = pants if k > 0 else _shade(pants, -18)
+            pygame.draw.line(surf, shade, (x, y + 6), (x + off, y + 12), 4)
+            pygame.draw.rect(surf, boots, (x + off - 2, y + 11, 4 + (ahead > 0), 3))
+    else:
+        # From the front / back a stepping leg lifts (shorter) while the
+        # other carries the weight.
+        for k, lx in ((1, x - 3), (-1, x + 3)):
+            lift = max(0, round(2 * swing * k))
+            pygame.draw.rect(surf, pants, (lx - 2, y + 6, 4, 6 - lift))
+            pygame.draw.rect(surf, boots, (lx - 2, y + 11 - lift, 4, 3))
     # Tunic with a belt.
-    top = y - 3 - bob
+    top = y - 4 + bob
+    breathe = 1 if (col in HERO_IDLE_COLS and col % 2) else 0
+    top += breathe
     width = 10 if side_view else 12
-    body = pygame.Rect(x - width // 2, top, width, 11)
+    body = pygame.Rect(x - width // 2, top, width, 11 - breathe)
     pygame.draw.rect(surf, tunic, body, border_radius=3)
     pygame.draw.rect(surf, _shade(tunic, -50), body, 1, border_radius=3)
-    pygame.draw.line(surf, (92, 62, 36), (body.left, top + 7),
-                     (body.right - 1, top + 7), 2)
-    # Arms: both at the sides from the front / back, one from the side.
+    pygame.draw.line(surf, (92, 62, 36), (body.left, body.bottom - 4),
+                     (body.right - 1, body.bottom - 4), 2)
+    # Arms swing against the legs.
+    sleeve = _shade(tunic, -25)
     if side_view:
-        ax = x + (2 if direction == HERO_DIR_RIGHT else -2)
-        pygame.draw.rect(surf, _shade(tunic, -25), (ax - 1, top + 1, 3, 6))
-        pygame.draw.rect(surf, skin, (ax - 1, top + 7, 3, 2))
+        off = -round(3 * swing) * ahead
+        ax = x + 2 * ahead
+        pygame.draw.line(surf, sleeve, (ax, top + 2), (ax + off, top + 6), 3)
+        pygame.draw.rect(surf, skin, (ax + off - 1, top + 6, 3, 3))
     else:
-        for ax in (x - 8, x + 6):
-            pygame.draw.rect(surf, _shade(tunic, -25), (ax, top + 1, 3, 6))
-            pygame.draw.rect(surf, skin, (ax, top + 7, 3, 2))
-    # Head.
-    hy = y - 9 - bob
+        for k, ax in ((-1, x - 7), (1, x + 7)):
+            lift = round(1.5 * swing * k)
+            pygame.draw.rect(surf, sleeve, (ax - 1, top + 1 - lift, 3, 6))
+            pygame.draw.rect(surf, skin, (ax - 1, top + 7 - lift, 3, 2))
+    # Head (bobs with the body, a pixel less than the torso).
+    hy = y - 10 + bob
     pygame.draw.circle(surf, skin, (x, hy), 6)
     _draw_hair(surf, x, hy, direction, look, tunic, skin)
     if direction == HERO_DIR_DOWN:

@@ -34,7 +34,7 @@ ERROR_COLOR = (235, 110, 100)
 NAME_HINT = "Letters, numbers, spaces, . _ -   (up to 20 characters)"
 LOOK_HINT = "Up/Down: choose   Left/Right: change   R: random   Enter: next   Esc: back"
 # Preview: the hero walks and turns to a new direction every TURN_TIME s.
-PREVIEW_FRAME = 0.15
+PREVIEW_FRAME = 0.11
 TURN_TIME = 1.2
 
 
