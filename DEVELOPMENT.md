@@ -37,6 +37,12 @@ dips when a foot lands), driven by the distance walked rather than time so the f
 each footstep plays the splash sound and kicks up a few drops. The hero and enemies cast soft
 shadows, and each enemy breathes on its own beat.
 
+**Armour at the anvil:** blueprints now cover the eight armour bases too (Leather Cap … Iron
+Boots), so they drop like weapon blueprints and the forge crafts and upgrades armour the same
+way. Leather armour costs cloth 2 + bone 1, iron armour iron 2 + stone 1, times the piece's base
+weight (torso pieces cost double); upgrades are that × the new level plus 15 gold × the new
+level. Equipped armour stays in its slot when upgraded.
+
 **Blueprints and the anvil room:** each floor also has a forge room (second special room,
 same rules as the shop) with an anvil; E next to it opens the forge screen
 (`gui/forge_screen.py`, rules in `crafting.py`). *Craft* makes the level-1 weapon of any known
@@ -149,7 +155,7 @@ wake up rested in the Base.
 | `pygame_rpg/gui/*.py` (8 screens) | ✅ M3 | `title_screen`, `tutorial_screen`, `hero_maker`, `hero_chooser`, `base_screen`, `inventory_screen`, `stats_screen`, `level_up_screen` (takes `return_to`: resume a dungeon floor instead of the Base). |
 | `pygame_rpg/dungeon.py` | ✅ M4 | Seeded generation (private `rng`, same seed = same floor): 60 × 44 tiles, up to 13 rooms with `ROOM_GAP` free tiles between them; rooms are linked by a minimum spanning tree over wall-to-wall gaps (shortest corridors that still reach every room) with A*-routed corridors from a door on the wall facing the target to a door on the target, never entering another room or the ring around it, so walls stay solid and every door is a single tile (one door per wall, reused). `door_outside()` gives the corridor cell outside a door. `visible_from()` (line of sight), `is_walkable()`, `spawn_point()`, sewer-tileset rendering (`sewer/tiles_v2.png`, doorways drawn as a thin gate on the corridor side, per-cell variants cached in `_tile_cache`) with camera offset, fog (`seen` cells + their walls), dimming outside `visible`, `overrides` for the manhole stairs, minimap of visited rooms + walked corridors. |
 | `pygame_rpg/special_rooms.py` | ✅ | `SPECIAL_KINDS`, `special_rooms(dungeon, seed)` (kind → room, own RNG), `keeper_cell(room)` (interior, clear of doors and the centre). |
-| `pygame_rpg/crafting.py` | ✅ | `BLUEPRINTS`, `RECIPES` by `family()`, `base_id()`, `craft_cost` / `can_craft` / `craft`, `upgrade_cost` / `can_upgrade` / `upgrade` (in place), `upgradeable()`, `roll_blueprint()`; no drawing. |
+| `pygame_rpg/crafting.py` | ✅ | `BLUEPRINTS` (weapon + armour bases), `RECIPES` by `family()` (incl. `leather` / `iron` armour), `base_id()`, `craft_cost` / `can_craft` / `craft`, `upgrade_cost` / `can_upgrade` / `upgrade` (in place), `upgradeable()`, `roll_blueprint()`; no drawing. |
 | `pygame_rpg/gui/forge_screen.py` | ✅ | `ForgeScreen(player, return_to)`: Craft / Upgrade tabs, cost panel (green / red per material), keyboard + mouse. |
 | `pygame_rpg/shop.py` | ✅ | `price()`, `sell_price()`, `roll_stock(seed, floor)`, `buy(player, stock, sold, index)`, `sell(player, item)`; no drawing. |
 | `pygame_rpg/gui/shop_screen.py` | ✅ | `ShopScreen(player, stock, sold, return_to)`: goods and backpack side by side, keyboard + mouse, saves the hero after each trade. |
@@ -557,5 +563,3 @@ with the HUD active.
 * **Overload:** should exceeding `max_weight` block pickups only, or also slow movement?
 * **Base content:** the shop and the anvil live in the dungeon (one room each per floor). Add
   them to the Base too, or keep them as a reason to explore?
-* **Armor crafting:** blueprints and the anvil cover weapons only; armor could follow the same
-  pattern (`crafting.RECIPES` per slot).

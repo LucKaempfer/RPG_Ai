@@ -485,7 +485,7 @@ class DungeonScreen(Screen):
         return None
 
     def _find_blueprint(self, chance):
-        """Maybe learn a new weapon blueprint (``chance`` %); returns its
+        """Maybe learn a new weapon or armour blueprint (``chance`` %); returns its
         weapon name or None."""
         if self.dungeon.rng.uniform(0, 100) >= chance:
             return None

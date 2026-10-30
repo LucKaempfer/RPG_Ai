@@ -59,7 +59,7 @@ def test_crafting_needs_the_blueprint_materials_and_gold():
     assert not ok and "iron" in why and "gold" in why
     p = rich()
     mats, gold = K.craft_cost("sword")
-    assert K.craft(p, "sword") == "Crafted a Sword!"
+    assert K.craft(p, "sword") == "Crafted Sword!"
     assert p.inventory[-1].id == "sword" and p.gold == 500 - gold
     assert all(p.materials[m] == 50 - n for m, n in mats.items())
 
@@ -143,3 +143,41 @@ def test_forging_through_the_screens(display, saves):
     assert p.equipment["weapon"].id == "sword_2"
     assert f.handle_event(key(pygame.K_ESCAPE)) == ("resume", {"screen": d})
     assert S.load_player("Smith").equipment["weapon"].id == "sword_2"
+
+
+def test_armour_blueprints_craft_and_upgrade():
+    assert {"leather_cap", "chainmail", "iron_boots"} <= set(K.BLUEPRINTS)
+    assert K.family(I.item_by_id("leather_vest_2")) == "leather"
+    assert K.family(I.item_by_id("iron_helmet")) == "iron"
+    # A torso piece weighs 2, so it costs twice a helmet's materials.
+    cap, _ = K.craft_cost("iron_helmet")
+    mail, _ = K.craft_cost("chainmail")
+    assert mail == {m: 2 * n for m, n in cap.items()}
+    up, gold = K.upgrade_cost(I.item_by_id("chainmail_2"))
+    assert up == {m: 3 * n for m, n in mail.items()} and gold == 3 * K.UPGRADE_GOLD
+    p = rich(lvl=3)
+    assert "blueprint" in K.can_craft(p, "chainmail")[1]
+    p.blueprints.append("chainmail")
+    assert K.craft(p, "chainmail") == "Crafted Chain Mail!"
+    mail = p.inventory[-1]
+    p.equip(mail)
+    assert K.upgradeable(p) == [mail]
+    msg, better = K.upgrade(p, mail)
+    assert better.id == "chainmail_2" and p.equipment["torso"] is better
+    assert p.max_hp == p.hp + better.hp
+
+
+def test_forge_lists_armour(display, saves):
+    from pygame_rpg.gui.forge_screen import ForgeScreen
+    p = rich(lvl=2)
+    p.blueprints += ["leather_boots", "bow"]
+    boots = I.item_by_id("leather_boots")
+    p.inventory.append(boots)
+    p.equip(boots)
+    f = ForgeScreen(display, p)
+    assert f.rows() == ["sword", "bow", "leather_boots"]     # weapons first
+    f.tab = 1
+    assert f.rows() == [boots]
+    f.draw(display)
+    f.handle_event(key(pygame.K_RETURN))
+    assert p.equipment["feet"].id == "leather_boots_2"

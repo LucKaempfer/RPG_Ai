@@ -1,10 +1,10 @@
 # pygame_rpg/gui/forge_screen.py
-"""Forge screen: craft and upgrade weapons at a floor's anvil
-(``crafting.py`` rules).
+"""Forge screen: craft and upgrade weapons and armour at a floor's
+anvil (``crafting.py`` rules).
 
-Two tabs: Craft (every blueprint the hero knows: the level-1 weapon for
-materials + gold) and Upgrade (the weapons the hero carries, raised one
-tier).  The right panel shows the result and what it costs, each
+Two tabs: Craft (every blueprint the hero knows: the level-1 item for
+materials + gold) and Upgrade (the weapons and armour the hero carries,
+raised one tier).  The right panel shows the result and what it costs, each
 material green if the pouch holds enough.  Left / Right (or Tab) switch
 tabs, Up / Down pick, Enter forges, Esc returns to the floor.
 """
@@ -33,7 +33,8 @@ TABS = ("Craft", "Upgrade")
 
 
 def _stats(item) -> str:
-    parts = [f"{s.upper()} {getattr(item, s)}" for s in ("ap", "rap", "map", "dp")
+    parts = [f"{s.upper()} {getattr(item, s)}"
+             for s in ("ap", "rap", "map", "dp", "rdp", "mdp", "hp")
              if getattr(item, s)]
     return "  ".join(parts + [f"{item.weight} kg", f"Lv {item.level}"])
 
@@ -64,7 +65,8 @@ class ForgeScreen(Screen):
         """Craft tab: blueprint base ids; Upgrade tab: weapon items."""
         if self.tab == 0:
             return sorted(self.player.blueprints,
-                          key=lambda b: (family(item_by_id(b)), b))
+                          key=lambda b: (item_by_id(b).kind != "weapon",
+                                         family(item_by_id(b)), b))
         return upgradeable(self.player)
 
     def selected(self):
@@ -168,7 +170,7 @@ class ForgeScreen(Screen):
         sel = self.selected()
         if not rows:
             empty = ("You know no blueprints yet." if self.tab == 0
-                     else "No weapon to upgrade.")
+                     else "Nothing to upgrade.")
             surface.blit(font(18).render(empty, True, DIM_TEXT),
                          (self.list_panel.x + 14, self.list_panel.y + 16))
         top = self._window()
@@ -182,7 +184,7 @@ class ForgeScreen(Screen):
                 name = item_by_id(entry).name
             else:
                 ok = can_upgrade(p, entry)[0]
-                name = entry.name + ("  (equipped)" if p.equipment.get("weapon") is entry else "")
+                name = entry.name + ("  (equipped)" if p.slot_of(entry) else "")
             label = font(20).render(name, True, TEXT_COLOR if ok else DIM_TEXT)
             surface.blit(label, (r.x + 10, r.y + 7))
             if ok:
