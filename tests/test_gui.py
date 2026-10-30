@@ -129,3 +129,23 @@ def test_enemy_sheets_have_their_own_shape(display, name):
     if name != "slime":
         assert (pygame.image.tobytes(sheet, "RGBA")
                 != pygame.image.tobytes(_gen_enemy_sheet("slime"), "RGBA"))
+
+
+def test_gate_hides_room_until_stepped_through(display, saves):
+    from pygame_rpg.gui.dungeon_screen import DungeonScreen
+    p = Player(name="Gate")
+    ds = DungeonScreen(display, p, seed=3)
+    ds.enemies = []
+    room = ds.dungeon.rooms[1]
+    door = room.doors[0]
+    out = ds.dungeon.door_outside(room, door)
+    inside = next((door[0] + dx, door[1] + dy)
+                  for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+                  if ds.dungeon.get_room_at((door[0] + dx, door[1] + dy)) is room)
+    for cell in (out, door):                  # walk up and onto the gate
+        ds.x, ds.y = ds._centre(cell)
+        ds._mark_visited()
+        assert inside not in ds.visible
+    ds.x, ds.y = ds._centre(inside)           # step through: room opens up
+    ds._mark_visited()
+    assert inside in ds.visible
