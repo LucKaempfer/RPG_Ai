@@ -13,7 +13,10 @@ fog of war, and what stands on the floor:
   screen right away (the stat pick happens mid-run).
 * chests: walking into one opens it and rolls loot into the backpack.
 * props (``props.py``): barrels, crates, pots and other clutter along
-  the room walls; standing props block the way.
+  the room walls; standing props block the way.  Space (or F) swings
+  the weapon at the prop in front, or shoots an arrow / bolt with a
+  ranged or magic weapon; a prop breaks after a few hits and leaves
+  crafting materials in the hero's pouch.
 * stairs: appear in the boss's room once the boss is beaten; stepping
   on them builds the next, harder floor.
 
@@ -33,17 +36,18 @@ import pygame
 from .. import audio
 from ..assets import (
     AssetManager, HERO_COLS, HERO_IDLE_COLS, HERO_WALK_COLS, HERO_STEP_FRAMES,
+    HERO_ATTACK_COLS,
     HERO_DIR_DOWN, HERO_DIR_UP, HERO_DIR_LEFT, HERO_DIR_RIGHT,
     ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, SEWER_MANHOLE,
 )
-from ..combat import WON, FLED
+from ..combat import WON, FLED, weapon_type
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, CHESTS_PER_FLOOR, RUN_VERSION
 from ..dungeon import (
     Dungeon, TILE_SIZE, DUNGEON_WIDTH, DUNGEON_HEIGHT, MEMORY_SHADE,
 )
 from ..enemies import place_enemies, boss_room, cell_of, BOSS_TYPE
 from ..items import roll_loot
-from ..props import place_props, PROP_KINDS
+from ..props import place_props, salvage, PROP_KINDS
 from ..savegame import save_player, save_run
 from .base_screen import pending_levels
 from .effects import Particles
@@ -71,6 +75,32 @@ SIGHT = 8
 # Torch light: the screen darkens from LIGHT_INNER px around the hero to
 # LIGHT_DARK alpha at LIGHT_OUTER px.
 LIGHT_INNER, LIGHT_OUTER, LIGHT_DARK = 120, 420, 190
+
+# Attacking props: seconds between attacks, how long the swing shows,
+# how far ahead a melee swing reaches (px from the hero's centre), and
+# shots (px per second, range in px).
+ATTACK_COOLDOWN = 0.35
+SWING_TIME = 0.2
+REACH = 26
+SHOT_SPEED = 420
+SHOT_RANGE = 8 * TILE_SIZE
+FACING_STEP = {HERO_DIR_DOWN: (0, 1), HERO_DIR_UP: (0, -1),
+               HERO_DIR_LEFT: (-1, 0), HERO_DIR_RIGHT: (1, 0)}
+# Swing arc (start, stop angle in radians, counter-clockwise) per facing.
+SWING_ARC = {HERO_DIR_RIGHT: (-1.05, 1.05), HERO_DIR_UP: (0.52, 2.62),
+             HERO_DIR_LEFT: (2.09, 4.19), HERO_DIR_DOWN: (3.67, 5.76)}
+# Splinters per prop kind, and the sound it breaks with.
+PROP_COLORS = {"barrel": (150, 100, 56), "crate": (150, 100, 56),
+               "pot": (180, 104, 70), "sack": (190, 168, 124),
+               "bucket": (140, 82, 44), "bones": (214, 206, 186),
+               "rubble": (130, 132, 126)}
+BREAK_SOUND = {"barrel": "crack", "crate": "crack", "sack": "crack",
+               "bucket": "bash", "pot": "shatter", "bones": "shatter",
+               "rubble": "shatter"}
+# Shot colours: arrows, and magic bolts by the wand's ailment.
+SHOT_COLORS = {"ranged": (200, 170, 110), "burning": (255, 140, 60),
+               "poison": (120, 220, 90), "electrocuted": (140, 200, 255),
+               "magic": (170, 130, 255)}
 
 MINIMAP_SCALE = 2
 BANNER_TIME = 2.0   # seconds the "Floor N" banner shows on arrival
@@ -127,6 +157,10 @@ class DungeonScreen(Screen):
         self.moving = False
         self.anim_t = 0.0
         self.walked = 0.0   # pixels walked in this stride (walk frames, footsteps)
+        self.attack_cd = 0.0    # seconds until the next attack
+        self.swing_t = 0.0      # seconds the current swing still shows
+        self.swing_melee = False
+        self.shots = []         # [x, y, dx, dy, distance, colour]
         self.visited = []
         self.seen = set()
         self.visible = set()                 # in line of sight right now
@@ -169,6 +203,7 @@ class DungeonScreen(Screen):
             "beaten": [i for i, e in enumerate(self.all_enemies)
                        if not e.alive],
             "chests": [opened for _, opened in self.chests],
+            "props": [i for i, p in enumerate(self.props) if p.broken],
             "stairs": self.stairs is not None,
             "seen": sorted(self.seen),
             "visited": [rooms.index(r) for r in self.visited],
@@ -182,6 +217,9 @@ class DungeonScreen(Screen):
         self.enemies = [e for e in self.all_enemies if e.alive]
         for chest, opened in zip(self.chests, run.get("chests", [])):
             chest[1] = bool(opened)
+        for i in run.get("props", []):
+            if 0 <= i < len(self.props):
+                self.props[i].broken, self.props[i].hp = True, 0
         if run.get("stairs"):
             self.stairs = boss_room(self.dungeon).rect.center
         self.seen = {tuple(c) for c in run.get("seen", [])}
@@ -378,12 +416,95 @@ class DungeonScreen(Screen):
                 else:
                     self.hud.say(f"Chest: {item.name}, too heavy to carry")
 
+    # -- attacking props -----------------------------------------------------
+    def attack(self) -> None:
+        """Swing the weapon (melee, or bare fists) at the prop in front,
+        or shoot an arrow / magic bolt (ranged / magic weapons) the way
+        the hero faces.  Does nothing while the last attack cools down."""
+        if self.attack_cd > 0:
+            return
+        self.attack_cd = ATTACK_COOLDOWN
+        self.swing_t = SWING_TIME
+        weapon = self.player.equipment.get("weapon")
+        kind = weapon_type(weapon)
+        self.swing_melee = kind == "melee"
+        dx, dy = FACING_STEP[self.facing]
+        if kind == "melee":
+            prop = self._prop_near(self.x + dx * REACH, self.y + dy * REACH)
+            if prop is None:
+                audio.play("miss", volume=0.6)
+            else:
+                self._hit_prop(prop)
+            return
+        audio.play("shoot" if kind == "ranged" else "magic", volume=0.7)
+        color = SHOT_COLORS["ranged"] if kind == "ranged" else SHOT_COLORS.get(
+            weapon.effect, SHOT_COLORS["magic"])
+        self.shots.append([self.x + dx * 12, self.y + dy * 12, dx, dy, 0.0, color])
+
+    def _prop_near(self, x, y):
+        """The standing prop under a HITBOX-sized box centred on (x, y),
+        the one under the centre first."""
+        half = HITBOX / 2
+        for px, py in ((x, y), (x - half, y - half), (x + half - 1, y - half),
+                       (x - half, y + half - 1), (x + half - 1, y + half - 1)):
+            prop = self.prop_at.get((int(px // TILE_SIZE), int(py // TILE_SIZE)))
+            if prop is not None and prop.solid:
+                return prop
+        return None
+
+    def _update_shots(self, dt) -> None:
+        """Fly the shots in small steps (so none skips a tile); a shot
+        stops at a wall, an enemy, a prop (which takes the hit) or the
+        end of its range."""
+        keep = []
+        enemy_cells = {cell_of(e) for e in self.enemies}
+        for x, y, dx, dy, dist, color in self.shots:
+            travel = SHOT_SPEED * dt
+            n = int(travel // 8) + 1
+            alive = True
+            for _ in range(n):
+                x, y, dist = x + dx * travel / n, y + dy * travel / n, dist + travel / n
+                cell = (int(x // TILE_SIZE), int(y // TILE_SIZE))
+                prop = self.prop_at.get(cell)
+                if prop is not None and prop.solid:
+                    self._hit_prop(prop)
+                    alive = False
+                    break
+                if (not self.dungeon.is_walkable(cell) or cell in enemy_cells
+                        or dist >= SHOT_RANGE):
+                    self.fx.burst(x, y, color, count=6, speed=60, life=0.25, size=2)
+                    alive = False
+                    break
+            if alive:
+                keep.append([x, y, dx, dy, dist, color])
+        self.shots = keep
+
+    def _hit_prop(self, prop) -> None:
+        """One hit on ``prop``; when it breaks, its materials go into the
+        hero's pouch."""
+        x, y = self._centre(prop.cell)
+        color = PROP_COLORS[prop.kind]
+        if not prop.hit():
+            audio.play("strike", volume=0.6)
+            self.fx.burst(x, y, color, count=6, speed=70, life=0.3, size=2)
+            return
+        audio.play(BREAK_SOUND[prop.kind], volume=0.8)
+        self.fx.burst(x, y, color, count=16, speed=110, life=0.5, size=3)
+        got = salvage(prop, self.dungeon.rng)
+        for mat, n in got.items():
+            self.player.materials[mat] += n
+        what = ", ".join(f"+{n} {mat}" for mat, n in got.items()) or "nothing useful"
+        self.hud.say(f"{prop.kind.capitalize()} smashed: {what}")
+
     # -- Screen hooks ----------------------------------------------------
     def handle_event(self, event):
         if event.type == pygame.QUIT:
             save_player(self.player)
             self.save_run()
             return QUIT
+        if event.type == pygame.KEYDOWN and event.key in (pygame.K_SPACE, pygame.K_f):
+            self.attack()
+            return None
         if event.type == pygame.KEYDOWN and event.key == pygame.K_i:
             return ("inventory", {"player": self.player, "return_to": self})
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -397,6 +518,8 @@ class DungeonScreen(Screen):
         request or None.  ``handle_update`` feeds it the keyboard; tests
         call it directly."""
         self.anim_t += dt
+        self.attack_cd = max(0.0, self.attack_cd - dt)
+        self.swing_t = max(0.0, self.swing_t - dt)
         self.banner_t = max(0.0, self.banner_t - dt)
         self.fx.update(dt)
         self.hud.update(dt)
@@ -405,10 +528,12 @@ class DungeonScreen(Screen):
             if pending_levels(self.player) > 0:
                 return ("level_up", {"player": self.player, "return_to": self})
         self.move(dx, dy, dt)
+        self._update_shots(dt)
         self._open_chests()
         enemy = self.room_enemy()
         if enemy is not None:
             self.moving = False
+            self.shots.clear()
             audio.play("encounter")
             return ("battle", {"player": self.player, "enemy": enemy,
                                "dungeon": self})
@@ -464,15 +589,31 @@ class DungeonScreen(Screen):
                 center=(sx, sy + size * 0.38)))
             surface.blit(img, img.get_rect(center=(sx, sy)))
 
+        for x, y, dx, dy, _, color in self.shots:
+            sx, sy = x - ox, y - oy
+            if color == SHOT_COLORS["ranged"]:          # an arrow
+                pygame.draw.line(surface, color, (sx - dx * 9, sy - dy * 9), (sx, sy), 2)
+                pygame.draw.circle(surface, (200, 200, 210), (int(sx), int(sy)), 2)
+            else:                                       # a magic bolt
+                pygame.draw.circle(surface, color, (int(sx), int(sy)), 5)
+                pygame.draw.circle(surface, (255, 255, 255), (int(sx), int(sy)), 2)
+
         self.fx.draw(surface, (ox, oy))
 
-        if self.moving:
+        if self.swing_t > 0:
+            col = HERO_ATTACK_COLS[0 if self.swing_t > SWING_TIME / 2 else 1]
+        elif self.moving:
             col = HERO_WALK_COLS[self.walk_frame()]
         else:
             col = HERO_IDLE_COLS[int(self.anim_t / FRAME_TIME) % len(HERO_IDLE_COLS)]
         frame = self.frames[self.facing * HERO_COLS + col]
         surface.blit(frame, frame.get_rect(
             center=(int(self.x) - ox, int(self.y) - oy)))
+        if self.swing_t > SWING_TIME / 3 and self.swing_melee:
+            a0, a1 = SWING_ARC[self.facing]
+            box = pygame.Rect(0, 0, 2 * REACH, 2 * REACH)
+            box.center = (int(self.x) - ox, int(self.y) - oy)
+            pygame.draw.arc(surface, (235, 235, 240), box, a0, a1, 3)
 
         light = _light_mask()
         surface.blit(light, light.get_rect(center=(int(self.x) - ox, int(self.y) - oy)))
@@ -492,6 +633,6 @@ class DungeonScreen(Screen):
             surface, self.visited, (SCREEN_WIDTH - mm_w - 10, 10),
             self.cell(), scale=MINIMAP_SCALE)
         hint = font(18).render(
-            "Arrows / WASD: move    I: inventory    Esc: Base (run is kept)", True, DIM_TEXT)
+            "Arrows / WASD: move    Space: attack    I: inventory    Esc: Base", True, DIM_TEXT)
         surface.blit(hint, hint.get_rect(bottomright=(
             SCREEN_WIDTH - 12, SCREEN_HEIGHT - 10)))

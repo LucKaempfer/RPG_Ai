@@ -37,6 +37,13 @@ dips when a foot lands), driven by the distance walked rather than time so the f
 each footstep plays the splash sound and kicks up a few drops. The hero and enemies cast soft
 shadows, and each enemy breathes on its own beat.
 
+**Smashing props:** Space (or F) in the dungeon swings the weapon at the prop in front (a
+white arc, attack frames), or with a bow / crossbow / wand fires an arrow or a coloured bolt that
+flies until it hits a wall, an enemy, a prop or 8 tiles. Props take 1-3 hits (`PROP_HP`) and
+leave crafting materials (`PROP_MATERIALS`: wood, iron, cloth, bone, stone) in
+`Player.materials`, a weightless pouch shown in the inventory. Broken props stay broken in the
+run save (`props`). New sounds: `shoot`, `crack`, `shatter`.
+
 **Room props:** rooms hold sewer clutter (barrels, crates, clay pots, sacks, rusty buckets,
 bone piles, rubble; `props.py`, art in `objects/props.png`). They stand on a room's edge row,
 never on or beside a door, and block the way; interiors, doors and corridors always stay
@@ -108,13 +115,13 @@ wake up rested in the Base.
 |------|--------|-------|
 | `pygame_rpg/main.py` | ✅ M4 | State machine: `build_screen()` factory, per-event screen switching, global clock loop. `handle_update` may also return a transition; `("resume", {"screen": s})` switches back to an existing screen object (dungeon floor after a battle / level-up). The M1 dungeon demo loop was removed (recoverable from git, commit `d2a0ec2`). |
 | `pygame_rpg/config.py` | ✅ M5 | Screen 800×600 @ 60 FPS, starting stats, XP curve (`max_xp_for`), `BASE_MAX_WEIGHT = 50`, `SAVE_DIR`, rarity weights, and the **Balance** section (weapon power, enemy hit multiplier, variance, ailment bonuses, run / loot chances, post-win recovery, enemy growth, enemies per room, chests per floor). |
-| `pygame_rpg/player.py` | ✅ M3 | `Player` dataclass: base stats, XP/level-up, upgrade counts, backpack, 11 equipment slots, `bonus()`/`total()`, `max_hp`/`current_hp`/`heal()`, `look` (appearance indices, `LOOK_KEYS`), `max_mp`/`current_mp`/`restore_mp()`/`can_cast()`/`spend_mp()`/`equipped_abilities()`, `slot_for`/`can_equip`/`slot_of`/`equip`/`unequip`/`drop`, `can_use`/`use`, weight, `to_dict`/`from_dict` (with old-save migration). |
+| `pygame_rpg/player.py` | ✅ M3 | `Player` dataclass: base stats, XP/level-up, upgrade counts, backpack, 11 equipment slots, `bonus()`/`total()`, `max_hp`/`current_hp`/`heal()`, `look` (appearance indices, `LOOK_KEYS`), `materials` (pouch, `MATERIALS`), `max_mp`/`current_mp`/`restore_mp()`/`can_cast()`/`spend_mp()`/`equipped_abilities()`, `slot_for`/`can_equip`/`slot_of`/`equip`/`unequip`/`drop`, `can_use`/`use`, weight, `to_dict`/`from_dict` (with old-save migration). |
 | `pygame_rpg/items.py` | 🚧 M2 | `Item` dataclass; builders `_wp`/`_arm`/`_con`/`_trinket`/`_ab` + tier helpers `_tier`/`_arm_tier`/`_con_tier`/`_trinket_tier`/`_ab_tier`; `CATALOG` (212 items); `STARTER_INVENTORY = ["sword", "potion", "fireball"]`; `item_by_id()` returns a copy. |
 | `pygame_rpg/savegame.py` | ✅ M5 | `saves/<name>.json` per character + `saves/index.json`; runs in `saves/runs/<name>.json` (`save_run` / `load_run` / `delete_run`; a broken run file reads as no run); `_safe_name()` validates names (`^[\w .-]{1,20}$`), index self-prunes missing files; `_resolve()` turns saved item refs (id or `{"id", "charges"}`) into items. |
 | `pygame_rpg/gui/screen.py` | ✅ M3 | `Screen` base class, `Button`, cached `font()`, shared palette, `QUIT` sentinel. |
 | `pygame_rpg/gui/*.py` (8 screens) | ✅ M3 | `title_screen`, `tutorial_screen`, `hero_maker`, `hero_chooser`, `base_screen`, `inventory_screen`, `stats_screen`, `level_up_screen` (takes `return_to`: resume a dungeon floor instead of the Base). |
 | `pygame_rpg/dungeon.py` | ✅ M4 | Seeded generation (private `rng`, same seed = same floor): 60 × 44 tiles, up to 13 rooms with `ROOM_GAP` free tiles between them; rooms are linked by a minimum spanning tree over wall-to-wall gaps (shortest corridors that still reach every room) with A*-routed corridors from a door on the wall facing the target to a door on the target, never entering another room or the ring around it, so walls stay solid and every door is a single tile (one door per wall, reused). `door_outside()` gives the corridor cell outside a door. `visible_from()` (line of sight), `is_walkable()`, `spawn_point()`, sewer-tileset rendering (`sewer/tiles_v2.png`, doorways drawn as a thin gate on the corridor side, per-cell variants cached in `_tile_cache`) with camera offset, fog (`seen` cells + their walls), dimming outside `visible`, `overrides` for the manhole stairs, minimap of visited rooms + walked corridors. |
-| `pygame_rpg/props.py` | ✅ | `Prop` (kind, cell, broken; `solid` while standing), `PROP_KINDS` (sheet order), `edge_cells()`, `place_props(dungeon, seed)` with its own `Random(f"props-{seed}")`. |
+| `pygame_rpg/props.py` | ✅ | `Prop` (kind, cell, broken, hp; `solid` while standing, `hit()`), `PROP_HP`, `PROP_MATERIALS`, `salvage()`, `PROP_KINDS` (sheet order), `edge_cells()`, `place_props(dungeon, seed)` with its own `Random(f"props-{seed}")`. |
 | `pygame_rpg/enemies.py` | ✅ M4 | `EnemyType` (frozen data) for slime, bat, goblin, skeleton + `BOSS_TYPE`; `make_enemy()` scales per floor; `boss_room()` (farthest from room 0); `place_enemies()` with the dungeon's rng. |
 | `pygame_rpg/combat.py` | ✅ M4 | `Battle`: pure rules, no drawing. `attack()`, `cast()`, `use_item()`, `run()`, ailments (`AILMENTS`), cooldowns, Shield guard, wards, XP + loot on win. |
 | `pygame_rpg/gui/dungeon_screen.py` | ✅ M4 | `DungeonScreen(player, floor, seed)`: `move()` with axis-separated wall collision (20 px hitbox), trinket speed bonus, walk animation by distance walked (`walk_frame()`, footsteps on `HERO_STEP_FRAMES` with a splash), idle breathing, shadows, clamped camera, fog (`seen`), enemies, chests, stairs, HUD + minimap. Saves the run (`to_run()` / `save_run()`) on floor entry, after each battle, on Esc and on quit; `run=` restores one. `step(dx, dy, dt)` is one frame and returns a transition (battle on bump, level-up after a win, next floor on the stairs); tests drive it directly. `battle_over()` is called by the battle screen. Esc saves → Base (no rest). Floor banner on arrival. |
@@ -227,7 +234,7 @@ name a group (`player.SLOT_GROUPS`) and take the first free slot of it. Equippin
 equipped even above the gate.
 
 **Saves** (`saves/<name>.json`): `name, lvl, xp, hp, current_hp, ap, rap, map, dp, rdp, mdp,
-current_mp, lvl_up_counts, look {skin, hair, hair_color, tunic: option index}, equipment {slot: ref | null}, inventory [ref, ...]`. A `ref` is an item id, or
+current_mp, lvl_up_counts, look {skin, hair, hair_color, tunic: option index}, materials {wood, iron, cloth, bone, stone: count}, equipment {slot: ref | null}, inventory [ref, ...]`. A `ref` is an item id, or
 `{"id": ..., "charges": n}` for a consumable with used charges.
 **Old saves keep loading:** a missing `current_hp` / `current_mp` means full HP / MP, a missing `look` the default look; legacy slot `accessory` maps
 to `trinket1`; an item in an unknown slot (e.g. the old `armor` slot) or a slot it doesn't fit
@@ -236,7 +243,7 @@ and saves are data, so items are always stored by id. `saves/index.json` is the 
 V3 `saved_chars.txt` equivalent).
 
 **Run saves** (`saves/runs/<name>.json`, M5): `version` (`RUN_VERSION`; a mismatch drops the run), `floor, seed, x, y, facing, beaten` (indices into
-the seeded enemy placement), `chests` (opened flags), `stairs`, `seen` (fog cells), `visited`
+the seeded enemy placement), `chests` (opened flags), `props` (indices of broken props), `stairs`, `seen` (fog cells), `visited`
 (room indices), `corridors` (minimap). The seed rebuilds the floor, enemies and chests; the save
 only records what changed. Chest loot after a reload is rolled fresh.
 

@@ -77,3 +77,84 @@ def test_props_block_the_hero(display, saves):
     prop.broken = True
     assert d._fits(x, y) or not d.dungeon.is_walkable(prop.cell)
     d.draw(display)
+
+
+def _facing_prop(d):
+    """Stand the hero on the interior cell next to a prop, facing it."""
+    from pygame_rpg.gui import dungeon_screen as D
+    for prop in d.props:
+        for facing, (dx, dy) in D.FACING_STEP.items():
+            stand = (prop.cell[0] - dx, prop.cell[1] - dy)
+            room = d.dungeon.get_room_at(prop.cell)
+            r = room.rect
+            if (r.left < stand[0] < r.right - 1 and r.top < stand[1] < r.bottom - 1):
+                d.x, d.y = d._centre(stand)
+                d.facing = facing
+                return prop
+    raise AssertionError("no prop with a free interior neighbour")
+
+
+def test_hits_break_a_prop_into_materials(display, saves):
+    from pygame_rpg.gui.dungeon_screen import DungeonScreen
+    from pygame_rpg.props import PROP_HP, PROP_MATERIALS
+    from pygame_rpg import savegame as S
+    p = Player(name="Smasher")
+    d = DungeonScreen(display, p, seed=6)
+    prop = _facing_prop(d)
+    for i in range(PROP_HP[prop.kind]):
+        assert not prop.broken
+        d.attack()
+        d.attack()                     # still cooling down: no extra hit
+        d.step(0, 0, 0.5)
+        d.draw(display)
+    assert prop.broken and d._fits(*d._centre(prop.cell))
+    got = sum(p.materials.values())
+    lows = sum(lo for lo, _ in PROP_MATERIALS[prop.kind].values())
+    assert got >= lows
+    d.attack()                          # broken props take no more hits
+    assert sum(p.materials.values()) == got
+    # The broken prop stays broken in the run save; materials are saved.
+    S.save_player(p)
+    run = d.to_run()
+    again = DungeonScreen(display, S.load_player("Smasher"), run=run)
+    assert again.props[d.props.index(prop)].broken
+    assert again.player.materials == p.materials
+
+
+def test_a_bow_shoots_props_from_afar(display, saves):
+    from pygame_rpg import items as I
+    from pygame_rpg.gui.dungeon_screen import DungeonScreen, FACING_STEP
+    p = Player(name="Archer")
+    bow = I.item_by_id("bow")
+    p.inventory.append(bow)
+    p.equip(bow)
+    d = DungeonScreen(display, p, seed=6)
+    prop = _facing_prop(d)
+    dx, dy = FACING_STEP[d.facing]
+    d.x -= dx * 64                      # two more tiles back
+    d.y -= dy * 64
+    if not d._fits(d.x, d.y):
+        pytest.skip("no room to step back on this seed")
+    hp = prop.hp
+    d.attack()
+    assert d.shots
+    for _ in range(30):
+        d.step(0, 0, 1 / 60)
+        d.draw(display)
+    assert not d.shots and prop.hp == hp - 1
+
+
+def test_shots_stop_at_walls(display, saves):
+    from pygame_rpg import items as I
+    from pygame_rpg.gui.dungeon_screen import DungeonScreen, HERO_DIR_UP
+    p = Player(name="Wand")
+    wand = I.item_by_id("fiery_wand")
+    p.inventory.append(wand)
+    p.equip(wand)
+    d = DungeonScreen(display, p, seed=2)
+    d.prop_at.clear()
+    d.facing = HERO_DIR_UP
+    d.attack()
+    for _ in range(120):
+        d.step(0, 0, 1 / 60)
+    assert not d.shots

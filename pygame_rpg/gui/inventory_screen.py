@@ -395,3 +395,6 @@ class InventoryScreen(Screen):
             "Esc: back to " + ("the dungeon" if self.return_to else "base")
             + "    wheel / Up Down: scroll", True, DIM_TEXT)
         surface.blit(hint, (24, 522))
+        pouch = "   ".join(f"{mat} {n}" for mat, n in p.materials.items())
+        mats = font(16).render(f"Materials:  {pouch}", True, DIM_TEXT)
+        surface.blit(mats, mats.get_rect(topright=(776, 522)))

@@ -234,6 +234,28 @@ def _heavy(s):
                  (s.gain(boom, 0.9), 0.3))
 
 
+def _shoot(s):
+    # A bow string's twang and the arrow's whoosh.
+    twang = s.env(s.tone(220, 180, 0.25, "triangle", vibrato=0.03, vib_rate=30),
+                  decay=14)
+    return s.mix(s.gain(twang, 0.4), (_whoosh(s, 0.18, 0.2, 0.6, 0.4), 0.02))
+
+
+def _crack(s):
+    # Wood splintering: sharp snaps over a hollow knock.
+    snaps = [(s.gain(s.env(s.highpass(s.noise(0.06), 0.4), attack=0.001,
+                           decay=60), 0.6), t) for t in (0.0, 0.03, 0.07, 0.12)]
+    return s.mix(_thud(s, 200, 90, 0.2, 0.7, 0.8), *snaps)
+
+
+def _shatter(s):
+    # Clay or stone breaking: a crunch and a few bright shards.
+    crunch = s.env(s.lowpass(s.noise(0.25), 0.5), attack=0.001, decay=18)
+    shards = s.seq([2600, 3100, 2200, 3600], "sine", step=0.035, decay=30, vol=0.15)
+    return s.mix(s.gain(crunch, 0.7), (shards, 0.02),
+                 _thud(s, 160, 80, 0.12, 0.5, 0.6))
+
+
 def _miss(s):
     return s.mix(_whoosh(s, 0.3, 0.3, 0.04, 0.55))
 
@@ -387,6 +409,9 @@ _RECIPES = {
     "bash": _bash,
     "heavy": _heavy,
     "miss": _miss,
+    "shoot": _shoot,
+    "crack": _crack,
+    "shatter": _shatter,
     "hurt": _hurt,
     "magic": _magic,
     "heal": _heal,
