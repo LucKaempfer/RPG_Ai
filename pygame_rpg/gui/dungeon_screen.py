@@ -6,8 +6,8 @@ position, movement with wall collision, the walk animation, the camera,
 fog of war, and what stands on the floor:
 
 * enemies (``enemies.py``): stepping into a room where enemies stand
-  starts a battle with the nearest one, then the next, until the room
-  is clear, so no fight can be walked around.  Fleeing puts the hero
+  starts one battle against all of them (the nearest is the first
+  target), so no fight can be walked around.  Fleeing puts the hero
   back outside the room's nearest door.  This screen object is kept and
   resumed after each battle, so the floor survives the fight.  After a win, pending level-ups open the level-up
   screen right away (the stat pick happens mid-run).
@@ -425,28 +425,33 @@ class DungeonScreen(Screen):
         return (max(0, min(max_x, cx)), max(0, min(max_y, cy)))
 
     # -- encounters ------------------------------------------------------
-    def room_enemy(self):
-        """The enemy to fight now: the nearest living one in the room the
-        hero stands in (None in corridors and cleared rooms)."""
+    def room_enemies(self):
+        """Everyone to fight now: the living enemies in the room the hero
+        stands in, nearest first (empty in corridors and cleared rooms)."""
         room = self.dungeon.get_room_at(self.cell())
         if room is None:
-            return None
+            return []
         here = [e for e in self.enemies if e.alive and room.contains(cell_of(e))]
-        return min(here, default=None,
-                   key=lambda e: (e.x - self.x) ** 2 + (e.y - self.y) ** 2)
+        return sorted(here, key=lambda e: (e.x - self.x) ** 2 + (e.y - self.y) ** 2)
+
+    def room_enemy(self):
+        """The nearest enemy in the hero's room, or None."""
+        return next(iter(self.room_enemies()), None)
 
     def battle_over(self, battle) -> None:
         """Called by the battle screen before it resumes this floor."""
         self.enemies = [e for e in self.enemies if e.alive]
+        foes = battle.enemies
+        names = foes[0].name if len(foes) == 1 else f"{len(foes)} enemies"
         if battle.state == WON:
-            self.hud.say(f"Defeated the {battle.enemy.name}! +{battle.xp_gained} XP,"
-                         f" +{battle.gold_gained} gold")
+            self.hud.say(f"Defeated {'the ' if len(foes) == 1 else ''}{names}!"
+                         f" +{battle.xp_gained} XP, +{battle.gold_gained} gold")
             for item in battle.loot:
                 self.hud.say(f"Found: {item.name}")
             if battle.blueprint:
                 self.hud.say(f"Blueprint: {item_by_id(battle.blueprint).name}"
                              " (craft it at an anvil)")
-            if battle.enemy.boss:
+            if any(e.boss for e in foes):
                 self.stairs = boss_room(self.dungeon).rect.center
                 self.hud.say("Stairs down have appeared!")
             self.check_levels = True
@@ -457,7 +462,7 @@ class DungeonScreen(Screen):
                 out = self.dungeon.door_outside(room, self.cell())
                 self.x, self.y = self._centre(out)
                 self._mark_visited()
-                self.hud.say(f"You escaped from the {battle.enemy.name}.")
+                self.hud.say(f"You escaped from {'the ' if len(foes) == 1 else ''}{names}.")
         self.save_run()
 
     def _open_chests(self):
@@ -645,13 +650,13 @@ class DungeonScreen(Screen):
         self.move(dx, dy, dt)
         self._update_shots(dt)
         self._open_chests()
-        enemy = self.room_enemy()
-        if enemy is not None:
+        foes = self.room_enemies()
+        if foes:
             self.moving = False
             self.shots.clear()
             audio.play("encounter")
-            return ("battle", {"player": self.player, "enemy": enemy,
-                               "dungeon": self})
+            return ("battle", {"player": self.player, "enemy": foes[0],
+                               "enemies": foes, "dungeon": self})
         if self.stairs is not None and self.cell() == self.stairs:
             save_player(self.player)
             audio.play("stairs")

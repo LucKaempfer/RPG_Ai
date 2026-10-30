@@ -151,3 +151,31 @@ def test_gate_hides_room_until_stepped_through(display, saves):
     ds.x, ds.y = ds._centre(inside)           # step through: room opens up
     ds._mark_visited()
     assert inside in ds.visible
+
+
+def test_battle_screen_targets_by_tap_and_keys(display, saves):
+    from pygame_rpg import enemies as E
+    from pygame_rpg.gui.battle_screen import BattleScreen
+    from pygame_rpg.gui.dungeon_screen import DungeonScreen
+    p = Player(name="Aim")
+    p.inventory.append(I.item_by_id("sword"))
+    p.equip(p.inventory[0])
+    ds = DungeonScreen(display, p, seed=3)
+    foes = [E.make_enemy(E.ENEMY_TYPES[k], 1) for k in ("slime", "bat")]
+    bs = BattleScreen(display, p, foes, ds, rng=random.Random(0))
+    assert bs.enemy is foes[0]
+    assert bs.buttons[0][1] == ("target",)        # the menu's Target row
+    bs.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1,
+                                       pos=bs.columns[1].center))
+    assert bs.enemy is foes[1]
+    bs.handle_event(key(pygame.K_LEFT))
+    assert bs.enemy is foes[0]
+    bs.focus = 0
+    bs.handle_event(key(pygame.K_RETURN))         # Target row cycles
+    assert bs.enemy is foes[1]
+    bs.draw(display)
+    foes[1].hp = 0
+    bs.battle._retarget()
+    bs._build_buttons()
+    assert bs.enemy is foes[0] and bs.buttons[0][1] != ("target",)
+    bs.draw(display)

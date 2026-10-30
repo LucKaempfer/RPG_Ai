@@ -1,7 +1,9 @@
 # pygame_rpg/gui/battle_screen.py
 """Battle screen (M4): one turn-based fight, drawn over ``combat.Battle``.
 
-Top right: the enemy (sprite x4, HP bar, ailments).  Left: the hero
+Top right: the enemies, side by side (sprite, HP bar, ailments); a gold
+arrow marks the target.  Tap / click an enemy, press Left / Right, or
+use the menu's Target row to aim at another one.  Left: the hero
 (back view x4, HP / MP bars, ailments, shield).  Bottom left: the
 battle log.  Bottom right: the menu.
 
@@ -9,7 +11,8 @@ Menu: Attack / Abilities / Items / Run.  Attack opens the attack styles
 (Strike / Slash / Bash / Heavy), Abilities the 4 ability slots with MP
 cost and cooldown, Items the backpack's battle consumables; Back or Esc
 returns to the main menu.  Every damaging entry shows the damage it
-would deal now, and the hero panel shows the enemy's next hit.  Mouse
+would deal to the target now, and the hero panel shows what all the
+enemies together hit for next round.  Mouse
 or keyboard (Up / Down / Enter, Esc).
 
 When the fight ends the menu becomes one Continue button:
@@ -65,16 +68,17 @@ class BattleScreen(Screen):
     ambience = "sewer"   # the fight happens down in the sewer
 
     def __init__(self, screen, player, enemy, dungeon, rng=None):
+        """``enemy`` is one enemy or the list of everyone in the room."""
         super().__init__(screen)
         self.player = player
-        self.enemy = enemy
         self.dungeon = dungeon          # the DungeonScreen to resume
         self.battle = Battle(player, enemy, rng or random.Random())
+        self.enemies = self.battle.enemies
         self.mode = "main"              # "main" | "abilities" | "items"
         self.focus = 0
         self.hot = None
         self.anim_t = 0.0
-        self.hurt_t = 0.0
+        self.hurt_t = {}    # id(enemy) -> seconds left showing it was hit
         self.hero_hurt_t = 0.0
         self.pops = []      # [text, color, x, y, age]: floating numbers
         self.fx = Particles()
@@ -87,12 +91,35 @@ class BattleScreen(Screen):
         self.hero_frames = [
             pygame.transform.scale(hero[HERO_DIR_UP * HERO_COLS + c], (128, 128))
             for c in HERO_IDLE_COLS]
-        size = 192 if enemy.boss else 128
-        sheet = assets.load_sheet(f"enemies/{enemy.type.sprite}.png",
-                                  ENEMY_COLS, ENEMY_ROWS)
-        self.enemy_frames = [pygame.transform.scale(f, (size, size))
-                             for f in sheet]
+        # Enemy columns across the top right; sprites shrink to fit.
+        n = len(self.enemies)
+        self.columns = [pygame.Rect(460 + i * 320 // n, 30, 320 // n, 310)
+                        for i in range(n)]
+        self.sizes = [((192 if e.boss else 128) if n == 1
+                       else (128, 96, 76)[min(n, 4) - 2]) for e in self.enemies]
+        self.enemy_frames = {}      # (sprite, size) -> scaled frames
+        for e, size in zip(self.enemies, self.sizes):
+            if (e.type.sprite, size) not in self.enemy_frames:
+                sheet = assets.load_sheet(f"enemies/{e.type.sprite}.png",
+                                          ENEMY_COLS, ENEMY_ROWS)
+                self.enemy_frames[(e.type.sprite, size)] = [
+                    pygame.transform.scale(f, (size, size)) for f in sheet]
         self._build_buttons()
+
+    @property
+    def enemy(self):
+        """The enemy being aimed at."""
+        return self.battle.enemy
+
+    def _enemy_x(self, i) -> int:
+        """Centre x of enemy ``i``'s column (590 for a lone enemy)."""
+        return 590 if len(self.enemies) == 1 else self.columns[i].centerx
+
+    def aim(self, index) -> None:
+        """Target enemy ``index`` (a tap on it); living enemies only."""
+        if self.battle.state == ONGOING and self.battle.set_target(index):
+            audio.play("click")
+            self._build_buttons()
 
     # -- menu ----------------------------------------------------------
     def _entries(self):
@@ -124,12 +151,15 @@ class BattleScreen(Screen):
                              b.can_use(item)))
             return rows + [("Back", ("back",), True)]
         lo, hi = b.attack_preview()
-        return [
+        aim = []
+        if len(b.alive()) > 1:
+            aim = [(f"Target: {b.name_of(b.enemy)}  (switch)", ("target",), True)]
+        return aim + [
             (f"Attack  ({lo}-{hi})", ("mode", "attack"), True),
             ("Abilities", ("mode", "abilities"),
              bool(self.player.equipped_abilities())),
             ("Items", ("mode", "items"), bool(b.battle_items())),
-            ("Run", ("run",), not self.enemy.boss),
+            ("Run", ("run",), not any(e.boss for e in self.enemies)),
         ]
 
     def _build_buttons(self):
@@ -145,12 +175,17 @@ class BattleScreen(Screen):
     def _do(self, action):
         b = self.battle
         kind = action[0]
-        hp_before = self.enemy.hp
+        hp_before = [e.hp for e in self.enemies]
         hero_before = self.player.current_hp
         out = []
         if kind == "continue":
             audio.play("click")
             return self._leave()
+        if kind == "target":
+            b.cycle_target(1)
+            audio.play("click")
+            self._build_buttons()
+            return None
         if kind == "mode":
             self.mode, self.focus = action[1], 0
         elif kind == "back":
@@ -167,9 +202,10 @@ class BattleScreen(Screen):
         elif kind == "run":
             out = b.run()
         self._sounds(action, out, hp_before, hero_before)
-        if self.enemy.hp < hp_before:
-            self.hurt_t = HURT_TIME
-            self._pop(f"-{hp_before - self.enemy.hp}", BAD, 590, 170)
+        for i, (e, before) in enumerate(zip(self.enemies, hp_before)):
+            if e.hp < before:
+                self.hurt_t[id(e)] = HURT_TIME
+                self._pop(f"-{before - e.hp}", BAD, self._enemy_x(i), 170)
         lost = hero_before - self.player.current_hp
         if lost > 0:
             self.hero_hurt_t = HURT_TIME
@@ -179,8 +215,9 @@ class BattleScreen(Screen):
         if b.state != ONGOING and self.end_t is None:
             self.end_t = 0.0
             if b.state == WON:
-                self.fx.burst(590, 270, GOLD, count=28, speed=180)
-                self.fx.burst(590, 270, (255, 255, 255), count=12, speed=120)
+                for i in range(len(self.enemies)):
+                    self.fx.burst(self._enemy_x(i), 270, GOLD, count=28, speed=180)
+                    self.fx.burst(self._enemy_x(i), 270, (255, 255, 255), count=12, speed=120)
         self._build_buttons()
         return None
 
@@ -194,7 +231,7 @@ class BattleScreen(Screen):
         if any(line == "You can't move this turn!" for line in out):
             audio.play("ailment")
         elif kind == "attack":
-            hit = self.enemy.hp < hp_before
+            hit = any(e.hp < before for e, before in zip(self.enemies, hp_before))
             audio.play(action[1] if hit and len(action) > 1
                        else "strike" if hit else "miss")
         elif kind == "cast":
@@ -242,6 +279,10 @@ class BattleScreen(Screen):
             for btn, action, enabled in self.buttons:
                 if enabled and btn.rect.collidepoint(event.pos):
                     return self._do(action)
+            if len(self.enemies) > 1:
+                for i, col in enumerate(self.columns):
+                    if col.collidepoint(event.pos):
+                        self.aim(i)
         elif event.type == pygame.KEYDOWN:
             if event.key in (pygame.K_UP, pygame.K_DOWN):
                 step = -1 if event.key == pygame.K_UP else 1
@@ -252,11 +293,15 @@ class BattleScreen(Screen):
                     return self._do(action)
             elif event.key == pygame.K_ESCAPE and self.mode != "main":
                 return self._do(("back",))
+            elif event.key in (pygame.K_LEFT, pygame.K_RIGHT) and len(self.battle.alive()) > 1:
+                self.battle.cycle_target(-1 if event.key == pygame.K_LEFT else 1)
+                audio.play("click")
+                self._build_buttons()
         return None
 
     def handle_update(self, dt):
         self.anim_t += dt
-        self.hurt_t = max(0.0, self.hurt_t - dt)
+        self.hurt_t = {k: t - dt for k, t in self.hurt_t.items() if t > dt}
         self.hero_hurt_t = max(0.0, self.hero_hurt_t - dt)
         for pop in self.pops:
             pop[4] += dt
@@ -273,29 +318,55 @@ class BattleScreen(Screen):
             surface.blit(img, (x, y))
             x += img.get_width() + 12
 
+    def _draw_enemy(self, surface, i, e, blink):
+        """Enemy ``i``: sprite (hurt / death frames), name, HP bar and
+        ailments; the target gets a gold arrow and name."""
+        b = self.battle
+        frames = self.enemy_frames[(e.type.sprite, self.sizes[i])]
+        frame = frames[(ENEMY_HURT if id(e) in self.hurt_t else ENEMY_IDLE)[blink]]
+        if not e.alive:
+            # Death frames, fading out (over END_TIME once the fight is over).
+            t = min(1.0, (self.end_t or 0.0) / END_TIME) if b.state != ONGOING else 1.0
+            frame = frames[ENEMY_DEATH[0 if t < 0.5 else 1]].copy()
+            frame.set_alpha(int(255 * (1 - 0.6 * t)))
+        x = self._enemy_x(i)
+        rect = frame.get_rect(midbottom=(x, 330))
+        surface.blit(frame, rect)
+        name = b.name_of(e)
+        aimed = (b.state == ONGOING and e is b.enemy and len(self.enemies) > 1)
+        if len(self.enemies) == 1:
+            title = font(26).render(name + f"  (floor {e.floor})", True,
+                                    GOLD if e.boss else TEXT_COLOR)
+            surface.blit(title, (420, 40))
+            _bar(surface, (420, 72, 300, 14), e.hp, e.max_hp, HP_COLOR)
+            surface.blit(font(18).render(f"{e.hp} / {e.max_hp}", True, DIM_TEXT), (728, 70))
+            self._statuses(surface, e.statuses, (420, 94))
+            return
+        col = self.columns[i]
+        color = GOLD if aimed or e.boss else TEXT_COLOR if e.alive else DIM_TEXT
+        title = font(22).render(name, True, color)
+        surface.blit(title, title.get_rect(midtop=(x, col.y + 8)))
+        _bar(surface, (col.x + 10, col.y + 32, col.w - 20, 12), e.hp, e.max_hp, HP_COLOR)
+        hpt = font(16).render(f"{e.hp} / {e.max_hp}", True, DIM_TEXT)
+        surface.blit(hpt, hpt.get_rect(midtop=(x, col.y + 48)))
+        sy = col.y + 66
+        for n, t in e.statuses.items():
+            img = font(16).render(f"{n} {t}", True, BAD)
+            surface.blit(img, img.get_rect(midtop=(x, sy)))
+            sy += 16
+        if aimed:
+            # Bobbing arrow above the target's head.
+            top = rect.top - 6 + int(3 * blink)
+            pygame.draw.polygon(surface, GOLD, [(x - 10, top - 14), (x + 10, top - 14), (x, top)])
+
     def draw(self, surface):
         surface.fill(BG_COLOR)
-        p, e, b = self.player, self.enemy, self.battle
+        p, b = self.player, self.battle
         blink = int(self.anim_t / 0.4) % 2
 
-        # Enemy (top right).
-        frames = ENEMY_HURT if self.hurt_t > 0 else ENEMY_IDLE
-        frame = self.enemy_frames[frames[blink]]
-        if not e.alive:
-            # Death frames, fading out over END_TIME.
-            t = min(1.0, (self.end_t or 0.0) / END_TIME)
-            frame = self.enemy_frames[ENEMY_DEATH[0 if t < 0.5 else 1]].copy()
-            frame.set_alpha(int(255 * (1 - 0.6 * t)))
-        ex = 590
-        if frame is not None:
-            surface.blit(frame, frame.get_rect(midbottom=(ex, 330)))
-        title = font(26).render(e.name + (f"  (floor {e.floor})"), True,
-                                GOLD if e.boss else TEXT_COLOR)
-        surface.blit(title, (420, 40))
-        _bar(surface, (420, 72, 300, 14), e.hp, e.max_hp, HP_COLOR)
-        hpt = font(18).render(f"{e.hp} / {e.max_hp}", True, DIM_TEXT)
-        surface.blit(hpt, (728, 70))
-        self._statuses(surface, e.statuses, (420, 94))
+        # Enemies (top right).
+        for i, enemy in enumerate(self.enemies):
+            self._draw_enemy(surface, i, enemy, blink)
 
         # Hero (left).
         hero_img = self.hero_frames[blink]
@@ -322,7 +393,8 @@ class BattleScreen(Screen):
                      (396, 302))
         if b.state == ONGOING:
             lo, hi = b.incoming_preview()
-            surface.blit(font(18).render(f"Next enemy hit: {lo}-{hi}", True, BAD),
+            what = "Next enemy hit" if len(b.alive()) == 1 else "Enemies hit next"
+            surface.blit(font(18).render(f"{what}: {lo}-{hi}", True, BAD),
                          (220, 346))
         shield = (f"shield +{b.guard} ({b.guard_turns})",) if b.guard else ()
         self._statuses(surface, b.statuses, (220, 326), shield)

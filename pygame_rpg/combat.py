@@ -1,9 +1,13 @@
 """Turn-based battle logic (M4): pure rules, no drawing.
 
-One ``Battle`` is one fight between the hero and one enemy.  Every hero
-action (attack / cast / use item / run) is followed by the enemy's turn
-unless the fight ended.  Actions return the log lines they produced;
-``gui/battle_screen.py`` shows them.
+One ``Battle`` is one fight between the hero and every enemy in the
+room (one or more).  The hero picks a target (``set_target`` /
+``cycle_target``; it moves on by itself when the target falls); attacks,
+damaging abilities and bombs hit the target only.  Every hero action
+(attack / cast / use item / run) is followed by the enemies' turn: each
+living enemy acts once.  The fight is won when all of them are down.
+Actions return the log lines they produced; ``gui/battle_screen.py``
+shows them.
 
 Damage
     hero hit  = (attack stat + power) x 0.85..1.15 - enemy defense
@@ -28,9 +32,11 @@ Heavy hits hardest but can miss and causes no ailment.
 
 Previews: ``attack_preview`` / ``cast_preview`` give the min-max damage an
 action would deal right now, ``incoming_preview`` the enemy's next hit
-on the hero (shown by the battle screen before you choose).
+on the hero from all living enemies together (shown by the battle
+screen before you choose).
 
-Winning adds XP to ``player.xp`` (trinket xp bonus applied).  Levels are
+Winning adds the XP of every enemy to ``player.xp`` (trinket xp bonus
+applied); gold, loot, junk and blueprints are rolled per enemy.  Levels are
 *not* banked here: the Base's level-up screen still lets the player pick
 stats, exactly as before.  Loot comes from ``items.roll_loot``.
 """
@@ -104,10 +110,28 @@ def weapon_type(weapon) -> str:
     return "melee"
 
 
+def _labels(enemies) -> dict:
+    """id(enemy) -> name in the log; enemies sharing a name get letters
+    ("Slime A", "Slime B")."""
+    count, seen, out = {}, {}, {}
+    for e in enemies:
+        count[e.name] = count.get(e.name, 0) + 1
+    for e in enemies:
+        if count[e.name] > 1:
+            seen[e.name] = seen.get(e.name, 0) + 1
+            out[id(e)] = f"{e.name} {chr(64 + seen[e.name])}"
+        else:
+            out[id(e)] = e.name
+    return out
+
+
 class Battle:
-    def __init__(self, player, enemy, rng):
+    def __init__(self, player, enemies, rng):
         self.player = player
-        self.enemy = enemy
+        # One enemy or a list (everyone in the room).
+        self.enemies = list(enemies) if isinstance(enemies, (list, tuple)) else [enemies]
+        self.target = 0           # index into enemies
+        self.names = _labels(self.enemies)
         self.rng = rng
         self.state = ONGOING
         self.cooldowns = {}       # ability id -> turns left
@@ -118,8 +142,44 @@ class Battle:
         self.gold_gained = 0
         self.blueprint = None     # weapon base id of a blueprint found
         self.loot = []            # items put into the backpack
-        self.log = [f"A {enemy.name} appears!" if not enemy.boss
-                    else f"The {enemy.name} blocks the way!"]
+        boss = next((e for e in self.enemies if e.boss), None)
+        if boss is not None:
+            self.log = [f"The {boss.name} blocks the way!"]
+        elif len(self.enemies) == 1:
+            self.log = [f"A {self.enemies[0].name} appears!"]
+        else:
+            names = [self.name_of(e) for e in self.enemies]
+            self.log = [f"{', '.join(names[:-1])} and {names[-1]} attack!"]
+
+    # -- targets -------------------------------------------------------------
+    @property
+    def enemy(self):
+        """The enemy the hero is aiming at."""
+        return self.enemies[self.target]
+
+    def name_of(self, enemy) -> str:
+        return self.names.get(id(enemy), enemy.name)
+
+    def alive(self) -> list:
+        return [e for e in self.enemies if e.alive]
+
+    def set_target(self, index) -> bool:
+        """Aim at ``enemies[index]``; only living enemies can be picked."""
+        if 0 <= index < len(self.enemies) and self.enemies[index].alive:
+            self.target = index
+            return True
+        return False
+
+    def cycle_target(self, step=1) -> None:
+        """Aim at the next (``step`` 1) or previous (-1) living enemy."""
+        n = len(self.enemies)
+        for k in range(1, n + 1):
+            if self.set_target((self.target + step * k) % n):
+                return
+
+    def _retarget(self) -> None:
+        if not self.enemy.alive:
+            self.cycle_target(1)
 
     # -- helpers -----------------------------------------------------------
     def _say(self, out, text):
@@ -135,19 +195,20 @@ class Battle:
                     if i is not None and getattr(i, "resist", "") == ailment),
                    default=0)
 
-    def _try_ailment(self, out, effect, bonus, on_hero):
+    def _try_ailment(self, out, effect, bonus, on_hero, enemy=None):
         if not effect or effect not in AILMENTS:
             return
         chance = AILMENTS[effect].chance + bonus
         if on_hero:
             chance *= max(0, 1 - WARD_PER_LEVEL * self._ward(effect) / 100)
         if self.rng.uniform(0, 100) < chance:
-            target = self.statuses if on_hero else self.enemy.statuses
+            enemy = enemy or self.enemy
+            target = self.statuses if on_hero else enemy.statuses
             target[effect] = AILMENTS[effect].turns
-            who = "You are" if on_hero else f"The {self.enemy.name} is"
+            who = "You are" if on_hero else f"The {self.name_of(enemy)} is"
             self._say(out, f"{who} {AFFLICTED[effect]}!")
 
-    def _tick(self, out, statuses, on_hero) -> bool:
+    def _tick(self, out, statuses, on_hero, enemy=None) -> bool:
         """Apply start-of-turn ailments; returns True if the turn is lost."""
         skip = False
         for name in list(statuses):
@@ -157,8 +218,8 @@ class Battle:
                     self.player.current_hp = max(0, self.player.current_hp - a.dot)
                     self._say(out, f"You take {a.dot} {name} damage.")
                 else:
-                    self.enemy.hp = max(0, self.enemy.hp - a.dot)
-                    self._say(out, f"The {self.enemy.name} takes {a.dot} {name} damage.")
+                    enemy.hp = max(0, enemy.hp - a.dot)
+                    self._say(out, f"The {self.name_of(enemy)} takes {a.dot} {name} damage.")
             skip = skip or a.skip
             statuses[name] -= 1
             if statuses[name] <= 0:
@@ -173,12 +234,20 @@ class Battle:
 
     def _hit_enemy(self, out, stat, power, effect, chance_bonus, what,
                    mult=1.0):
+        e = self.enemy
         dmg = max(1, round(self._vary(self.player.total(stat) + power) * mult)
-                  - self.enemy.defense)
-        self.enemy.hp = max(0, self.enemy.hp - dmg)
-        self._say(out, f"{what} hits the {self.enemy.name} for {dmg}.")
-        if self.enemy.alive:
+                  - e.defense)
+        e.hp = max(0, e.hp - dmg)
+        self._say(out, f"{what} hits the {self.name_of(e)} for {dmg}.")
+        if e.alive:
             self._try_ailment(out, effect, chance_bonus, on_hero=False)
+        else:
+            self._fallen(out, e)
+
+    def _fallen(self, out, enemy):
+        """Log an enemy going down while others still fight."""
+        if self.alive():
+            self._say(out, f"The {self.name_of(enemy)} falls!")
 
     # -- turn structure ------------------------------------------------------
     def _start_hero_turn(self, out) -> bool:
@@ -195,26 +264,35 @@ class Battle:
         return True
 
     def _end_hero_turn(self, out):
-        if not self.enemy.alive:
+        if not self.alive():
             self._win(out)
         elif self.state == ONGOING:
+            self._retarget()
             self._enemy_turn(out)
 
     def _enemy_turn(self, out):
-        e = self.enemy
-        skip = self._tick(out, e.statuses, on_hero=False)
-        if not e.alive:
+        """Every living enemy acts once, in order."""
+        for e in self.enemies:
+            if not e.alive or self.player.current_hp <= 0:
+                continue
+            skip = self._tick(out, e.statuses, on_hero=False, enemy=e)
+            if not e.alive:
+                self._fallen(out, e)
+                continue
+            name = self.name_of(e)
+            if skip:
+                self._say(out, f"The {name} can't move!")
+            else:
+                defense = self.player.total(DEFENSE_FOR[e.type.attack_type]) + self.guard
+                dmg = max(1, round(self._vary(ENEMY_HIT_MULT * e.attack)) - defense)
+                self.player.current_hp = max(0, self.player.current_hp - dmg)
+                self._say(out, f"The {name} hits you for {dmg}.")
+                if self.player.current_hp > 0:
+                    self._try_ailment(out, e.type.effect, 0, on_hero=True)
+        if not self.alive():
             self._win(out)
             return
-        if skip:
-            self._say(out, f"The {e.name} can't move!")
-        else:
-            defense = self.player.total(DEFENSE_FOR[e.type.attack_type]) + self.guard
-            dmg = max(1, round(self._vary(ENEMY_HIT_MULT * e.attack)) - defense)
-            self.player.current_hp = max(0, self.player.current_hp - dmg)
-            self._say(out, f"The {e.name} hits you for {dmg}.")
-            if self.player.current_hp > 0:
-                self._try_ailment(out, e.type.effect, 0, on_hero=True)
+        self._retarget()
         # End of the round: cooldowns tick (cooldown N = usable again N
         # hero turns after the cast).
         for k in list(self.cooldowns):
@@ -231,12 +309,22 @@ class Battle:
 
     def _win(self, out):
         self.state = WON
-        p, e = self.player, self.enemy
-        self.xp_gained = round(e.xp * (1 + p.bonus("xp_bonus") / 100))
+        p = self.player
+        self.xp_gained = round(sum(e.xp for e in self.enemies)
+                               * (1 + p.bonus("xp_bonus") / 100))
         p.xp += self.xp_gained
-        self._say(out, f"The {e.name} is defeated! +{self.xp_gained} XP")
+        who = (f"The {self.enemies[0].name} is defeated!" if len(self.enemies) == 1
+               else "All enemies are defeated!")
+        self._say(out, f"{who} +{self.xp_gained} XP")
         p.heal(p.max_hp * WIN_HEAL_PCT // 100)
         p.restore_mp(WIN_MP)
+        for e in self.enemies:
+            self._spoils(out, e)
+        self._say(out, f"+{self.gold_gained} gold.")
+
+    def _spoils(self, out, e):
+        """Loot, gold, junk and a blueprint chance for one beaten enemy."""
+        p = self.player
         chance = 100 if e.boss else LOOT_CHANCE + p.bonus("loot_bonus")
         if self.rng.uniform(0, 100) < chance:
             item = roll_loot(self.rng, max_level=min(4, e.floor + (2 if e.boss else 1)))
@@ -249,16 +337,17 @@ class Battle:
         # Money, and sometimes junk to sell (rolled after the loot, so
         # the loot a seed gives stays the same).
         lo, hi = ENEMY_GOLD
-        self.gold_gained = self.rng.randint(lo, hi) * e.floor * (BOSS_GOLD_MULT if e.boss else 1)
-        p.gold += self.gold_gained
-        self._say(out, f"+{self.gold_gained} gold.")
+        gold = self.rng.randint(lo, hi) * e.floor * (BOSS_GOLD_MULT if e.boss else 1)
+        self.gold_gained += gold
+        p.gold += gold
         if self.rng.uniform(0, 100) < ENEMY_JUNK_CHANCE:
             junk = roll_junk(self.rng, e.floor)
             if p.can_carry(junk):
                 p.inventory.append(junk)
                 self.loot.append(junk)
                 self._say(out, f"Found: {junk.name} (junk).")
-        if e.boss or self.rng.uniform(0, 100) < BLUEPRINT_ENEMY_CHANCE:
+        if self.blueprint is None and (
+                e.boss or self.rng.uniform(0, 100) < BLUEPRINT_ENEMY_CHANCE):
             self.blueprint = roll_blueprint(self.rng, p.blueprints)
             if self.blueprint:
                 p.blueprints.append(self.blueprint)
@@ -291,12 +380,15 @@ class Battle:
         return self._hit_range(STAT_FOR[ability.attack_type], ability.damage // 2)
 
     def incoming_preview(self):
-        """(min, max) damage of the enemy's next hit on the hero."""
-        e = self.enemy
-        defense = self.player.total(DEFENSE_FOR[e.type.attack_type]) + self.guard
+        """(min, max) damage the living enemies deal the hero next round,
+        all their hits together."""
         lo, hi = DAMAGE_VARIANCE
-        return tuple(max(1, round(ENEMY_HIT_MULT * e.attack * v) - defense)
-                     for v in (lo, hi))
+        total = [0, 0]
+        for e in self.alive():
+            defense = self.player.total(DEFENSE_FOR[e.type.attack_type]) + self.guard
+            for k, v in enumerate((lo, hi)):
+                total[k] += max(1, round(ENEMY_HIT_MULT * e.attack * v) - defense)
+        return tuple(total)
 
     # -- hero actions ----------------------------------------------------------
     def attack(self, style="strike") -> list:
@@ -372,14 +464,17 @@ class Battle:
         if item.mana:
             self._say(out, f"{item.name} restores {p.restore_mp(item.mana)} MP.")
         if item.damage:
-            self.enemy.hp = max(0, self.enemy.hp - item.damage)
-            self._say(out, f"The {item.name} blasts the {self.enemy.name} "
+            e = self.enemy
+            e.hp = max(0, e.hp - item.damage)
+            self._say(out, f"The {item.name} blasts the {self.name_of(e)} "
                            f"for {item.damage}.")
-            if self.enemy.alive and item.effect in AILMENTS:
+            if e.alive and item.effect in AILMENTS:
                 # Bombs land their ailment at a flat BOMB_EFFECT_CHANCE.
                 self._try_ailment(out, item.effect,
                                   BOMB_EFFECT_CHANCE - AILMENTS[item.effect].chance,
                                   on_hero=False)
+            elif not e.alive:
+                self._fallen(out, e)
         item.charges -= 1
         if item.charges <= 0:
             p.inventory.remove(item)
@@ -390,7 +485,7 @@ class Battle:
         out = []
         if self.state != ONGOING:
             return out
-        if self.enemy.boss:
+        if any(e.boss for e in self.enemies):
             self._say(out, "You can't run from this fight!")
             return out
         if not self._start_hero_turn(out):
