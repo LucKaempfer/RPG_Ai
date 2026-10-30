@@ -1,14 +1,25 @@
 # pygame_rpg/gui/hero_maker.py
 """Hero creation screen (port of the V3 hero_maker()).
 
-Type a name, confirm it, and the character is written to disk with the
-V3 starting stats plus the GUI starter gear (sword + potion).
+Three stages: type a name, pick the hero's look (skin, hair, hair
+colour, tunic, with a live walking preview), confirm.  The character is
+then written to disk with the V3 starting stats plus the GUI starter
+gear (sword + potion).
+
+Look stage keys: Up / Down pick a row, Left / Right change it, R rolls
+a random look, Enter goes on, Esc goes back to the name.
 """
+
+import random
 
 import pygame
 
+from ..assets import (
+    AssetManager, LOOK_OPTIONS, LOOK_LABELS, look_choice,
+    HERO_COLS, HERO_WALK_COLS,
+)
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, START_LEVEL, START_HP
-from ..player import Player
+from ..player import Player, LOOK_KEYS
 from ..items import STARTER_INVENTORY, item_by_id
 from ..savegame import save_player, name_exists, _safe_name
 from .screen import (
@@ -21,6 +32,10 @@ MAX_NAME_LEN = 20
 ERROR_COLOR = (235, 110, 100)
 
 NAME_HINT = "Letters, numbers, spaces, . _ -   (up to 20 characters)"
+LOOK_HINT = "Up/Down: choose   Left/Right: change   R: random   Enter: next   Esc: back"
+# Preview: the hero walks and turns to a new direction every TURN_TIME s.
+PREVIEW_FRAME = 0.15
+TURN_TIME = 1.2
 
 
 class HeroMakerScreen(Screen):
@@ -40,10 +55,27 @@ class HeroMakerScreen(Screen):
         self.btn_create = Button("Create Hero", (cx - 270, bottom, 250, 48))
         self.btn_cancel = Button("Cancel", (cx + 20, bottom, 250, 48))
         self.btn_yes = Button("Yes", (cx - 230, bottom, 210, 48))
-        self.btn_no = Button("No, retype", (cx + 20, bottom, 210, 48))
+        self.btn_no = Button("No, go back", (cx + 20, bottom, 210, 48))
+        # Look stage.
+        self.look = {k: 0 for k in LOOK_KEYS}
+        self.row = 0
+        self.preview_t = 0.0
+        self.assets = AssetManager()
+        self.btn_random = Button("Random", (cx - 345, bottom, 210, 48))
+        self.btn_next = Button("Next", (cx - 105, bottom, 210, 48))
+        self.btn_back = Button("Back", (cx + 135, bottom, 210, 48))
+        # One row per look key: (row rect, "<" rect, ">" rect).
+        self.look_rows = []
+        for i in range(len(LOOK_KEYS)):
+            y = 150 + i * 70
+            self.look_rows.append((pygame.Rect(360, y, 380, 54),
+                                   pygame.Rect(530, y + 7, 40, 40),
+                                   pygame.Rect(690, y + 7, 40, 40)))
 
     def handle_update(self, dt):
-        """Blink the text cursor about twice per second."""
+        """Blink the text cursor about twice per second; animate the
+        look preview."""
+        self.preview_t += dt
         self.cursor_t += dt
         if self.cursor_t >= 0.5:
             self.cursor_t -= 0.5
@@ -62,12 +94,13 @@ class HeroMakerScreen(Screen):
                     return self._validate()
                 if self.btn_cancel.rect.collidepoint(pos):
                     return "title"
+            elif self.stage == "look":
+                self._click_look(pos)
             else:
                 if self.btn_yes.rect.collidepoint(pos):
                     return self._create()
                 if self.btn_no.rect.collidepoint(pos):
-                    self.stage = "input"
-                    self.error = ""
+                    self.stage = "look"
         elif event.type == pygame.KEYDOWN:
             if self.stage == "input":
                 if event.key == pygame.K_RETURN:
@@ -76,12 +109,13 @@ class HeroMakerScreen(Screen):
                     return "title"
                 elif event.key == pygame.K_BACKSPACE:
                     self.text = self.text[:-1]
+            elif self.stage == "look":
+                self._look_key(event.key)
             else:
                 if event.key == pygame.K_RETURN:
                     return self._create()
                 elif event.key == pygame.K_ESCAPE:
-                    self.stage = "input"
-                    self.error = ""
+                    self.stage = "look"
         elif (event.type == pygame.TEXTINPUT
               and self.stage == "input"):
             self.text = (self.text + event.text)[:MAX_NAME_LEN]
@@ -101,13 +135,55 @@ class HeroMakerScreen(Screen):
         if name_exists(name):
             self.error = f"{name} already exists. Choose another name."
             return None
-        self.stage = "confirm"
+        self.error = ""
+        self.stage = "look"
         return None
+
+    # -- look stage --------------------------------------------------------
+    def change(self, key, step) -> None:
+        """Cycle the option for look ``key`` by ``step`` (wraps)."""
+        self.look[key] = (self.look[key] + step) % len(LOOK_OPTIONS[key])
+
+    def randomize(self, rng=random) -> None:
+        self.look = {k: rng.randrange(len(LOOK_OPTIONS[k])) for k in LOOK_KEYS}
+
+    def _look_key(self, key) -> None:
+        if key in (pygame.K_UP, pygame.K_w):
+            self.row = (self.row - 1) % len(LOOK_KEYS)
+        elif key in (pygame.K_DOWN, pygame.K_s):
+            self.row = (self.row + 1) % len(LOOK_KEYS)
+        elif key in (pygame.K_LEFT, pygame.K_a):
+            self.change(LOOK_KEYS[self.row], -1)
+        elif key in (pygame.K_RIGHT, pygame.K_d):
+            self.change(LOOK_KEYS[self.row], 1)
+        elif key == pygame.K_r:
+            self.randomize()
+        elif key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            self.stage = "confirm"
+        elif key == pygame.K_ESCAPE:
+            self.stage = "input"
+
+    def _click_look(self, pos) -> None:
+        for i, (row, left, right) in enumerate(self.look_rows):
+            if left.collidepoint(pos):
+                self.row = i
+                self.change(LOOK_KEYS[i], -1)
+            elif right.collidepoint(pos):
+                self.row = i
+                self.change(LOOK_KEYS[i], 1)
+            elif row.collidepoint(pos):
+                self.row = i
+        if self.btn_random.rect.collidepoint(pos):
+            self.randomize()
+        elif self.btn_next.rect.collidepoint(pos):
+            self.stage = "confirm"
+        elif self.btn_back.rect.collidepoint(pos):
+            self.stage = "input"
 
     def _create(self):
         """Write the new character to disk and head for the Base."""
         name = _safe_name(self.text)
-        player = Player(name=name)
+        player = Player(name=name, look=dict(self.look))
         player.inventory = [item_by_id(i) for i in STARTER_INVENTORY]
         save_player(player)
         return ("base", {"player": player})
@@ -115,6 +191,8 @@ class HeroMakerScreen(Screen):
     def _hover(self, pos):
         if self.stage == "input":
             buttons = (self.btn_create, self.btn_cancel)
+        elif self.stage == "look":
+            buttons = (self.btn_random, self.btn_next, self.btn_back)
         else:
             buttons = (self.btn_yes, self.btn_no)
         for btn in buttons:
@@ -149,6 +227,8 @@ class HeroMakerScreen(Screen):
             hint = font(20).render(NAME_HINT, True, DIM_TEXT)
             surface.blit(hint,
                          (self.input_rect.x, self.input_rect.bottom + 10))
+        elif self.stage == "look":
+            self._draw_look(surface)
         else:
             name = self.text.strip()
             panel = pygame.Rect(150, 140, SCREEN_WIDTH - 300, 220)
@@ -163,6 +243,8 @@ class HeroMakerScreen(Screen):
                 f"starts with sword and potion", True, DIM_TEXT)
             surface.blit(info,
                          info.get_rect(center=(panel.centerx, panel.top + 110)))
+            hero = self._preview_frame(0)
+            surface.blit(hero, hero.get_rect(center=(panel.centerx, panel.top + 170)))
 
         if self.error:
             err = font(24).render(self.error, True, ERROR_COLOR)
@@ -172,6 +254,53 @@ class HeroMakerScreen(Screen):
         if self.stage == "input":
             self.btn_create.draw(surface, hot=(self.hot is self.btn_create))
             self.btn_cancel.draw(surface, hot=(self.hot is self.btn_cancel))
+        elif self.stage == "look":
+            for btn in (self.btn_random, self.btn_next, self.btn_back):
+                btn.draw(surface, hot=(self.hot is btn))
         else:
             self.btn_yes.draw(surface, hot=(self.hot is self.btn_yes))
             self.btn_no.draw(surface, hot=(self.hot is self.btn_no))
+
+    def _preview_frame(self, direction=None, size=64):
+        """The hero in the chosen look, walking; ``direction`` None turns
+        through all four directions over time."""
+        frames = self.assets.hero_frames(self.look)
+        if direction is None:
+            direction = (0, 3, 1, 2)[int(self.preview_t / TURN_TIME) % 4]
+        col = HERO_WALK_COLS[int(self.preview_t / PREVIEW_FRAME)
+                             % len(HERO_WALK_COLS)]
+        frame = frames[direction * HERO_COLS + col]
+        return pygame.transform.scale(frame, (size, size))
+
+    def _draw_look(self, surface):
+        """Preview on the left, one option row per look key on the right."""
+        sub = font(26).render("Choose your look", True, DIM_TEXT)
+        surface.blit(sub, sub.get_rect(center=(SCREEN_WIDTH // 2, 112)))
+        box = pygame.Rect(60, 150, 260, 260)
+        pygame.draw.rect(surface, PANEL_COLOR, box, border_radius=10)
+        pygame.draw.rect(surface, BORDER_COLOR, box, width=2, border_radius=10)
+        hero = self._preview_frame(size=192)
+        surface.blit(hero, hero.get_rect(center=box.center))
+        name = font(26).render(self.text.strip(), True, TEXT_COLOR)
+        surface.blit(name, name.get_rect(midtop=(box.centerx, box.bottom + 10)))
+        for i, (key, (row, left, right)) in enumerate(zip(LOOK_KEYS, self.look_rows)):
+            focused = i == self.row
+            pygame.draw.rect(surface, PANEL_COLOR, row, border_radius=8)
+            pygame.draw.rect(surface, FOCUS_BORDER if focused else BORDER_COLOR,
+                             row, width=2, border_radius=8)
+            label = font(24).render(LOOK_LABELS[key], True,
+                                    GOLD if focused else DIM_TEXT)
+            surface.blit(label, label.get_rect(midleft=(row.x + 16, row.centery)))
+            for rect, arrow in ((left, "<"), (right, ">")):
+                pygame.draw.rect(surface, BORDER_COLOR, rect, width=1, border_radius=6)
+                a = font(28).render(arrow, True, TEXT_COLOR)
+                surface.blit(a, a.get_rect(center=rect.center))
+            choice, value = look_choice(self.look, key)
+            mid = (left.right + right.left) // 2
+            text = font(24).render(choice, True, TEXT_COLOR)
+            surface.blit(text, text.get_rect(center=(mid, row.centery)))
+            if isinstance(value, tuple):        # a colour: show a swatch
+                pygame.draw.rect(surface, value, (row.x + 140, row.centery - 9, 18, 18),
+                                 border_radius=4)
+        hint = font(18).render(LOOK_HINT, True, DIM_TEXT)
+        surface.blit(hint, hint.get_rect(midtop=(SCREEN_WIDTH // 2, 440)))

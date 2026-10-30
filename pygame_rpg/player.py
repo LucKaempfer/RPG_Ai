@@ -37,6 +37,10 @@ LEGACY_SLOTS = {"accessory": "trinket1"}
 # Stats equipment can add to (hp = bonus max HP).
 BONUS_STATS = ("hp", "ap", "rap", "map", "dp", "rdp", "mdp")
 
+# Character look (hero maker): option index per key.  The options
+# themselves (colours, hair styles) live in ``assets.LOOK_OPTIONS``.
+LOOK_KEYS = ("skin", "hair", "hair_color", "tunic")
+
 # Stats that can be raised on level-up (V3 xp_check lets the player
 # pick one of: hp, ap, rap, map, dp, rdp, mdp).
 UPGRADABLE_STATS = ("hp", "ap", "rap", "map", "dp", "rdp", "mdp")
@@ -64,12 +68,16 @@ class Player:
     current_hp: int = None
     # MP left for abilities; None = full (resolved to max_mp).
     current_mp: int = None
+    # Appearance chosen in the hero maker: LOOK_KEYS -> option index.
+    look: dict = field(default_factory=dict)
 
     def __post_init__(self):
         for slot in EQUIP_SLOTS:
             self.equipment.setdefault(slot, None)
         for stat in UPGRADABLE_STATS:
             self.lvl_up_counts.setdefault(stat, 0)
+        for key in LOOK_KEYS:
+            self.look.setdefault(key, 0)
         if self.current_hp is None:
             self.current_hp = self.max_hp
         if self.current_mp is None:
@@ -295,6 +303,7 @@ class Player:
             "rdp": self.rdp,
             "mdp": self.mdp,
             "lvl_up_counts": dict(self.lvl_up_counts),
+            "look": dict(self.look),
             "equipment": {slot: ref(item)
                           for slot, item in self.equipment.items()},
             "inventory": [ref(i) for i in self.inventory],
@@ -307,7 +316,8 @@ class Player:
 
         Migrates saves from before the M2 wiring: legacy slot names are
         renamed, and items in unknown slots or in a slot they don't fit
-        go back to the backpack.  A missing ``current_hp`` /
+        go back to the backpack.  A save without a ``look`` gets the
+        default look.  A missing ``current_hp`` /
         ``current_mp`` means full HP / MP.
         """
         p = cls(
@@ -323,6 +333,10 @@ class Player:
             mdp=data.get("mdp", START_MDP),
         )
         p.lvl_up_counts.update(data.get("lvl_up_counts", {}))
+        look = data.get("look", {})
+        if isinstance(look, dict):
+            p.look.update({k: int(v) for k, v in look.items()
+                           if k in LOOK_KEYS and isinstance(v, int)})
         p.inventory = [resolve(r) for r in data.get("inventory", [])]
         for slot, r in data.get("equipment", {}).items():
             if r is None:

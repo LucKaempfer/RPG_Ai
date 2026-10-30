@@ -30,7 +30,7 @@ import pygame
 
 from .. import audio
 from ..assets import (
-    AssetManager, HERO_COLS, HERO_ROWS, HERO_IDLE_COLS, HERO_WALK_COLS,
+    AssetManager, HERO_COLS, HERO_IDLE_COLS, HERO_WALK_COLS,
     HERO_DIR_DOWN, HERO_DIR_UP, HERO_DIR_LEFT, HERO_DIR_RIGHT,
     ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, SEWER_MANHOLE,
 )
@@ -120,8 +120,7 @@ class DungeonScreen(Screen):
         self.hud.say(f"Floor {floor}: beat the {BOSS_TYPE.name} to open the stairs.")
         self._mark_visited()
         assets = AssetManager()
-        self.frames = assets.load_sheet("player/hero_sheet.png",
-                                        HERO_COLS, HERO_ROWS)
+        self.frames = assets.hero_frames(player.look)
         self.enemy_frames = {}
         for e in self.enemies:
             if e.type.sprite not in self.enemy_frames:

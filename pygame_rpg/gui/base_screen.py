@@ -16,7 +16,7 @@ to the title screen.
 
 import pygame
 
-from ..assets import AssetManager, HERO_COLS, HERO_ROWS
+from ..assets import AssetManager
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, RUN_VERSION, max_xp_for
 from ..savegame import save_player, load_run, delete_run
 from .effects import menu_key
@@ -53,8 +53,7 @@ class BaseScreen(Screen):
         self.focus = None
 
         # Portrait: first idle frame of the hero sheet, scaled up 4x.
-        frame = AssetManager().load_sheet(
-            "player/hero_sheet.png", HERO_COLS, HERO_ROWS)[0]
+        frame = AssetManager().hero_frames(player.look)[0]
         self.portrait = pygame.transform.scale(frame, (128, 128))
 
         self.run = load_run(player.name)
