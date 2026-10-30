@@ -32,8 +32,9 @@ def reachable(d, start):
     return seen
 
 
-def path(d, start, goal):
-    """Shortest 4-neighbour cell path start -> goal (BFS)."""
+def path(d, start, goal, blocked=()):
+    """Shortest 4-neighbour cell path start -> goal (BFS), around the
+    ``blocked`` cells (standing props)."""
     prev, todo = {start: None}, deque([start])
     while todo:
         c = todo.popleft()
@@ -41,7 +42,7 @@ def path(d, start, goal):
             break
         x, y = c
         for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
-            if n not in prev and d.is_walkable(n):
+            if n not in prev and d.is_walkable(n) and n not in blocked:
                 prev[n] = c; todo.append(n)
     out, c = [], goal
     while c is not None:
@@ -104,7 +105,8 @@ ok(True, "random walk stays on floor")
 for seed in (3, 11, 23):
     ds = DungeonScreen(screen, Player(name="P"), seed=seed)
     for room in ds.dungeon.rooms[1:]:
-        cells = path(ds.dungeon, ds.cell(), room.rect.center)
+        cells = path(ds.dungeon, ds.cell(), room.rect.center,
+                     {p.cell for p in ds.props if p.solid})
         for cx, cy in cells[1:]:
             tx, ty = cx * TILE_SIZE + TILE_SIZE / 2, cy * TILE_SIZE + TILE_SIZE / 2
             for _ in range(120):

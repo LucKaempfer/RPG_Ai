@@ -37,6 +37,12 @@ dips when a foot lands), driven by the distance walked rather than time so the f
 each footstep plays the splash sound and kicks up a few drops. The hero and enemies cast soft
 shadows, and each enemy breathes on its own beat.
 
+**Room props:** rooms hold sewer clutter (barrels, crates, clay pots, sacks, rusty buckets,
+bone piles, rubble; `props.py`, art in `objects/props.png`). They stand on a room's edge row,
+never on or beside a door, and block the way; interiors, doors and corridors always stay
+reachable. Placement has its own RNG seeded from the floor seed (`PROPS_PER_ROOM` in `config.py`),
+so floors, enemies and chests are unchanged and old runs still load.
+
 **Play-test round 2 (PR #9):** the dungeon is a sewer. A new `sewer/tiles_v2.png` has mossy
 flagstones, slimy brick walls with pipes, stains and moss, puddles, drains, bones, grated
 walkways, thin iron gates on doorways and manhole stairs, and there is torch-light darkness. Walls block line of
@@ -108,6 +114,7 @@ wake up rested in the Base.
 | `pygame_rpg/gui/screen.py` | ✅ M3 | `Screen` base class, `Button`, cached `font()`, shared palette, `QUIT` sentinel. |
 | `pygame_rpg/gui/*.py` (8 screens) | ✅ M3 | `title_screen`, `tutorial_screen`, `hero_maker`, `hero_chooser`, `base_screen`, `inventory_screen`, `stats_screen`, `level_up_screen` (takes `return_to`: resume a dungeon floor instead of the Base). |
 | `pygame_rpg/dungeon.py` | ✅ M4 | Seeded generation (private `rng`, same seed = same floor): 60 × 44 tiles, up to 13 rooms with `ROOM_GAP` free tiles between them; rooms are linked by a minimum spanning tree over wall-to-wall gaps (shortest corridors that still reach every room) with A*-routed corridors from a door on the wall facing the target to a door on the target, never entering another room or the ring around it, so walls stay solid and every door is a single tile (one door per wall, reused). `door_outside()` gives the corridor cell outside a door. `visible_from()` (line of sight), `is_walkable()`, `spawn_point()`, sewer-tileset rendering (`sewer/tiles_v2.png`, doorways drawn as a thin gate on the corridor side, per-cell variants cached in `_tile_cache`) with camera offset, fog (`seen` cells + their walls), dimming outside `visible`, `overrides` for the manhole stairs, minimap of visited rooms + walked corridors. |
+| `pygame_rpg/props.py` | ✅ | `Prop` (kind, cell, broken; `solid` while standing), `PROP_KINDS` (sheet order), `edge_cells()`, `place_props(dungeon, seed)` with its own `Random(f"props-{seed}")`. |
 | `pygame_rpg/enemies.py` | ✅ M4 | `EnemyType` (frozen data) for slime, bat, goblin, skeleton + `BOSS_TYPE`; `make_enemy()` scales per floor; `boss_room()` (farthest from room 0); `place_enemies()` with the dungeon's rng. |
 | `pygame_rpg/combat.py` | ✅ M4 | `Battle`: pure rules, no drawing. `attack()`, `cast()`, `use_item()`, `run()`, ailments (`AILMENTS`), cooldowns, Shield guard, wards, XP + loot on win. |
 | `pygame_rpg/gui/dungeon_screen.py` | ✅ M4 | `DungeonScreen(player, floor, seed)`: `move()` with axis-separated wall collision (20 px hitbox), trinket speed bonus, walk animation by distance walked (`walk_frame()`, footsteps on `HERO_STEP_FRAMES` with a splash), idle breathing, shadows, clamped camera, fog (`seen`), enemies, chests, stairs, HUD + minimap. Saves the run (`to_run()` / `save_run()`) on floor entry, after each battle, on Esc and on quit; `run=` restores one. `step(dx, dy, dt)` is one frame and returns a transition (battle on bump, level-up after a win, next floor on the stairs); tests drive it directly. `battle_over()` is called by the battle screen. Esc saves → Base (no rest). Floor banner on arrival. |
@@ -152,6 +159,7 @@ pygame_rpg/
 ├── assets.py          # AssetManager + placeholder generators
 ├── dungeon.py         # seeded floor generation, walkability, rendering, fog, minimap
 ├── enemies.py         # enemy types, per-floor scaling, boss room, placement
+├── props.py           # room clutter (barrels, crates, pots...) and its placement
 ├── combat.py          # turn-based battle rules: damage, ailments, cooldowns, XP, loot
 ├── audio.py           # synthesised sound effects + sewer ambience, play()/set_ambience()
 ├── gui/
@@ -175,6 +183,7 @@ tests/
 ├── test_dungeon.py        # no overlap, connectivity, seeding, boss + entrance rules
 ├── test_saves.py          # player + run round trips, migration, broken run file
 ├── test_gui.py            # keyboard menus, particles, battle end animations, enemy sheets
+├── test_props.py          # props on edges away from doors, nothing cut off, seeded, blocking
 ├── test_looks.py          # character customization: look stage, look in saves, frames per look
 ├── test_smoke_scripts.py  # runs the two scripts below as pytest cases
 ├── m2_smoke_test.py       # end-to-end item / inventory checks (plain script)
@@ -385,7 +394,7 @@ abilities), equipment math testable without pygame, weight system working, every
 
 ### 6.2 M4 — Dungeon + Combat
 
-Done (PR #5); the rules are in §4 (Combat). Left for later: torches/decor, floor pickups
+Done (PR #5); the rules are in §4 (Combat). Props (room clutter) are in. Left for later: torches, floor pickups
 besides chests, a "You died" animation.
 
 1. **Dungeon** — ✅ dungeon screen, wall collision, connected floors, real doors, minimap, fog,
