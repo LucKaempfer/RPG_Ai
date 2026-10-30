@@ -41,6 +41,9 @@ BONUS_STATS = ("hp", "ap", "rap", "map", "dp", "rdp", "mdp")
 # themselves (colours, hair styles) live in ``assets.LOOK_OPTIONS``.
 LOOK_KEYS = ("skin", "hair", "hair_color", "tunic")
 
+# Crafting materials (from smashed props), kept in a weightless pouch.
+MATERIALS = ("wood", "iron", "cloth", "bone", "stone")
+
 # Stats that can be raised on level-up (V3 xp_check lets the player
 # pick one of: hp, ap, rap, map, dp, rdp, mdp).
 UPGRADABLE_STATS = ("hp", "ap", "rap", "map", "dp", "rdp", "mdp")
@@ -70,6 +73,8 @@ class Player:
     current_mp: int = None
     # Appearance chosen in the hero maker: LOOK_KEYS -> option index.
     look: dict = field(default_factory=dict)
+    # Crafting materials in the pouch: MATERIALS -> count (no weight).
+    materials: dict = field(default_factory=dict)
 
     def __post_init__(self):
         for slot in EQUIP_SLOTS:
@@ -78,6 +83,8 @@ class Player:
             self.lvl_up_counts.setdefault(stat, 0)
         for key in LOOK_KEYS:
             self.look.setdefault(key, 0)
+        for mat in MATERIALS:
+            self.materials.setdefault(mat, 0)
         if self.current_hp is None:
             self.current_hp = self.max_hp
         if self.current_mp is None:
@@ -304,6 +311,7 @@ class Player:
             "mdp": self.mdp,
             "lvl_up_counts": dict(self.lvl_up_counts),
             "look": dict(self.look),
+            "materials": dict(self.materials),
             "equipment": {slot: ref(item)
                           for slot, item in self.equipment.items()},
             "inventory": [ref(i) for i in self.inventory],
@@ -317,7 +325,7 @@ class Player:
         Migrates saves from before the M2 wiring: legacy slot names are
         renamed, and items in unknown slots or in a slot they don't fit
         go back to the backpack.  A save without a ``look`` gets the
-        default look.  A missing ``current_hp`` /
+        default look, one without ``materials`` an empty pouch.  A missing ``current_hp`` /
         ``current_mp`` means full HP / MP.
         """
         p = cls(
@@ -333,6 +341,10 @@ class Player:
             mdp=data.get("mdp", START_MDP),
         )
         p.lvl_up_counts.update(data.get("lvl_up_counts", {}))
+        mats = data.get("materials", {})
+        if isinstance(mats, dict):
+            p.materials.update({k: max(0, v) for k, v in mats.items()
+                                if k in MATERIALS and isinstance(v, int)})
         look = data.get("look", {})
         if isinstance(look, dict):
             p.look.update({k: int(v) for k, v in look.items()
