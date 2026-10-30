@@ -15,6 +15,10 @@ Trinkets: passive bonus items — extra weight capacity, XP gain, loot
 chance, movement speed, and one-ailment wards.  Level-1 bases plus grown
 levels 2-4; they take either of the 2 trinket slots.
 
+Junk: worthless to the hero but sellable at the shop (``value`` gold).
+Mobs and smashed props drop it; deeper floors drop pricier junk
+(``level`` is the first floor it drops on).  Never a loot-roll result.
+
 Abilities: designed from scratch (V3 holds only an empty
 `class Ability:`): active battle skills that cost MP and have a
 cooldown in turns.  Learned abilities sit in the backpack like items
@@ -36,7 +40,7 @@ class Item:
     id: str
     name: str
     kind: str            # "weapon" | "consumable" | "armor" | "trinket"
-                         # | "ability"
+                         # | "ability" | "junk"
     rarity: str = "common"  # common/rare/epic/legendary: UI border color
                             # + spawn weights (M4); never stat magnitude
     level: int = 1       # player level gate (min level to equip)
@@ -70,6 +74,7 @@ class Item:
     cooldown: int = 0       # abilities: turns before it can be cast again
     guard: int = 0          # abilities: + to dp/rdp/mdp while active
     duration: int = 0       # abilities: turns a guard/effect lasts
+    value: int = 0          # junk: gold a shop pays for it
     description: str = ""
 
 
@@ -420,11 +425,32 @@ ABILITY_TIERS = [
     for level in (2, 3, 4)
 ]
 
+# --- Junk (sold at the shop; ``level`` = first floor it drops on) ---
+def _junk(id_, name, value, level=1, weight=1):
+    return Item(id=id_, name=name, kind="junk", level=level, weight=weight,
+                value=value, description=f"Worth {value} gold at a shop.")
+
+
+JUNK = [
+    _junk("rat_tail", "Rat Tail", 2),
+    _junk("old_boot", "Old Boot", 2),
+    _junk("bent_spoon", "Bent Spoon", 3),
+    _junk("cracked_mug", "Cracked Mug", 4),
+    _junk("rusty_key", "Rusty Key", 6, level=2),
+    _junk("copper_ring", "Copper Ring", 10, level=2, weight=0),
+    _junk("broken_compass", "Broken Compass", 14, level=3),
+    _junk("silver_goblet", "Silver Goblet", 20, level=3),
+    _junk("gold_tooth", "Gold Tooth", 25, level=4, weight=0),
+    _junk("jeweled_buckle", "Jeweled Buckle", 35, level=4),
+]
+
 # --- Full catalog: id -> Item ---
 CATALOG = {i.id: i for i in (WEAPONS + WEAPON_TIERS + ARMOR + ARMOR_TIERS
                              + CONSUMABLES + CONSUMABLE_TIERS
                              + TRINKETS + TRINKET_TIERS
-                             + ABILITIES + ABILITY_TIERS)}
+                             + ABILITIES + ABILITY_TIERS + JUNK)}
+# Kinds a loot roll (chests, enemy drops) can produce.
+LOOT_KINDS = ("weapon", "armor", "consumable", "trinket", "ability")
 
 # Default equipment handed out by the hero maker (V3 starts heroes empty;
 # the GUI gives a basic weapon, one potion and a first ability).
@@ -451,16 +477,23 @@ def roll_rarity(rng) -> str:
 
 def roll_loot(rng, max_level: int = 4, kinds=None) -> Item:
     """Roll one loot item (a copy): pick a rarity, then a random catalog
-    item of that rarity up to ``max_level`` (and of ``kinds``, if given).
-    Falls back to more common rarities when none match."""
+    item of that rarity up to ``max_level`` (and of ``kinds``, default
+    LOOT_KINDS: never junk).  Falls back to more common rarities when
+    none match."""
+    kinds = LOOT_KINDS if kinds is None else kinds
     rarity = roll_rarity(rng)
     for r in RARITIES[RARITIES.index(rarity)::-1]:
         pool = [i for i in CATALOG.values()
                 if i.rarity == r and i.level <= max_level
-                and (kinds is None or i.kind in kinds)]
+                and i.kind in kinds]
         if pool:
             return item_by_id(rng.choice(pool).id)
     raise ValueError("no loot matches")
+
+
+def roll_junk(rng, floor: int) -> Item:
+    """A random piece of junk (a copy) that drops on ``floor``."""
+    return item_by_id(rng.choice([j for j in JUNK if j.level <= floor]).id)
 
 
 def item_by_id(item_id: str) -> Item:

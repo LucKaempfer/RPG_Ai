@@ -1,5 +1,5 @@
 # pygame_rpg/gui/hud.py
-"""In-dungeon HUD (M4): HP / MP / XP bars, floor, equipped weapon icon
+"""In-dungeon HUD (M4): HP / MP / XP bars, floor, gold, equipped weapon icon
 and a short message log ("+20 XP", "Found: Bow II", ...).
 
 The minimap is drawn by ``Dungeon.draw_minimap``; the dungeon screen
@@ -60,6 +60,8 @@ class Hud:
         surface.blit(font(22).render(f"Floor {floor}", True, GOLD), (16, 14))
         lvl = font(18).render(f"Lv {player.lvl}", True, DIM_TEXT)
         surface.blit(lvl, (100, 17))
+        gold = font(18).render(f"{player.gold} g", True, GOLD)
+        surface.blit(gold, gold.get_rect(topright=(196, 17)))
         weapon = player.equipment.get("weapon")
         if weapon is not None:
             surface.blit(self._icon(weapon), (204, 12))

@@ -41,7 +41,8 @@ from .config import (
     DAMAGE_VARIANCE, ABILITY_CHANCE_BONUS, LEVEL_CHANCE_BONUS, WARD_PER_LEVEL,
     BOMB_EFFECT_CHANCE, RUN_CHANCE, LOOT_CHANCE, WIN_HEAL_PCT, WIN_MP,
 )
-from .items import roll_loot
+from .config import ENEMY_GOLD, BOSS_GOLD_MULT, ENEMY_JUNK_CHANCE
+from .items import roll_loot, roll_junk
 
 ONGOING, WON, LOST, FLED = "ongoing", "won", "lost", "fled"
 
@@ -111,6 +112,7 @@ class Battle:
         self.guard = 0            # Shield bonus to every defense
         self.guard_turns = 0
         self.xp_gained = 0
+        self.gold_gained = 0
         self.loot = []            # items put into the backpack
         self.log = [f"A {enemy.name} appears!" if not enemy.boss
                     else f"The {enemy.name} blocks the way!"]
@@ -240,6 +242,18 @@ class Battle:
                 self._say(out, f"Found: {item.name} ({item.rarity}).")
             else:
                 self._say(out, f"Found {item.name}, but it is too heavy to carry.")
+        # Money, and sometimes junk to sell (rolled after the loot, so
+        # the loot a seed gives stays the same).
+        lo, hi = ENEMY_GOLD
+        self.gold_gained = self.rng.randint(lo, hi) * e.floor * (BOSS_GOLD_MULT if e.boss else 1)
+        p.gold += self.gold_gained
+        self._say(out, f"+{self.gold_gained} gold.")
+        if self.rng.uniform(0, 100) < ENEMY_JUNK_CHANCE:
+            junk = roll_junk(self.rng, e.floor)
+            if p.can_carry(junk):
+                p.inventory.append(junk)
+                self.loot.append(junk)
+                self._say(out, f"Found: {junk.name} (junk).")
 
     def _lose(self, out):
         self.state = LOST

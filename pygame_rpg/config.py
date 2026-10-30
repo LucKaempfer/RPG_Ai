@@ -77,6 +77,13 @@ ENEMY_DEFENSE_GROWTH = 1
 ENEMY_XP_GROWTH = 0.30
 ENEMIES_PER_ROOM = (0, 2)  # min, max (never in the entrance room)
 CHESTS_PER_FLOOR = 2
+# Money and junk (sold at the shop).  Gold amounts are x floor.
+ENEMY_GOLD = (3, 8)        # every won fight; the boss pays BOSS_GOLD_MULT x
+BOSS_GOLD_MULT = 5
+ENEMY_JUNK_CHANCE = 25     # % a beaten enemy also drops a piece of junk
+PROP_GOLD = (1, 4)
+PROP_GOLD_CHANCE = 30      # % a smashed prop holds some coins
+PROP_JUNK_CHANCE = 12      # % it holds a piece of junk
 PROPS_PER_ROOM = (1, 3)    # min, max scenery props per room (+1 per 30 cells)
 
 # --- Audio (audio.py synthesises everything; M mutes in game) ---
