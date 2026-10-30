@@ -75,6 +75,11 @@ class Screen:
         """Per-frame logic (timers, animations).  May return a transition
         request like ``handle_event``.  Default: nothing."""
 
+    def suspend(self):
+        """The app is going to the background (Android may close it
+        there without a QUIT): save anything that must survive.
+        Default: nothing."""
+
     def draw(self, surface):
         """Draw the screen.  Subclasses must override."""
         raise NotImplementedError

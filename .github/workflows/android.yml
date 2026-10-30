@@ -1,0 +1,70 @@
+# Builds the Android APK on every push and pull request, so a change to
+# main that breaks the Android build shows up as a red check.  The APK
+# is attached to each run under "Artifacts" (download, unzip, install).
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements.txt
+      - name: Tests
+        run: python -m pytest -q
+
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            autoconf automake build-essential ccache cmake gettext git \
+            libffi-dev libltdl-dev libssl-dev libtool pkg-config unzip zip \
+            zlib1g-dev
+
+      - name: Buildozer
+        run: pip install buildozer "cython<3.2" setuptools
+
+      # The Android SDK / NDK are big and slow to fetch: keep them between
+      # runs.  The compiled recipes (.buildozer) are only reused while
+      # the spec and the recipe are unchanged.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.buildozer
+          key: buildozer-sdk-${{ hashFiles('buildozer.spec') }}
+          restore-keys: buildozer-sdk-
+      - uses: actions/cache@v4
+        with:
+          path: .buildozer
+          key: buildozer-build-${{ hashFiles('buildozer.spec', 'android/p4a-recipes/**') }}
+
+      - name: Build the APK
+        run: yes | buildozer -v android debug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dungeon-crawler-apk
+          path: bin/*.apk
+          if-no-files-found: error

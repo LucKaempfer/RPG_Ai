@@ -26,6 +26,16 @@ The full loop: Base → Adventure → walk a fogged floor → bump an enemy → 
 XP / loot → level up mid-run → chests → beat the boss → stairs to a harder floor. Esc returns to
 the Base with the run kept; defeat ends the run.
 
+**Android (PR #31):** the same code builds an APK; there is no separate fork. `device.py`
+detects the APK (touch controls on, saves in the app's private storage; `RPG_TOUCH=1` shows the
+controls on a desktop). `gui/touch.py` draws a D-pad and A / B / Bag / Menu in the side bars and
+feeds the same actions as the keyboard (`settings.virtual_held`, KEYDOWNs with an `action`), so
+screens don't know about touch. The phone's Back button is Escape, the hero name opens the
+on-screen keyboard, going to the background calls `Screen.suspend` (the dungeon saves), and the
+synthesised sounds are cached in `saves/cache/`. `buildozer.spec` + the local recipe
+`android/p4a-recipes/pygame-ce` build it; `.github/workflows/android.yml` runs the tests and builds
+the APK on every push / PR (download it from the run's *Artifacts*).
+
 **Character customization:** the hero maker has a look stage between the name and the
 confirm (skin, hair style incl. helmet / hood, hair colour, tunic colour, with a walking preview
 and a Random button). The hero is drawn in code from `Player.look` (`AssetManager.hero_frames`),
@@ -118,6 +128,11 @@ builds a different floor.
 * Run the game from the repo root: `.\venv\Scripts\python.exe -m pygame_rpg.main` (Windows
   venv; see §7 for other setups).
 * Commit only when asked; keep work on a branch and open a PR.
+* **Everything on main must keep working on Android.** Every input must also be reachable
+  with the touch controls (dungeon actions go through `settings.pressed` / `settings.held`,
+  menus through arrows / Enter / Escape, which the D-pad and A / B send); write files only
+  under `savegame.SAVE_ROOT` (or `device.data_dir()`); no desktop-only APIs (ask `device` instead
+  of checking the platform). The *Android APK* check on each PR must be green.
 
 ---
 
@@ -507,6 +522,10 @@ with the HUD active.
 * **Windows venv (main dev machine):** `venv/` with Python 3.14.7 and `pygame-ce` 2.5.8. Plain
   `pygame` 2.6.1 has no CPython 3.14 wheel; `pygame-ce` is API-compatible (still `import pygame`).
   Run: `.\venv\Scripts\python.exe -m pygame_rpg.main` from the repo root.
+* **Android:** pushed branches build in GitHub Actions (*Android APK* workflow, artifact
+  `dungeon-crawler-apk`). By hand on Linux / WSL: `pip install buildozer "cython<3.2"`, then
+  `buildozer android debug` (APK in `bin/`). Try the touch layout on a desktop with
+  `RPG_TOUCH=1 python main.py`.
 * **Other setups:** `pip install -r requirements.txt` (pygame-ce + pytest), then
   `python -m pygame_rpg.main`.
 * **Tests:** `python -m pytest` from the repo root (headless; saves go to temp folders). The item/player

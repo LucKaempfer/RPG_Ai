@@ -6,9 +6,13 @@ Run from the repo root:  python -m pytest
 import os
 import pathlib
 import sys
+import tempfile
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+# Anything not using the ``saves`` fixture (settings, the audio cache)
+# writes here instead of the repo's saves/.
+os.environ.setdefault("RPG_DATA_DIR", tempfile.mkdtemp(prefix="rpg_tests_"))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import pytest

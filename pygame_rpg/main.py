@@ -28,6 +28,12 @@ back onto the canvas.
 Settings (``settings.py``, ``gui/settings_screen.py``): brightness,
 volumes, fullscreen and the dungeon keys, saved in
 ``saves/settings.json``; reached from the title screen and the Base.
+
+Android (``device.py``): the same game runs in the APK built from
+``buildozer.spec`` (``main.py`` in the repo root starts it).  The
+on-screen controls (``gui/touch.py``) feed the same inputs as the
+keyboard, saves go to the app's storage, and when the app goes to the
+background the screen's ``suspend`` saves and the sound pauses.
 """
 
 import pygame
@@ -120,6 +126,13 @@ def main():
 
     while True:
         for event in pygame.event.get():
+            if event.type == pygame.APP_WILLENTERBACKGROUND:
+                current.suspend()
+                audio.pause()
+                continue
+            if event.type == pygame.APP_DIDENTERFOREGROUND:
+                audio.resume()
+                continue
             event = display.handle_event(event)
             if event is None:
                 continue
@@ -135,6 +148,7 @@ def main():
             current = nxt or current
 
         dt = clock.tick(config.FPS) / 1000.0
+        display.update(dt, current.name)   # before the screen's update
         nxt = switch(current.handle_update(dt))
         if nxt is QUIT:
             pygame.quit()
