@@ -5,7 +5,8 @@ import pytest
 from pygame_rpg import audio, device, settings
 from pygame_rpg.gui import screen as screen_mod
 from pygame_rpg.gui import touch
-from pygame_rpg.gui.display import Display, TOUCH_BAR, android_size, letterbox
+from pygame_rpg.gui.display import (
+    Display, TOUCH_BAR, WIDE_HEIGHT, android_size, letterbox, wide_size)
 from pygame_rpg.player import Player
 
 
@@ -50,11 +51,10 @@ def test_data_dir(monkeypatch, tmp_path):
 def test_layout_leaves_room_for_the_controls():
     view = letterbox((1600, 1200), side=round(1200 * TOUCH_BAR))
     assert view.x >= round(1200 * TOUCH_BAR) and view.w / view.h == 800 / 600
-    # A 20:9 phone: the canvas fills the height, bars are wide anyway.
-    assert android_size((2400, 1080)) == (1333, 600)
-    assert android_size((1080, 2400)) == (1333, 600)     # portrait report
-    w, h = android_size((2048, 1536))                    # 4:3 tablet
-    assert w >= 800 + 2 * 600 * TOUCH_BAR and h >= 600
+    # The phone's shape at WIDE_HEIGHT; the GPU scales it up.
+    assert android_size((2400, 1080)) == (933, WIDE_HEIGHT)
+    assert android_size((1080, 2400)) == (933, WIDE_HEIGHT)   # portrait report
+    assert wide_size((1920, 1080)) == (747, WIDE_HEIGHT)
 
 
 def test_pad_directions():
@@ -211,5 +211,71 @@ def test_audio_cache(saves, monkeypatch):
         b._build(*pygame.mixer.get_init()[::2])
         assert set(b.sounds) == set(a.sounds)
         assert (b.sounds["sewer"].get_raw() == a.sounds["sewer"].get_raw())
+    finally:
+        pygame.quit()
+
+
+def test_the_dungeon_fills_the_screen(touch_display):
+    from pygame_rpg.gui.dungeon_screen import DungeonScreen
+    from pygame_rpg.gui.title_screen import TitleScreen
+    d = touch_display
+    ds = DungeonScreen(d.canvas, Player(name="Wide"), seed=2)
+    canvas = d.canvas_for(ds)
+    assert canvas.get_size() == wide_size((1920, 1080))
+    assert d.view == pygame.Rect(0, 0, 1920, 1080)          # no bars
+    d.update(0.0, "dungeon")
+    ds.draw(canvas)
+    d.present()
+    assert ds.view_size == canvas.get_size()
+    # The controls float over the floor, in the bottom corners.
+    (cx, cy), r = d.touch.pad
+    assert cx - r >= 0 and cy + r <= 1080 and cx < 1920 // 3
+    for (bx, by), br, _ in d.touch.buttons.values():
+        assert bx > 1920 * 2 // 3 and bx + br <= 1920
+    # A tap elsewhere still reaches the screen, in wide canvas coordinates.
+    ev = d.handle_event(pygame.event.Event(
+        pygame.MOUSEBUTTONDOWN, pos=(960, 300), button=1, touch=True))
+    assert ev.pos == d.to_canvas((960, 300)) and ev.pos[0] == canvas.get_width() // 2
+    # Back to a menu: the 800 x 600 canvas between the control bars.
+    assert d.canvas_for(TitleScreen(d.canvas)) is d.canvas
+    assert d.view.x >= round(1080 * TOUCH_BAR)
+
+
+def test_desktop_keeps_one_canvas(saves):
+    from pygame_rpg.gui.dungeon_screen import DungeonScreen
+    pygame.init()
+    try:
+        d = Display()
+        ds = DungeonScreen(d.canvas, Player(name="Flat"), seed=2)
+        assert d.canvas_for(ds) is d.canvas
+    finally:
+        pygame.quit()
+
+
+def test_floor_cache_matches_a_full_redraw(saves):
+    """The dungeon keeps the floor drawn and only redraws what changed;
+    after walking around it must look exactly like a fresh drawing."""
+    import random
+    from pygame_rpg.gui.dungeon_screen import DungeonScreen
+    pygame.init()
+    try:
+        pygame.display.set_mode((800, 600))
+        a, b = pygame.Surface((800, 600)), pygame.Surface((800, 600))
+        ds = DungeonScreen(a, Player(name="Cache"), seed=5)
+        rng = random.Random(5)
+        for i in range(600):
+            if i % 40 == 0:
+                d = rng.choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
+            ds.move(*d, 1 / 30)
+            if i % 50 == 0:
+                cam = ds.camera()
+                over = {ds.cell(): 3} if i == 300 else None
+                ds.dungeon.render(a, cam, seen=ds.seen, visible=ds.visible,
+                                  overrides=over)
+                ds.dungeon._layer = None
+                ds.dungeon.render(b, cam, seen=ds.seen, visible=ds.visible,
+                                  overrides=over)
+                assert pygame.image.tobytes(a, "RGB") == pygame.image.tobytes(b, "RGB")
+        assert len(ds.seen) > 30
     finally:
         pygame.quit()

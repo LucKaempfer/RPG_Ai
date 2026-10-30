@@ -131,21 +131,21 @@ MINIMAP_MARK = {"shop": (230, 190, 90), "anvil": (240, 120, 50)}
 BANNER_TIME = 2.0   # seconds the "Floor N" banner shows on arrival
 
 
-_LIGHT = None
+_LIGHT = {}
 
 
-def _light_mask():
-    """Dark overlay with a soft clear circle in the middle (cached)."""
-    global _LIGHT
-    if _LIGHT is None:
-        size = 2 * LIGHT_OUTER + max(SCREEN_WIDTH, SCREEN_HEIGHT)
-        _LIGHT = pygame.Surface((size, size), pygame.SRCALPHA)
-        _LIGHT.fill((0, 0, 0, LIGHT_DARK))
+def _light_mask(view=(SCREEN_WIDTH, SCREEN_HEIGHT)):
+    """Dark overlay with a soft clear circle in the middle, big enough
+    to cover a ``view``-sized screen wherever the hero stands (cached)."""
+    size = 2 * max(view) + 2 * LIGHT_OUTER
+    if size not in _LIGHT:
+        light = _LIGHT[size] = pygame.Surface((size, size), pygame.SRCALPHA)
+        light.fill((0, 0, 0, LIGHT_DARK))
         c = size // 2
         for r in range(LIGHT_OUTER, LIGHT_INNER - 1, -4):
             t = (r - LIGHT_INNER) / (LIGHT_OUTER - LIGHT_INNER)
-            pygame.draw.circle(_LIGHT, (0, 0, 0, int(LIGHT_DARK * t)), (c, c), r)
-    return _LIGHT
+            pygame.draw.circle(light, (0, 0, 0, int(LIGHT_DARK * t)), (c, c), r)
+    return _LIGHT[size]
 
 
 _SHADOWS = {}
@@ -227,6 +227,11 @@ def controls_hint():
 class DungeonScreen(Screen):
     name = "dungeon"
     ambience = "sewer"
+    # On a phone the floor fills the whole screen (Display gives it a
+    # wide canvas the shape of the screen; the touch controls float over
+    # it).  Everything below draws to the size of the surface it gets.
+    wide = True
+    view_size = (SCREEN_WIDTH, SCREEN_HEIGHT)
 
     def __init__(self, screen, player, floor=1, seed=None, run=None):
         """``run``: a dict from ``to_run()`` (a saved run) to restore;
@@ -487,10 +492,11 @@ class DungeonScreen(Screen):
     def camera(self):
         """Top-left world pixel of the view, centred on the hero and
         clamped to the map."""
-        max_x = DUNGEON_WIDTH * TILE_SIZE - SCREEN_WIDTH
-        max_y = DUNGEON_HEIGHT * TILE_SIZE - SCREEN_HEIGHT
-        cx = int(self.x) - SCREEN_WIDTH // 2
-        cy = int(self.y) - SCREEN_HEIGHT // 2
+        w, h = self.view_size
+        max_x = DUNGEON_WIDTH * TILE_SIZE - w
+        max_y = DUNGEON_HEIGHT * TILE_SIZE - h
+        cx = int(self.x) - w // 2
+        cy = int(self.y) - h // 2
         return (max(0, min(max_x, cx)), max(0, min(max_y, cy)))
 
     # -- encounters ------------------------------------------------------
@@ -777,6 +783,7 @@ class DungeonScreen(Screen):
     # -- drawing ---------------------------------------------------------
     def draw(self, surface):
         surface.fill((0, 0, 0))
+        self.view_size = vw, vh = surface.get_size()
         ox, oy = self.camera()
         overrides = {self.stairs: SEWER_MANHOLE} if self.stairs else None
         self.dungeon.render(surface, (ox, oy), seen=self.seen,
@@ -864,7 +871,7 @@ class DungeonScreen(Screen):
             box.center = (int(self.x) - ox, int(self.y) - oy)
             pygame.draw.arc(surface, (235, 235, 240), box, a0, a1, 3)
 
-        light = _light_mask()
+        light = _light_mask(self.view_size)
         surface.blit(light, light.get_rect(center=(int(self.x) - ox, int(self.y) - oy)))
         near = self.keeper_near()
         if near:
@@ -874,18 +881,20 @@ class DungeonScreen(Screen):
                                   else f"{use}: forge", True, (235, 200, 90))
             surface.blit(tip, tip.get_rect(midbottom=(x - ox, y - oy - 18)))
 
-        self.hud.draw(surface, self.player, self.floor)
+        # On a touch screen the D-pad covers the bottom-left corner.
+        self.hud.draw(surface, self.player, self.floor,
+                      log_x=vh // 2 if device.TOUCH else 14)
         if self.banner_t > 0:
             alpha = int(255 * min(1.0, self.banner_t / 0.5))
             img = font(48).render(f"Floor {self.floor}", True, (235, 200, 90))
             shadow = font(48).render(f"Floor {self.floor}", True, (0, 0, 0))
             for im in (img, shadow):
                 im.set_alpha(alpha)
-            r = img.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3))
+            r = img.get_rect(center=(vw // 2, vh // 3))
             surface.blit(shadow, r.move(2, 2))
             surface.blit(img, r)
         mm_w = DUNGEON_WIDTH * MINIMAP_SCALE
-        mm_pos = (SCREEN_WIDTH - mm_w - 10, 10)
+        mm_pos = (vw - mm_w - 10, 10)
         self.dungeon.draw_minimap(surface, self.visited, mm_pos,
                                   self.cell(), scale=MINIMAP_SCALE)
         for kind, room in self.special.items():   # mark the shop and forge
@@ -894,6 +903,6 @@ class DungeonScreen(Screen):
                 pygame.draw.rect(surface, MINIMAP_MARK[kind],
                                  (mm_pos[0] + cx * MINIMAP_SCALE - 2,
                                   mm_pos[1] + cy * MINIMAP_SCALE - 2, 5, 5))
-        hint = font(18).render(controls_hint(), True, DIM_TEXT)
-        surface.blit(hint, hint.get_rect(bottomright=(
-            SCREEN_WIDTH - 12, SCREEN_HEIGHT - 10)))
+        if not device.TOUCH:   # the on-screen buttons carry their labels
+            hint = font(18).render(controls_hint(), True, DIM_TEXT)
+            surface.blit(hint, hint.get_rect(bottomright=(vw - 12, vh - 10)))

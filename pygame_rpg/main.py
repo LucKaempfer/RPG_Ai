@@ -166,7 +166,7 @@ def main():
         current = nxt or current
         audio.set_ambience(current.ambience)
         audio.update(dt)
-        current.draw(screen)
+        current.draw(display.canvas_for(current))
         display.present()
 
 

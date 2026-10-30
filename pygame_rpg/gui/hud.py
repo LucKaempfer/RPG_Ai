@@ -19,6 +19,17 @@ MESSAGE_FADE = 1.5      # then fades out over this long
 MAX_MESSAGES = 5
 
 
+_PANEL = []
+
+
+def _panel():
+    if not _PANEL:
+        panel = pygame.Surface((236, 104), pygame.SRCALPHA)
+        panel.fill((10, 10, 16, 170))
+        _PANEL.append(panel)
+    return _PANEL[0]
+
+
 class Hud:
     def __init__(self):
         self.messages = []      # [text, age_seconds]
@@ -52,11 +63,11 @@ class Hud:
         txt = font(16).render(label, True, TEXT_COLOR)
         surface.blit(txt, txt.get_rect(midleft=(x + 6, y + h // 2)))
 
-    def draw(self, surface, player, floor: int) -> None:
+    def draw(self, surface, player, floor: int, log_x: int = 14) -> None:
+        """``log_x``: left edge of the message log (moved right on a touch
+        screen, where the D-pad sits in that corner)."""
         # Backing panel for legibility over the map.
-        panel = pygame.Surface((236, 104), pygame.SRCALPHA)
-        panel.fill((10, 10, 16, 170))
-        surface.blit(panel, (8, 8))
+        surface.blit(_panel(), (8, 8))
         surface.blit(font(22).render(f"Floor {floor}", True, GOLD), (16, 14))
         lvl = font(18).render(f"Lv {player.lvl}", True, DIM_TEXT)
         surface.blit(lvl, (100, 17))
@@ -82,6 +93,6 @@ class Hud:
             shadow = font(20).render(text, True, (0, 0, 0))
             img.set_alpha(alpha)
             shadow.set_alpha(alpha)
-            surface.blit(shadow, (15, y + 1))
-            surface.blit(img, (14, y))
+            surface.blit(shadow, (log_x + 1, y + 1))
+            surface.blit(img, (log_x, y))
             y += 22
