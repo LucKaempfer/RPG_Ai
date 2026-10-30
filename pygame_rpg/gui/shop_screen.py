@@ -14,7 +14,7 @@ indices, so purchases last for the floor (and its run save).
 import pygame
 
 from .. import audio
-from ..assets import AssetManager
+from ..assets import AssetManager, upscale
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from ..savegame import save_player
 from ..shop import buy, sell, price, sell_price
@@ -22,9 +22,8 @@ from ..combat import weapon_type
 from ..stat_names import SHORT, stat_diffs
 from .inventory_screen import RARITY_COLOR, _wrap
 from .screen import (
-    QUIT, Screen, Button, font,
-    BG_COLOR, PANEL_COLOR, PANEL_HOT, TEXT_COLOR, DIM_TEXT, GOLD,
-    BORDER_COLOR, FOCUS_BORDER,
+    draw_background, draw_panel, QUIT, Screen, Button, font, PANEL_COLOR,
+    PANEL_HOT, TEXT_COLOR, DIM_TEXT, GOLD, BORDER_COLOR, FOCUS_BORDER,
 )
 
 ROW_H = 36
@@ -157,7 +156,7 @@ class ShopScreen(Screen):
         key = (item.id, size)
         if key not in self._icons:
             surf = self.assets.item_icon(item)
-            self._icons[key] = pygame.transform.scale(surf, (size, size))
+            self._icons[key] = upscale(surf, size)
         return self._icons[key]
 
     def selected(self):
@@ -170,8 +169,7 @@ class ShopScreen(Screen):
         """Details of the selected item: name, level / kind / weight,
         stat changes against the equipped item, and its description."""
         box = self.detail
-        pygame.draw.rect(surface, PANEL_COLOR, box, border_radius=8)
-        pygame.draw.rect(surface, BORDER_COLOR, box, width=2, border_radius=8)
+        draw_panel(surface, box, radius=8)
         item, p = self.selected(), self.player
         if item is None:
             return
@@ -213,7 +211,7 @@ class ShopScreen(Screen):
             y += 20
 
     def draw(self, surface):
-        surface.fill(BG_COLOR)
+        draw_background(surface)
         title = font(32).render("Merchant", True, GOLD)
         surface.blit(title, title.get_rect(midtop=(SCREEN_WIDTH // 2, 18)))
         p = self.player

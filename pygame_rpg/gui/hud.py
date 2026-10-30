@@ -9,7 +9,7 @@ places it next to this overlay.
 import pygame
 
 from ..assets import AssetManager
-from .screen import font, TEXT_COLOR, DIM_TEXT, GOLD, BORDER_COLOR
+from .screen import draw_bar, font, TEXT_COLOR, DIM_TEXT, GOLD
 
 HP_COLOR = (200, 70, 70)
 MP_COLOR = (80, 120, 220)
@@ -43,12 +43,7 @@ class Hud:
 
     @staticmethod
     def _bar(surface, x, y, w, h, value, maximum, color, label):
-        pygame.draw.rect(surface, (15, 15, 20), (x, y, w, h), border_radius=4)
-        if maximum > 0 and value > 0:
-            fill = max(2, int(w * min(value, maximum) / maximum))
-            pygame.draw.rect(surface, color, (x, y, fill, h), border_radius=4)
-        pygame.draw.rect(surface, BORDER_COLOR, (x, y, w, h), width=1,
-                         border_radius=4)
+        draw_bar(surface, (x, y, w, h), value, maximum, color, radius=4)
         txt = font(16).render(label, True, TEXT_COLOR)
         surface.blit(txt, txt.get_rect(midleft=(x + 6, y + h // 2)))
 

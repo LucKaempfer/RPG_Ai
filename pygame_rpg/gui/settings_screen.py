@@ -18,8 +18,8 @@ import pygame
 from .. import audio, settings
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from .screen import (
-    QUIT, Screen, Button, font,
-    BG_COLOR, PANEL_COLOR, PANEL_HOT, TEXT_COLOR, DIM_TEXT, GOLD,
+    draw_background, draw_bar, draw_panel, SHADOW_COLOR, QUIT, Screen,
+    Button, font, PANEL_COLOR, PANEL_HOT, TEXT_COLOR, DIM_TEXT, GOLD,
     FOCUS_BORDER, BORDER_COLOR,
 )
 
@@ -205,7 +205,7 @@ class SettingsScreen(Screen):
 
     # -- drawing -----------------------------------------------------------
     def draw(self, surface):
-        surface.fill(BG_COLOR)
+        draw_background(surface)
         header = font(36).render("Settings", True, GOLD)
         surface.blit(header, header.get_rect(midtop=(SCREEN_WIDTH // 2, 20)))
         keys_label = font(24).render("Key bindings", True, GOLD)
@@ -252,23 +252,18 @@ class SettingsScreen(Screen):
         attr, _, (lo, hi), _ = spec
         value = getattr(settings.current, attr)
         track = self.track(i)
-        pygame.draw.rect(surface, (15, 15, 20), track, border_radius=4)
-        fill = track.copy()
-        fill.w = int(track.w * (value - lo) / (hi - lo))
-        if fill.w >= 2:
-            pygame.draw.rect(surface, GOLD, fill, border_radius=4)
-        pygame.draw.rect(surface, BORDER_COLOR, track, width=1, border_radius=4)
-        knob = (track.x + fill.w, track.centery)
+        draw_bar(surface, track, value - lo, hi - lo, GOLD, radius=4)
+        knob = (track.x + int(track.w * (value - lo) / (hi - lo)), track.centery)
+        pygame.draw.circle(surface, SHADOW_COLOR, (knob[0], knob[1] + 2), 10)
         pygame.draw.circle(surface, FOCUS_BORDER if focused else TEXT_COLOR,
                            knob, 9)
+        pygame.draw.circle(surface, BORDER_COLOR, knob, 9, width=1)
         pct = font(22).render(f"{round(value * 100)}%", True, TEXT_COLOR)
         surface.blit(pct, pct.get_rect(midleft=(track.right + 20, track.centery)))
 
     def _box(self, surface, rect, text, focused, listening=False):
-        pygame.draw.rect(surface, PANEL_HOT if focused else PANEL_COLOR,
-                         rect, border_radius=6)
-        pygame.draw.rect(surface, GOLD if listening else
-                         FOCUS_BORDER if focused else BORDER_COLOR,
-                         rect, width=2, border_radius=6)
+        draw_panel(surface, rect, PANEL_HOT if focused else PANEL_COLOR,
+                   GOLD if listening else FOCUS_BORDER if focused else BORDER_COLOR,
+                   radius=6)
         label = font(22).render(text, True, GOLD if listening else TEXT_COLOR)
         surface.blit(label, label.get_rect(center=rect.center))

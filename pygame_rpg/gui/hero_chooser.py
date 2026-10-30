@@ -9,8 +9,7 @@ import pygame
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from ..savegame import list_players, load_player
 from .screen import (
-    Screen, Button,
-    BG_COLOR, TEXT_COLOR, DIM_TEXT, GOLD, font,
+    draw_background, Screen, Button, DIM_TEXT, GOLD, font,
 )
 
 PAGE_SIZE = 8
@@ -90,7 +89,7 @@ class HeroChooserScreen(Screen):
         return None
 
     def draw(self, surface):
-        surface.fill(BG_COLOR)
+        draw_background(surface)
         title = font(40).render("Choose a Hero", True, GOLD)
         surface.blit(title,
                      title.get_rect(center=(SCREEN_WIDTH // 2, 70)))

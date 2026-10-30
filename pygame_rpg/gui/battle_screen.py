@@ -29,7 +29,7 @@ import pygame
 
 from .. import audio
 from ..assets import (
-    AssetManager, gear_of, HERO_COLS, HERO_IDLE_COLS, HERO_DIR_UP,
+    AssetManager, gear_of, upscale, HERO_COLS, HERO_IDLE_COLS, HERO_DIR_UP,
     ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, ENEMY_HURT, ENEMY_DEATH,
 )
 from ..combat import Battle, STYLES, AFFLICTED, ONGOING, WON, LOST, FLED
@@ -37,8 +37,8 @@ from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from ..savegame import save_player, delete_run
 from .effects import Particles
 from .screen import (
-    QUIT, Screen, Button, font,
-    BG_COLOR, PANEL_COLOR, TEXT_COLOR, DIM_TEXT, GOLD, BORDER_COLOR,
+    draw_bar, draw_background, draw_panel, QUIT, Screen, Button, font,
+    TEXT_COLOR, DIM_TEXT, GOLD,
 )
 
 HP_COLOR = (200, 70, 70)
@@ -56,13 +56,7 @@ MENU = ("Attack", "Abilities", "Items", "Run")
 
 
 def _bar(surface, rect, value, maximum, color):
-    rect = pygame.Rect(rect)
-    pygame.draw.rect(surface, (15, 15, 20), rect, border_radius=5)
-    if maximum > 0 and value > 0:
-        fill = rect.copy()
-        fill.w = max(2, int(rect.w * min(value, maximum) / maximum))
-        pygame.draw.rect(surface, color, fill, border_radius=5)
-    pygame.draw.rect(surface, BORDER_COLOR, rect, width=1, border_radius=5)
+    draw_bar(surface, rect, value, maximum, color, radius=5)
 
 
 class BattleScreen(Screen):
@@ -91,7 +85,7 @@ class BattleScreen(Screen):
         assets = AssetManager()
         hero = assets.hero_frames(player.look, gear_of(player.equipment))
         self.hero_frames = [
-            pygame.transform.scale(hero[HERO_DIR_UP * HERO_COLS + c], (128, 128))
+            upscale(hero[HERO_DIR_UP * HERO_COLS + c], 128, outline=True)
             for c in HERO_IDLE_COLS]
         # Enemy columns across the top right; sprites shrink to fit.
         n = len(self.enemies)
@@ -105,7 +99,7 @@ class BattleScreen(Screen):
                 sheet = assets.load_sheet(f"enemies/{e.type.sprite}.png",
                                           ENEMY_COLS, ENEMY_ROWS)
                 self.enemy_frames[(e.type.sprite, size)] = [
-                    pygame.transform.scale(f, (size, size)) for f in sheet]
+                    upscale(f, size, outline=True) for f in sheet]
         self._build_buttons()
 
     @property
@@ -367,7 +361,7 @@ class BattleScreen(Screen):
             pygame.draw.polygon(surface, GOLD, [(x - 10, top - 14), (x + 10, top - 14), (x, top)])
 
     def draw(self, surface):
-        surface.fill(BG_COLOR)
+        draw_background(surface)
         p, b = self.player, self.battle
         blink = int(self.anim_t / 0.4) % 2
 
@@ -407,9 +401,7 @@ class BattleScreen(Screen):
         self._statuses(surface, b.statuses, (220, 326), shield)
 
         # Log.
-        pygame.draw.rect(surface, PANEL_COLOR, self.panel_log, border_radius=8)
-        pygame.draw.rect(surface, BORDER_COLOR, self.panel_log, width=2,
-                         border_radius=8)
+        draw_panel(surface, self.panel_log, radius=8)
         lines = b.log[-LOG_LINES:]
         for i, line in enumerate(lines):
             color = TEXT_COLOR if i == len(lines) - 1 else DIM_TEXT
@@ -417,9 +409,7 @@ class BattleScreen(Screen):
                          (self.panel_log.x + 12, self.panel_log.y + 10 + i * 23))
 
         # Menu.
-        pygame.draw.rect(surface, PANEL_COLOR, self.panel_menu, border_radius=8)
-        pygame.draw.rect(surface, BORDER_COLOR, self.panel_menu, width=2,
-                         border_radius=8)
+        draw_panel(surface, self.panel_menu, radius=8)
         for i, (btn, _, enabled) in enumerate(self.buttons):
             if enabled:
                 btn.draw(surface, hot=(i == self.focus))

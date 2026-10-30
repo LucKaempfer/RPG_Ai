@@ -21,9 +21,8 @@ from ..items import item_by_id
 from ..savegame import save_player
 from ..stat_names import stat_line
 from .screen import (
-    QUIT, Screen, Button, font,
-    BG_COLOR, PANEL_COLOR, PANEL_HOT, TEXT_COLOR, DIM_TEXT, GOLD,
-    BORDER_COLOR, FOCUS_BORDER,
+    draw_background, draw_panel, QUIT, Screen, Button, font, PANEL_COLOR,
+    PANEL_HOT, TEXT_COLOR, DIM_TEXT, GOLD, BORDER_COLOR, FOCUS_BORDER,
 )
 
 ROW_H = 34
@@ -161,7 +160,7 @@ class ForgeScreen(Screen):
 
     # -- drawing -----------------------------------------------------------
     def draw(self, surface):
-        surface.fill(BG_COLOR)
+        draw_background(surface)
         p = self.player
         title = font(32).render("Anvil", True, GOLD)
         surface.blit(title, title.get_rect(midtop=(SCREEN_WIDTH // 2, 14)))
@@ -177,8 +176,7 @@ class ForgeScreen(Screen):
             surface.blit(t, t.get_rect(center=r.center))
 
         for panel in (self.list_panel, self.info_panel):
-            pygame.draw.rect(surface, PANEL_COLOR, panel, border_radius=8)
-            pygame.draw.rect(surface, BORDER_COLOR, panel, width=2, border_radius=8)
+            draw_panel(surface, panel, radius=8)
 
         rows = self.rows()
         sel = self.selected()

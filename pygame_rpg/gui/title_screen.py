@@ -16,8 +16,7 @@ import pygame
 
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from .screen import (
-    Screen, Button, QUIT,
-    BG_COLOR, TEXT_COLOR, DIM_TEXT, GOLD, font,
+    draw_background, Screen, Button, QUIT, DIM_TEXT, GOLD, font,
 )
 from .effects import Particles, menu_key
 
@@ -94,7 +93,7 @@ class TitleScreen(Screen):
         return None
 
     def draw(self, surface):
-        surface.fill(BG_COLOR)
+        draw_background(surface)
         self.fx.draw(surface)
         cx = SCREEN_WIDTH // 2
         # A sword on each side of the title, pointing up.

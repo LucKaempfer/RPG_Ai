@@ -25,13 +25,12 @@ when opened mid-run (I in the dungeon).  Window close saves, then quits.
 
 import pygame
 
-from ..assets import AssetManager
+from ..assets import AssetManager, upscale
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from ..savegame import save_player
 from .screen import (
-    QUIT, Screen, Button, font,
-    BG_COLOR, PANEL_COLOR, PANEL_HOT, TEXT_COLOR, DIM_TEXT, GOLD,
-    BORDER_COLOR, FOCUS_BORDER,
+    draw_background, QUIT, Screen, Button, font, PANEL_COLOR, PANEL_HOT,
+    TEXT_COLOR, DIM_TEXT, GOLD, BORDER_COLOR, FOCUS_BORDER,
 )
 
 # Green/red for stat diffs (not in the shared palette).
@@ -276,7 +275,7 @@ class InventoryScreen(Screen):
         if key not in self._icons:
             surf = self.assets.item_icon(item)
             if surf.get_size() != (size, size):
-                surf = pygame.transform.scale(surf, (size, size))
+                surf = upscale(surf, size)
             self._icons[key] = surf
         return self._icons[key]
 
@@ -309,7 +308,7 @@ class InventoryScreen(Screen):
         surface.blit(text, text.get_rect(center=btn.rect.center))
 
     def draw(self, surface):
-        surface.fill(BG_COLOR)
+        draw_background(surface)
         p = self.player
         hover = self.hot
         hot_btn = hover[1] if hover is not None and hover[0] == "btn" else None

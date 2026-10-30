@@ -16,15 +16,15 @@ to the title screen.
 
 import pygame
 
-from ..assets import AssetManager, gear_of
+from ..assets import AssetManager, gear_of, upscale
 from ..classes import class_name
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, RUN_VERSION, max_xp_for
 from ..savegame import save_player, load_run, delete_run
 from ..stat_names import TYPES, ATTACK, DEFENSE
 from .effects import menu_key
 from .screen import (
-    QUIT, Screen, Button, font,
-    BG_COLOR, PANEL_COLOR, TEXT_COLOR, DIM_TEXT, GOLD, BORDER_COLOR,
+    draw_bar, draw_background, draw_panel, QUIT, Screen, Button, font,
+    TEXT_COLOR, DIM_TEXT, GOLD,
 )
 
 
@@ -56,7 +56,7 @@ class BaseScreen(Screen):
         # Portrait: first idle frame of the hero sheet, scaled up 4x.
         frame = AssetManager().hero_frames(
             player.look, gear_of(player.equipment))[0]
-        self.portrait = pygame.transform.scale(frame, (128, 128))
+        self.portrait = upscale(frame, 128, outline=True)
 
         self.run = load_run(player.name)
         if self.run is not None and self.run.get("version") != RUN_VERSION:
@@ -139,7 +139,7 @@ class BaseScreen(Screen):
         return None
 
     def draw(self, surface):
-        surface.fill(BG_COLOR)
+        draw_background(surface)
         p = self.player
 
         header = font(32).render(
@@ -148,8 +148,7 @@ class BaseScreen(Screen):
 
         # Left panel: portrait + summary.
         panel = pygame.Rect(30, 80, 330, 440)
-        pygame.draw.rect(surface, PANEL_COLOR, panel, border_radius=8)
-        pygame.draw.rect(surface, BORDER_COLOR, panel, width=2, border_radius=8)
+        draw_panel(surface, panel, radius=8)
 
         surface.blit(self.portrait, (45, 100))
         name = font(28).render(p.name, True, TEXT_COLOR)
@@ -159,14 +158,7 @@ class BaseScreen(Screen):
 
         # XP bar.
         bar = pygame.Rect(panel.centerx - 100, 305, 200, 12)
-        pygame.draw.rect(surface, (15, 15, 20), bar, border_radius=6)
-        if p.max_xp:
-            fill = pygame.Rect(bar.x, bar.y,
-                               int(bar.w * min(p.xp, p.max_xp) / p.max_xp),
-                               bar.h)
-            if fill.w >= 2:
-                pygame.draw.rect(surface, GOLD, fill, border_radius=6)
-        pygame.draw.rect(surface, BORDER_COLOR, bar, width=1, border_radius=6)
+        draw_bar(surface, bar, p.xp, p.max_xp, GOLD)
         xpt = font(18).render(f"XP {p.xp} / {p.max_xp}", True, DIM_TEXT)
         surface.blit(xpt, xpt.get_rect(midtop=(panel.centerx, 324)))
 
