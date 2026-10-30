@@ -26,5 +26,7 @@ python -m pytest
   is kept: *Continue (Floor N)*).
 * Battle: Attack / Abilities / Items / Run.
 * M: mute / unmute sound (effects and the sewer ambience).
+* Window: drag the edges or maximise to resize (the picture keeps its shape); F11 toggles
+  fullscreen.
 
 Everything else (architecture, rules, numbers, roadmap) is in `DEVELOPMENT.md` at the repo root.
