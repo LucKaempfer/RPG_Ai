@@ -15,8 +15,8 @@ from ..savegame import save_player
 from ..stat_names import LABEL, ABOUT
 from .inventory_screen import _wrap
 from .screen import (
-    QUIT, Screen, Button, font,
-    BG_COLOR, PANEL_COLOR, TEXT_COLOR, DIM_TEXT, GOLD, BORDER_COLOR,
+    draw_bar, draw_background, draw_panel, QUIT, Screen, Button, font,
+    TEXT_COLOR, DIM_TEXT, GOLD,
 )
 
 # Combat stats shown in the grid (attacks left, defenses right); hp
@@ -59,26 +59,18 @@ class StatsScreen(Screen):
         return None
 
     def draw(self, surface):
-        surface.fill(BG_COLOR)
+        draw_background(surface)
         p = self.player
         header = font(32).render(f"Stats - {p.name}", True, GOLD)
         surface.blit(header,
                      header.get_rect(midtop=(SCREEN_WIDTH // 2, 24)))
         panel = pygame.Rect(30, 76, 740, 470)
-        pygame.draw.rect(surface, PANEL_COLOR, panel, border_radius=8)
-        pygame.draw.rect(surface, BORDER_COLOR, panel, width=2, border_radius=8)
+        draw_panel(surface, panel, radius=8)
 
         lvl = font(26).render(f"Level {p.lvl} {class_name(p)}", True, TEXT_COLOR)
         surface.blit(lvl, lvl.get_rect(midtop=(panel.centerx, 100)))
         bar = pygame.Rect(panel.centerx - 150, 140, 300, 12)
-        pygame.draw.rect(surface, (15, 15, 20), bar, border_radius=6)
-        if p.max_xp:
-            fill = pygame.Rect(bar.x, bar.y,
-                               int(bar.w * min(p.xp, p.max_xp) / p.max_xp),
-                               bar.h)
-            if fill.w >= 2:
-                pygame.draw.rect(surface, GOLD, fill, border_radius=6)
-        pygame.draw.rect(surface, BORDER_COLOR, bar, width=1, border_radius=6)
+        draw_bar(surface, bar, p.xp, p.max_xp, GOLD)
         xpt = font(20).render(f"XP {p.xp} / {p.max_xp}", True, DIM_TEXT)
         surface.blit(xpt, xpt.get_rect(midtop=(panel.centerx, 160)))
 

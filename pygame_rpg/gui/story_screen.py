@@ -17,7 +17,7 @@ import pygame
 from .. import audio
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from .inventory_screen import _wrap
-from .screen import QUIT, Screen, Button, BG_COLOR, DIM_TEXT, GOLD, font
+from .screen import QUIT, Screen, Button, draw_background, DIM_TEXT, GOLD, font
 
 PAGE = pygame.Rect(70, 112, SCREEN_WIDTH - 140, 362)
 PARCHMENT = (226, 210, 172)
@@ -110,7 +110,7 @@ class StoryScreen(Screen):
         return None
 
     def draw(self, surface):
-        surface.fill(BG_COLOR)
+        draw_background(surface)
         if self.heading:
             head = font(22).render(self.heading, True, DIM_TEXT)
             surface.blit(head, head.get_rect(center=(SCREEN_WIDTH // 2, 42)))

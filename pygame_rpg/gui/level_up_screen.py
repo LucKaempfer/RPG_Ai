@@ -21,8 +21,7 @@ from .inventory_screen import _wrap
 from .base_screen import pending_levels
 from .effects import Particles, menu_key
 from .screen import (
-    QUIT, Screen, Button, font,
-    BG_COLOR, PANEL_COLOR, TEXT_COLOR, DIM_TEXT, GOLD, BORDER_COLOR,
+    draw_background, QUIT, Screen, Button, font, TEXT_COLOR, DIM_TEXT, GOLD,
 )
 
 
@@ -115,7 +114,7 @@ class LevelUpScreen(Screen):
         return None
 
     def draw(self, surface):
-        surface.fill(BG_COLOR)
+        draw_background(surface)
         p = self.player
         ups = pending_levels(p)
         header = font(32 + int(16 * self.glow_t)).render("LEVEL UP!", True, GOLD)

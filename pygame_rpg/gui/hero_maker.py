@@ -23,7 +23,7 @@ import pygame
 from .. import device
 from ..assets import (
     AssetManager, LOOK_OPTIONS, LOOK_LABELS, look_choice,
-    HERO_COLS, HERO_WALK_COLS, gear_of,
+    HERO_COLS, HERO_WALK_COLS, gear_of, upscale,
 )
 from ..classes import CLASSES, CLASS_ORDER, make_hero
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, START_LEVEL, START_MP
@@ -34,9 +34,8 @@ from ..stat_names import LABEL
 from .inventory_screen import _wrap
 from ..savegame import save_player, name_exists, _safe_name
 from .screen import (
-    Screen, Button,
-    BG_COLOR, PANEL_COLOR, TEXT_COLOR, DIM_TEXT, GOLD,
-    BORDER_COLOR, FOCUS_BORDER, font,
+    draw_background, draw_panel, Screen, Button, PANEL_COLOR, TEXT_COLOR,
+    DIM_TEXT, GOLD, BORDER_COLOR, FOCUS_BORDER, font,
 )
 
 MAX_NAME_LEN = 20
@@ -260,7 +259,7 @@ class HeroMakerScreen(Screen):
         return None
 
     def draw(self, surface):
-        surface.fill(BG_COLOR)
+        draw_background(surface)
         title = font(40).render("Create a New Hero", True, GOLD)
         surface.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, 70)))
 
@@ -293,9 +292,7 @@ class HeroMakerScreen(Screen):
         else:
             name = self.text.strip()
             panel = pygame.Rect(150, 140, SCREEN_WIDTH - 300, 220)
-            pygame.draw.rect(surface, PANEL_COLOR, panel, border_radius=10)
-            pygame.draw.rect(surface, BORDER_COLOR, panel, width=2,
-                             border_radius=10)
+            draw_panel(surface, panel, radius=10)
             q = font(28).render(f"Is '{name}' correct?", True, TEXT_COLOR)
             surface.blit(q,
                          q.get_rect(center=(panel.centerx, panel.top + 50)))
@@ -336,7 +333,7 @@ class HeroMakerScreen(Screen):
         col = HERO_WALK_COLS[int(self.preview_t / PREVIEW_FRAME)
                              % len(HERO_WALK_COLS)]
         frame = frames[direction * HERO_COLS + col]
-        return pygame.transform.scale(frame, (size, size))
+        return upscale(frame, size, outline=True)
 
     def _draw_class(self, surface):
         """Class cards across the top, the chosen class's details below:
@@ -356,8 +353,7 @@ class HeroMakerScreen(Screen):
 
         cls = CLASSES[self.hero_class]
         panel = pygame.Rect(40, 240, 725, 228)
-        pygame.draw.rect(surface, PANEL_COLOR, panel, border_radius=10)
-        pygame.draw.rect(surface, BORDER_COLOR, panel, width=2, border_radius=10)
+        draw_panel(surface, panel, radius=10)
         hero = self._preview_frame(0, size=96)
         surface.blit(hero, (panel.x + 14, panel.y + 12))
         x, y = panel.x + 120, panel.y + 16
@@ -394,8 +390,7 @@ class HeroMakerScreen(Screen):
         sub = font(26).render("Choose your look", True, DIM_TEXT)
         surface.blit(sub, sub.get_rect(center=(SCREEN_WIDTH // 2, 112)))
         box = pygame.Rect(60, 150, 260, 260)
-        pygame.draw.rect(surface, PANEL_COLOR, box, border_radius=10)
-        pygame.draw.rect(surface, BORDER_COLOR, box, width=2, border_radius=10)
+        draw_panel(surface, box, radius=10)
         hero = self._preview_frame(size=192)
         surface.blit(hero, hero.get_rect(center=box.center))
         name = font(26).render(self.text.strip(), True, TEXT_COLOR)

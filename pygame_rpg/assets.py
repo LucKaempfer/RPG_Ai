@@ -188,6 +188,33 @@ def _slice(surf: pygame.Surface, cols: int, rows: int):
             for r in range(rows) for c in range(cols)]
 
 
+SPRITE_OUTLINE = (14, 12, 18)
+
+
+def upscale(surf: pygame.Surface, size, outline=False) -> pygame.Surface:
+    """``surf`` enlarged to ``size`` (an int for a square, or (w, h))
+    for a large view of a 32 px sprite: Scale2x (which rounds off the
+    stair steps of diagonal edges, so curves and slopes look drawn at
+    the higher resolution) while it fits, then plain pixel scaling for
+    the rest.  ``outline`` adds a thin dark outline (about half a
+    sprite pixel) so a big character stands out from the background."""
+    w, h = (size, size) if isinstance(size, int) else size
+    while surf.get_width() * 2 <= w and surf.get_height() * 2 <= h:
+        surf = pygame.transform.scale2x(surf)
+    if surf.get_size() != (w, h):
+        surf = pygame.transform.scale(surf, (w, h))
+    if outline:
+        line = pygame.mask.from_surface(surf).to_surface(
+            setcolor=SPRITE_OUTLINE + (255,), unsetcolor=(0, 0, 0, 0))
+        out = pygame.Surface((w, h), pygame.SRCALPHA)
+        d = max(1, w // 64)
+        for dx, dy in ((-d, 0), (d, 0), (0, -d), (0, d)):
+            out.blit(line, (dx, dy))
+        out.blit(surf, (0, 0))
+        surf = out
+    return surf
+
+
 # Module-level convenience instance.
 assets = AssetManager()
 

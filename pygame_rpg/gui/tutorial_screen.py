@@ -13,9 +13,8 @@ import pygame
 
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from .screen import (
-    Screen, Button,
-    BG_COLOR, PANEL_COLOR, TEXT_COLOR, DIM_TEXT, GOLD,
-    BORDER_COLOR, font,
+    draw_background, draw_panel, Screen, Button, TEXT_COLOR, DIM_TEXT, GOLD,
+    font,
 )
 
 _TUTORIAL_PATH = (
@@ -97,15 +96,13 @@ class TutorialScreen(Screen):
         return None
 
     def draw(self, surface):
-        surface.fill(BG_COLOR)
+        draw_background(surface)
         title = font(40).render("Tutorial", True, GOLD)
         surface.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, 70)))
 
         # Page text panel
         panel = pygame.Rect(60, 110, SCREEN_WIDTH - 120, 340)
-        pygame.draw.rect(surface, PANEL_COLOR, panel, border_radius=10)
-        pygame.draw.rect(surface, BORDER_COLOR, panel, width=2,
-                         border_radius=10)
+        draw_panel(surface, panel, radius=10)
         f = font(26)
         y = panel.top + 30
         for line in self.pages[self.page]:

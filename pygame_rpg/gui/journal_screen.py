@@ -11,9 +11,8 @@ from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from ..lore import (LORE, CHAPTERS, EPILOGUE, EPILOGUE_TITLE, prologue)
 from .effects import menu_key
 from .screen import (
-    QUIT, Screen, font,
-    BG_COLOR, PANEL_COLOR, PANEL_HOT, TEXT_COLOR, DIM_TEXT, GOLD,
-    BORDER_COLOR, FOCUS_BORDER,
+    draw_background, draw_panel, QUIT, Screen, font,
+    PANEL_HOT, TEXT_COLOR, DIM_TEXT, GOLD, FOCUS_BORDER,
 )
 
 ROW_H = 25
@@ -76,14 +75,13 @@ class JournalScreen(Screen):
         return None
 
     def draw(self, surface):
-        surface.fill(BG_COLOR)
+        draw_background(surface)
         title = font(40).render("Journal", True, GOLD)
         surface.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, 40)))
         count = font(20).render(
             f"Writings found: {self.found_count} / {len(LORE)}", True, DIM_TEXT)
         surface.blit(count, count.get_rect(center=(SCREEN_WIDTH // 2, 76)))
-        pygame.draw.rect(surface, PANEL_COLOR, LIST, border_radius=8)
-        pygame.draw.rect(surface, BORDER_COLOR, LIST, width=2, border_radius=8)
+        draw_panel(surface, LIST)
         for i, (label, _, _, pages) in enumerate(self.rows):
             rect = self._row_rect(i)
             if i == self.focus:
