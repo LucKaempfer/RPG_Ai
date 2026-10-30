@@ -20,11 +20,16 @@ adventure in ``gui/dungeon_screen.py``.
 Sound: ``audio.py`` synthesises every effect at start-up; screens call
 ``audio.play`` for their actions and declare an ``ambience`` (the loop
 played while they are shown).  M toggles mute.
+
+Window: screens draw on a fixed 800 x 600 canvas; ``gui/display.py``
+scales it into a resizable window (F11: fullscreen) and maps the mouse
+back onto the canvas.
 """
 
 import pygame
 
 from . import audio, config
+from .gui.display import Display
 from .gui.screen import QUIT
 from .gui.title_screen import TitleScreen
 from .gui.tutorial_screen import TutorialScreen
@@ -86,9 +91,8 @@ def main():
     audio.pre_init()
     pygame.init()
     audio.init()
-    screen = pygame.display.set_mode(
-        (config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
-    )
+    display = Display()
+    screen = display.canvas
     pygame.display.set_caption("Dungeon Crawler")
     clock = pygame.time.Clock()
 
@@ -107,6 +111,9 @@ def main():
 
     while True:
         for event in pygame.event.get():
+            event = display.handle_event(event)
+            if event is None:
+                continue
             # M mutes everywhere except while typing a hero name.
             if (event.type == pygame.KEYDOWN and event.key == pygame.K_m
                     and current.name != "hero_maker"):
@@ -127,7 +134,7 @@ def main():
         audio.set_ambience(current.ambience)
         audio.update(dt)
         current.draw(screen)
-        pygame.display.flip()
+        display.present()
 
 
 if __name__ == "__main__":
