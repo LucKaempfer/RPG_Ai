@@ -73,6 +73,8 @@ class Player:
     current_mp: int = None
     # Appearance chosen in the hero maker: LOOK_KEYS -> option index.
     look: dict = field(default_factory=dict)
+    # Money (mob and prop drops; spent and earned at the shop).
+    gold: int = 0
     # Crafting materials in the pouch: MATERIALS -> count (no weight).
     materials: dict = field(default_factory=dict)
 
@@ -311,6 +313,7 @@ class Player:
             "mdp": self.mdp,
             "lvl_up_counts": dict(self.lvl_up_counts),
             "look": dict(self.look),
+            "gold": self.gold,
             "materials": dict(self.materials),
             "equipment": {slot: ref(item)
                           for slot, item in self.equipment.items()},
@@ -341,6 +344,7 @@ class Player:
             mdp=data.get("mdp", START_MDP),
         )
         p.lvl_up_counts.update(data.get("lvl_up_counts", {}))
+        p.gold = max(0, int(data.get("gold", 0)))
         mats = data.get("materials", {})
         if isinstance(mats, dict):
             p.materials.update({k: max(0, v) for k, v in mats.items()

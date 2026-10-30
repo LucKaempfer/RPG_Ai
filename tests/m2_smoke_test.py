@@ -15,8 +15,8 @@ def ok(cond, msg):
     checks += 1
 
 # Catalog
-all_items = I.WEAPONS + I.WEAPON_TIERS + I.ARMOR + I.ARMOR_TIERS + I.CONSUMABLES + I.CONSUMABLE_TIERS + I.TRINKETS + I.TRINKET_TIERS + I.ABILITIES + I.ABILITY_TIERS
-ok(len(all_items) == len(I.CATALOG) == 212, "catalog size / duplicate ids")
+all_items = I.WEAPONS + I.WEAPON_TIERS + I.ARMOR + I.ARMOR_TIERS + I.CONSUMABLES + I.CONSUMABLE_TIERS + I.TRINKETS + I.TRINKET_TIERS + I.ABILITIES + I.ABILITY_TIERS + I.JUNK
+ok(len(all_items) == len(I.CATALOG) == 222, "catalog size / duplicate ids")
 ok(len(I.CONSUMABLES) == 6 and len(I.CONSUMABLE_TIERS) == 18, "consumable counts")
 OLD_IDS = [i.id for i in I.WEAPONS + I.WEAPON_TIERS + I.ARMOR + I.ARMOR_TIERS] + ["potion"]
 for i in OLD_IDS:

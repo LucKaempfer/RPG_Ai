@@ -37,6 +37,13 @@ dips when a foot lands), driven by the distance walked rather than time so the f
 each footstep plays the splash sound and kicks up a few drops. The hero and enemies cast soft
 shadows, and each enemy breathes on its own beat.
 
+**Money and junk:** every won fight pays gold (`ENEMY_GOLD` 3-8 × floor, the boss ×5) and
+has a 25 % chance of a piece of junk; smashed props hold coins (30 %, 1-4 × floor) or junk
+(12 %). `Player.gold` is saved and shown in the HUD, the inventory and the Base. Junk is a new
+item kind (`items.JUNK`, 10 pieces from Rat Tail at 2 gold to Jeweled Buckle at 35, `value` =
+what a shop pays, `level` = first floor it drops on); `roll_loot` never returns it
+(`LOOT_KINDS`). The catalog has 222 items.
+
 **Smashing props:** Space (or F) in the dungeon swings the weapon at the prop in front (a
 white arc, attack frames), or with a bow / crossbow / wand fires an arrow or a coloured bolt that
 flies until it hits a wall, an enemy, a prop or 8 tiles. Props take 1-3 hits (`PROP_HP`) and
@@ -115,8 +122,8 @@ wake up rested in the Base.
 |------|--------|-------|
 | `pygame_rpg/main.py` | ✅ M4 | State machine: `build_screen()` factory, per-event screen switching, global clock loop. `handle_update` may also return a transition; `("resume", {"screen": s})` switches back to an existing screen object (dungeon floor after a battle / level-up). The M1 dungeon demo loop was removed (recoverable from git, commit `d2a0ec2`). |
 | `pygame_rpg/config.py` | ✅ M5 | Screen 800×600 @ 60 FPS, starting stats, XP curve (`max_xp_for`), `BASE_MAX_WEIGHT = 50`, `SAVE_DIR`, rarity weights, and the **Balance** section (weapon power, enemy hit multiplier, variance, ailment bonuses, run / loot chances, post-win recovery, enemy growth, enemies per room, chests per floor). |
-| `pygame_rpg/player.py` | ✅ M3 | `Player` dataclass: base stats, XP/level-up, upgrade counts, backpack, 11 equipment slots, `bonus()`/`total()`, `max_hp`/`current_hp`/`heal()`, `look` (appearance indices, `LOOK_KEYS`), `materials` (pouch, `MATERIALS`), `max_mp`/`current_mp`/`restore_mp()`/`can_cast()`/`spend_mp()`/`equipped_abilities()`, `slot_for`/`can_equip`/`slot_of`/`equip`/`unequip`/`drop`, `can_use`/`use`, weight, `to_dict`/`from_dict` (with old-save migration). |
-| `pygame_rpg/items.py` | 🚧 M2 | `Item` dataclass; builders `_wp`/`_arm`/`_con`/`_trinket`/`_ab` + tier helpers `_tier`/`_arm_tier`/`_con_tier`/`_trinket_tier`/`_ab_tier`; `CATALOG` (212 items); `STARTER_INVENTORY = ["sword", "potion", "fireball"]`; `item_by_id()` returns a copy. |
+| `pygame_rpg/player.py` | ✅ M3 | `Player` dataclass: base stats, XP/level-up, upgrade counts, backpack, 11 equipment slots, `bonus()`/`total()`, `max_hp`/`current_hp`/`heal()`, `look` (appearance indices, `LOOK_KEYS`), `gold`, `materials` (pouch, `MATERIALS`), `max_mp`/`current_mp`/`restore_mp()`/`can_cast()`/`spend_mp()`/`equipped_abilities()`, `slot_for`/`can_equip`/`slot_of`/`equip`/`unequip`/`drop`, `can_use`/`use`, weight, `to_dict`/`from_dict` (with old-save migration). |
+| `pygame_rpg/items.py` | 🚧 M2 | `Item` dataclass; builders `_wp`/`_arm`/`_con`/`_trinket`/`_ab` + tier helpers `_tier`/`_arm_tier`/`_con_tier`/`_trinket_tier`/`_ab_tier`; `JUNK` (`_junk`, sell `value`), `CATALOG` (222 items), `LOOT_KINDS`, `roll_junk()`; `STARTER_INVENTORY = ["sword", "potion", "fireball"]`; `item_by_id()` returns a copy. |
 | `pygame_rpg/savegame.py` | ✅ M5 | `saves/<name>.json` per character + `saves/index.json`; runs in `saves/runs/<name>.json` (`save_run` / `load_run` / `delete_run`; a broken run file reads as no run); `_safe_name()` validates names (`^[\w .-]{1,20}$`), index self-prunes missing files; `_resolve()` turns saved item refs (id or `{"id", "charges"}`) into items. |
 | `pygame_rpg/gui/screen.py` | ✅ M3 | `Screen` base class, `Button`, cached `font()`, shared palette, `QUIT` sentinel. |
 | `pygame_rpg/gui/*.py` (8 screens) | ✅ M3 | `title_screen`, `tutorial_screen`, `hero_maker`, `hero_chooser`, `base_screen`, `inventory_screen`, `stats_screen`, `level_up_screen` (takes `return_to`: resume a dungeon floor instead of the Base). |
@@ -190,6 +197,7 @@ tests/
 ├── test_dungeon.py        # no overlap, connectivity, seeding, boss + entrance rules
 ├── test_saves.py          # player + run round trips, migration, broken run file
 ├── test_gui.py            # keyboard menus, particles, battle end animations, enemy sheets
+├── test_money.py          # gold per win / floor, junk drops, saves, coins and junk in props
 ├── test_props.py          # props on edges away from doors, nothing cut off, seeded, blocking
 ├── test_looks.py          # character customization: look stage, look in saves, frames per look
 ├── test_smoke_scripts.py  # runs the two scripts below as pytest cases
@@ -234,7 +242,7 @@ name a group (`player.SLOT_GROUPS`) and take the first free slot of it. Equippin
 equipped even above the gate.
 
 **Saves** (`saves/<name>.json`): `name, lvl, xp, hp, current_hp, ap, rap, map, dp, rdp, mdp,
-current_mp, lvl_up_counts, look {skin, hair, hair_color, tunic: option index}, materials {wood, iron, cloth, bone, stone: count}, equipment {slot: ref | null}, inventory [ref, ...]`. A `ref` is an item id, or
+current_mp, lvl_up_counts, look {skin, hair, hair_color, tunic: option index}, gold, materials {wood, iron, cloth, bone, stone: count}, equipment {slot: ref | null}, inventory [ref, ...]`. A `ref` is an item id, or
 `{"id": ..., "charges": n}` for a consumable with used charges.
 **Old saves keep loading:** a missing `current_hp` / `current_mp` means full HP / MP, a missing `look` the default look; legacy slot `accessory` maps
 to `trinket1`; an item in an unknown slot (e.g. the old `armor` slot) or a slot it doesn't fit
@@ -454,7 +462,7 @@ with the HUD active.
   saved-hero route, level-up banking, save round-trip). Porting these into a `tests/` pytest suite
   is part of M5, and doing it early would make every M2 sub-milestone cheaper to verify.
 * **Quick catalog check** (no display needed):
-  `python -c "from pygame_rpg import items; print(len(items.CATALOG))"` → `212` today.
+  `python -c "from pygame_rpg import items; print(len(items.CATALOG))"` → `222` today.
 * **M2 harness** `tests/m2_smoke_test.py` (run `python tests/m2_smoke_test.py` from the repo
   root → "m2 OK (177 checks)"): headless checks covering catalog counts and
   every pre-existing id, armor/trinket/ability equipping, the level gate, MP, rarity + loot rolls, base vs effective stats, capped healing and

@@ -41,12 +41,15 @@ from ..assets import (
     ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, SEWER_MANHOLE,
 )
 from ..combat import WON, FLED, weapon_type
-from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, CHESTS_PER_FLOOR, RUN_VERSION
+from ..config import (
+    SCREEN_WIDTH, SCREEN_HEIGHT, CHESTS_PER_FLOOR, RUN_VERSION,
+    PROP_GOLD, PROP_GOLD_CHANCE, PROP_JUNK_CHANCE,
+)
 from ..dungeon import (
     Dungeon, TILE_SIZE, DUNGEON_WIDTH, DUNGEON_HEIGHT, MEMORY_SHADE,
 )
 from ..enemies import place_enemies, boss_room, cell_of, BOSS_TYPE
-from ..items import roll_loot
+from ..items import roll_loot, roll_junk
 from ..props import place_props, salvage, PROP_KINDS
 from ..savegame import save_player, save_run
 from .base_screen import pending_levels
@@ -384,7 +387,8 @@ class DungeonScreen(Screen):
         """Called by the battle screen before it resumes this floor."""
         self.enemies = [e for e in self.enemies if e.alive]
         if battle.state == WON:
-            self.hud.say(f"Defeated the {battle.enemy.name}! +{battle.xp_gained} XP")
+            self.hud.say(f"Defeated the {battle.enemy.name}! +{battle.xp_gained} XP,"
+                         f" +{battle.gold_gained} gold")
             for item in battle.loot:
                 self.hud.say(f"Found: {item.name}")
             if battle.enemy.boss:
@@ -493,7 +497,21 @@ class DungeonScreen(Screen):
         got = salvage(prop, self.dungeon.rng)
         for mat, n in got.items():
             self.player.materials[mat] += n
-        what = ", ".join(f"+{n} {mat}" for mat, n in got.items()) or "nothing useful"
+        found = [f"+{n} {mat}" for mat, n in got.items()]
+        rng = self.dungeon.rng
+        if rng.uniform(0, 100) < PROP_GOLD_CHANCE:
+            coins = rng.randint(*PROP_GOLD) * self.floor
+            self.player.gold += coins
+            found.append(f"+{coins} gold")
+            self.fx.burst(x, y, (240, 200, 90), count=8, speed=80, life=0.4, size=2)
+        if rng.uniform(0, 100) < PROP_JUNK_CHANCE:
+            junk = roll_junk(rng, self.floor)
+            if self.player.can_carry(junk):
+                self.player.inventory.append(junk)
+                found.append(junk.name)
+            else:
+                found.append(f"{junk.name} (too heavy)")
+        what = ", ".join(found) or "nothing useful"
         self.hud.say(f"{prop.kind.capitalize()} smashed: {what}")
 
     # -- Screen hooks ----------------------------------------------------

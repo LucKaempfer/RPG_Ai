@@ -179,7 +179,7 @@ class BaseScreen(Screen):
             surface.blit(value, value.get_rect(
                 midleft=(x + 8, y0 + row * rowh)))
         wt = font(18).render(
-            f"Weight {p.weight} / {p.max_weight}", True, DIM_TEXT)
+            f"Weight {p.weight} / {p.max_weight}    Gold {p.gold}", True, DIM_TEXT)
         surface.blit(wt, wt.get_rect(midbottom=(panel.centerx, panel.bottom - 12)))
 
         # Right: menu buttons.

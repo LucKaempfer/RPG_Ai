@@ -396,5 +396,5 @@ class InventoryScreen(Screen):
             + "    wheel / Up Down: scroll", True, DIM_TEXT)
         surface.blit(hint, (24, 522))
         pouch = "   ".join(f"{mat} {n}" for mat, n in p.materials.items())
-        mats = font(16).render(f"Materials:  {pouch}", True, DIM_TEXT)
+        mats = font(16).render(f"Gold {p.gold}    Materials:  {pouch}", True, DIM_TEXT)
         surface.blit(mats, mats.get_rect(topright=(776, 522)))

@@ -226,7 +226,7 @@ ok(p6.current_hp == 50 + p6.max_hp // 10, "post-fight recovery")
 p7 = kit("sword"); p7.inventory += [I.item_by_id("chainmail_4")] * 10   # 50 kg: full
 e7 = E.make_enemy(E.BOSS_TYPE, 1, boss=True); e7.hp = 1
 b7 = C.Battle(p7, e7, random.Random(7)); n_inv = len(p7.inventory); b7.attack()
-ok(b7.state == C.WON and len(p7.inventory) == n_inv and "too heavy" in b7.log[-1], "loot respects weight")
+ok(b7.state == C.WON and len(p7.inventory) == n_inv and any("too heavy" in l for l in b7.log), "loot respects weight")
 p8 = kit("sword"); e8 = E.make_enemy(E.BOSS_TYPE, 1, boss=True); e8.hp = e8.max_hp = 999
 b8 = C.Battle(p8, e8, random.Random(8))
 for _ in range(100):
