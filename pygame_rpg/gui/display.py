@@ -10,17 +10,27 @@ needs to know the window size.
 
 The brightness and the fullscreen flag come from ``settings.current``
 (the settings screen changes them; F11 flips fullscreen and saves).
+
+Touch screens (``device.TOUCH``): the bars beside the canvas are kept at
+least ``TOUCH_BAR`` x the window height wide and hold the on-screen
+controls (``gui/touch.py``), which see the events first.  On Android the
+window is always fullscreen and the GPU does the scaling (``SCALED``):
+the window is a logical surface 600 px high (wider, to match the
+phone's shape) with the canvas unscaled in the middle.  The phone's Back
+button counts as Escape.
 """
 
 import pygame
 
-from .. import config, settings
+from .. import config, device, settings
+from .touch import TouchControls
 
 # Share of the desktop the window may take when it opens (the rest is
 # left for the title bar and the taskbar).
 FIT_WIDTH, FIT_HEIGHT = 0.9, 0.85
 MOUSE_EVENTS = (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN,
                 pygame.MOUSEBUTTONUP)
+TOUCH_BAR = 0.28   # least width of each control bar, x window height
 
 
 def fit_scale(desktop, canvas=None):
@@ -32,14 +42,26 @@ def fit_scale(desktop, canvas=None):
     return max(1.0, int(scale * 4) / 4)
 
 
-def letterbox(window, canvas=None):
+def letterbox(window, canvas=None, side=0):
     """Rect inside a ``window``-sized area where the canvas is shown:
-    as large as fits, aspect kept, centred."""
+    as large as fits, aspect kept, centred.  ``side`` px are kept free
+    on the left and the right (for touch controls)."""
     cw, ch = canvas or (config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
     ww, wh = window
-    scale = min(ww / cw, wh / ch)
+    scale = min(max(1, ww - 2 * side) / cw, wh / ch)
     w, h = max(1, round(cw * scale)), max(1, round(ch * scale))
     return pygame.Rect((ww - w) // 2, (wh - h) // 2, w, h)
+
+
+def android_size(desktop, canvas=None):
+    """Logical window size on Android: the phone's shape (landscape),
+    at least the canvas height and wide enough for both control bars,
+    so the canvas is shown 1:1 and the GPU scales the whole window."""
+    cw, ch = canvas or (config.SCREEN_WIDTH, config.SCREEN_HEIGHT)
+    dw, dh = max(desktop), min(desktop)
+    aspect = dw / dh
+    w = max(cw + 2 * round(ch * TOUCH_BAR), round(ch * aspect))
+    return (w, max(ch, round(w / aspect)))
 
 
 class Display:
@@ -52,11 +74,17 @@ class Display:
         scale = fit_scale(desktop)
         self.window_size = (round(config.SCREEN_WIDTH * scale),
                             round(config.SCREEN_HEIGHT * scale))
-        self.fullscreen = settings.current.fullscreen
+        self.android_size = android_size(desktop) if device.IS_ANDROID else None
+        self.fullscreen = device.IS_ANDROID or settings.current.fullscreen
+        self.touch = TouchControls() if device.TOUCH else None
+        self.screen_name = None
         self._open()
 
     def _open(self):
-        if self.fullscreen:
+        if self.android_size:
+            self.window = pygame.display.set_mode(
+                self.android_size, pygame.SCALED | pygame.FULLSCREEN)
+        elif self.fullscreen:
             self.window = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
         else:
             self.window = pygame.display.set_mode(self.window_size,
@@ -65,11 +93,16 @@ class Display:
 
     def _layout(self):
         self.laid_out_for = self.window.get_size()
-        self.view = letterbox(self.laid_out_for, self.canvas.get_size())
+        side = round(self.laid_out_for[1] * TOUCH_BAR) if self.touch else 0
+        self.view = letterbox(self.laid_out_for, self.canvas.get_size(), side)
+        if self.touch:
+            self.touch.layout(self.laid_out_for, self.view)
         self.scaled = pygame.Surface(self.view.size)
         self.boost = pygame.Surface(self.view.size)
 
     def toggle_fullscreen(self):
+        if device.IS_ANDROID:
+            return   # always fullscreen
         settings.current.fullscreen = not settings.current.fullscreen
         settings.save()
 
@@ -84,6 +117,10 @@ class Display:
             return None
         if event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
             self.toggle_fullscreen()
+            return None
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_AC_BACK:
+            return pygame.event.Event(pygame.KEYDOWN, dict(event.dict, key=pygame.K_ESCAPE))
+        if self.touch and self.touch.handle_event(event):
             return None
         if event.type in MOUSE_EVENTS:
             data = dict(event.dict, pos=self.to_canvas(event.pos))
@@ -103,7 +140,8 @@ class Display:
 
     def present(self):
         """Scale the canvas into the window and show it."""
-        if self.fullscreen != settings.current.fullscreen:
+        if (not device.IS_ANDROID
+                and self.fullscreen != settings.current.fullscreen):
             self.fullscreen = settings.current.fullscreen
             self._open()
         if self.window.get_size() != self.laid_out_for:
@@ -116,7 +154,20 @@ class Display:
         self._brighten(settings.current.brightness)
         self.window.fill((0, 0, 0))
         self.window.blit(self.scaled, self.view)
+        if self.touch:
+            self.touch.draw(self.window)
         pygame.display.flip()
+
+    def update(self, dt, screen_name):
+        """Once per frame: which screen is shown (the touch buttons
+        change meaning with it; a screen change hides the on-screen
+        keyboard) and the D-pad's menu repeat."""
+        if screen_name != self.screen_name:
+            self.screen_name = screen_name
+            device.hide_keyboard()
+        if self.touch:
+            self.touch.set_context(screen_name)
+            self.touch.update(dt)
 
     def _brighten(self, level):
         """Scale every colour of the frame by ``level`` (1 = unchanged).

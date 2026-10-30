@@ -11,12 +11,16 @@ Class stage: tap a card or Left / Right, Enter goes on, Esc goes back.
 
 Look stage keys: Up / Down pick a row, Left / Right change it, R rolls
 a random look, Enter goes on, Esc goes back to the name.
+
+On Android the on-screen keyboard shows during the name stage (tap the
+name box to bring it back); ``Display`` hides it when the screen goes.
 """
 
 import random
 
 import pygame
 
+from .. import device
 from ..assets import (
     AssetManager, LOOK_OPTIONS, LOOK_LABELS, look_choice,
     HERO_COLS, HERO_WALK_COLS, gear_of,
@@ -53,6 +57,7 @@ class HeroMakerScreen(Screen):
         super().__init__(screen)
         cx = SCREEN_WIDTH // 2
         self.stage = "input"
+        self.keyboard = False       # on-screen keyboard shown (Android)
         self.text = ""
         self.error = ""
         self.cursor_t = 0.0
@@ -91,6 +96,10 @@ class HeroMakerScreen(Screen):
         look preview."""
         self.preview_t += dt
         self.cursor_t += dt
+        typing = self.stage == "input"
+        if typing != self.keyboard:
+            self.keyboard = typing
+            device.show_keyboard() if typing else device.hide_keyboard()
         if self.cursor_t >= 0.5:
             self.cursor_t -= 0.5
             self.cursor_on = not self.cursor_on
@@ -104,6 +113,8 @@ class HeroMakerScreen(Screen):
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = event.pos
             if self.stage == "input":
+                if self.input_rect.collidepoint(pos):
+                    device.show_keyboard()
                 if self.btn_create.rect.collidepoint(pos):
                     return self._validate()
                 if self.btn_cancel.rect.collidepoint(pos):

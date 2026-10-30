@@ -9,13 +9,17 @@ at start-up (:func:`load`).  A missing or broken file means defaults.
 
 Each action has two key slots (``None`` = empty) so a player can keep
 both the arrows and WASD, as the defaults do.
+
+The on-screen controls (``gui/touch.py``) feed the same actions: the
+D-pad fills :data:`virtual_held` and the buttons send KEYDOWNs with an
+``action`` attribute, which :func:`held` and :func:`pressed` accept.
 """
 
 import json
 
 import pygame
 
-from . import config, savegame
+from . import config, device, savegame
 
 BRIGHTNESS_RANGE = (0.5, 2.0)
 
@@ -40,6 +44,8 @@ DEFAULT_KEYS = {
 }
 # Keys with a fixed job everywhere: back / Base, fullscreen, mute.
 RESERVED_KEYS = (pygame.K_ESCAPE, pygame.K_F11, pygame.K_m)
+# What the on-screen buttons are called, for hints ("A: attack").
+TOUCH_LABELS = {"attack": "A", "interact": "B", "inventory": "Bag"}
 
 
 class Settings:
@@ -131,16 +137,26 @@ def save():
         pass   # settings still apply for this session
 
 
+# Actions held by the on-screen D-pad (gui/touch.py keeps it current).
+virtual_held = set()
+
+
 def pressed(event, action):
-    """True for a KEYDOWN of one of ``action``'s keys."""
-    return (event.type == pygame.KEYDOWN
-            and event.key in current.keys[action])
+    """True for a KEYDOWN of one of ``action``'s keys, or an on-screen
+    button sending ``action``."""
+    if event.type != pygame.KEYDOWN:
+        return False
+    sent = getattr(event, "action", None)
+    if sent is not None:
+        return sent == action
+    return event.key in current.keys[action]
 
 
 def held(keys, action):
     """True while one of ``action``'s keys is down (``keys`` from
-    ``pygame.key.get_pressed()``)."""
-    return any(keys[k] for k in current.keys[action] if k is not None)
+    ``pygame.key.get_pressed()``) or the D-pad holds it."""
+    return (action in virtual_held
+            or any(keys[k] for k in current.keys[action] if k is not None))
 
 
 def key_label(key):
@@ -152,7 +168,10 @@ def key_label(key):
 
 
 def action_label(action):
-    """The first bound key of ``action``, for hints ("E", "Space")."""
+    """The first bound key of ``action``, for hints ("E", "Space"), or
+    its on-screen button on a touch screen."""
+    if device.TOUCH and action in TOUCH_LABELS:
+        return TOUCH_LABELS[action]
     for k in current.keys[action]:
         if k is not None:
             return key_label(k)
