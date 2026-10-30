@@ -12,6 +12,8 @@ fog of war, and what stands on the floor:
   resumed after each battle, so the floor survives the fight.  After a win, pending level-ups open the level-up
   screen right away (the stat pick happens mid-run).
 * chests: walking into one opens it and rolls loot into the backpack.
+* props (``props.py``): barrels, crates, pots and other clutter along
+  the room walls; standing props block the way.
 * stairs: appear in the boss's room once the boss is beaten; stepping
   on them builds the next, harder floor.
 
@@ -36,9 +38,12 @@ from ..assets import (
 )
 from ..combat import WON, FLED
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, CHESTS_PER_FLOOR, RUN_VERSION
-from ..dungeon import Dungeon, TILE_SIZE, DUNGEON_WIDTH, DUNGEON_HEIGHT
+from ..dungeon import (
+    Dungeon, TILE_SIZE, DUNGEON_WIDTH, DUNGEON_HEIGHT, MEMORY_SHADE,
+)
 from ..enemies import place_enemies, boss_room, cell_of, BOSS_TYPE
 from ..items import roll_loot
+from ..props import place_props, PROP_KINDS
 from ..savegame import save_player, save_run
 from .base_screen import pending_levels
 from .effects import Particles
@@ -128,6 +133,8 @@ class DungeonScreen(Screen):
         self.enemies = place_enemies(self.dungeon, floor)
         self.all_enemies = list(self.enemies)   # placement order, for saves
         self.chests = self._place_chests()   # [cell, opened]
+        self.props = place_props(self.dungeon, seed)
+        self.prop_at = {p.cell: p for p in self.props}
         self.stairs = None                   # cell, once the boss is beaten
         self.check_levels = False
         self.banner_t = BANNER_TIME
@@ -143,6 +150,10 @@ class DungeonScreen(Screen):
                 self.enemy_frames[e.type.sprite] = assets.load_sheet(
                     f"enemies/{e.type.sprite}.png", ENEMY_COLS, ENEMY_ROWS)
         self.chest_frames = assets.load_sheet("objects/chest.png", 2, 1)
+        self.prop_frames = assets.load_sheet("objects/props.png",
+                                             len(PROP_KINDS), 2)
+        self._prop_shade = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+        self._prop_shade.fill((0, 0, 0, MEMORY_SHADE))
         if run is not None:
             self._restore(run)
         self.save_run()
@@ -229,12 +240,16 @@ class DungeonScreen(Screen):
         return (int(self.x // TILE_SIZE), int(self.y // TILE_SIZE))
 
     def _fits(self, x, y) -> bool:
-        """Whether the hitbox centred on (x, y) touches only floor."""
+        """Whether the hitbox centred on (x, y) touches only floor (and no
+        standing prop)."""
         half = HITBOX / 2
         for cx in (x - half, x + half - 1):
             for cy in (y - half, y + half - 1):
-                if not self.dungeon.is_walkable(
-                        (int(cx // TILE_SIZE), int(cy // TILE_SIZE))):
+                cell = (int(cx // TILE_SIZE), int(cy // TILE_SIZE))
+                if not self.dungeon.is_walkable(cell):
+                    return False
+                prop = self.prop_at.get(cell)
+                if prop is not None and prop.solid:
                     return False
         return True
 
@@ -424,6 +439,16 @@ class DungeonScreen(Screen):
                 x, y = self._centre(cell)
                 img = self.chest_frames[1 if opened else 0]
                 surface.blit(img, img.get_rect(center=(x - ox, y - oy)))
+
+        for prop in self.props:
+            if prop.cell not in self.seen:
+                continue
+            col = PROP_KINDS.index(prop.kind)
+            img = self.prop_frames[col + (len(PROP_KINDS) if prop.broken else 0)]
+            pos = (prop.cell[0] * TILE_SIZE - ox, prop.cell[1] * TILE_SIZE - oy)
+            surface.blit(img, pos)
+            if prop.cell not in self.visible:       # remembered, not in sight
+                surface.blit(self._prop_shade, pos)
 
         for i, e in enumerate(self.enemies):
             if cell_of(e) not in self.visible:      # walls hide enemies

@@ -77,6 +77,7 @@ ENEMY_DEFENSE_GROWTH = 1
 ENEMY_XP_GROWTH = 0.30
 ENEMIES_PER_ROOM = (0, 2)  # min, max (never in the entrance room)
 CHESTS_PER_FLOOR = 2
+PROPS_PER_ROOM = (1, 3)    # min, max scenery props per room (+1 per 30 cells)
 
 # --- Audio (audio.py synthesises everything; M mutes in game) ---
 SFX_VOLUME = 0.7       # 0..1, all one-shot effects

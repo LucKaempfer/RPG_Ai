@@ -23,6 +23,8 @@ Layouts (all frames are 32x32 pixels):
 * ``items/<key>.png``      single 32x32 icon
 * ``ui/<name>.png``        single UI sprite
 * ``objects/chest.png``    2 x 1 grid: 0 closed, 1 open
+* ``objects/props.png``    7 x 2 grid: one column per ``props.PROP_KINDS``,
+  row 0 standing, row 1 broken
 """
 
 import math
@@ -151,6 +153,8 @@ class AssetManager:
             return _gen_item_icon(name.rsplit("/", 1)[-1].removesuffix(".png"))
         if name == "objects/chest.png":
             return _gen_chest()
+        if name == "objects/props.png":
+            return _gen_props()
         if name.startswith("ui/"):
             return _gen_ui(name.rsplit("/", 1)[-1].removesuffix(".png"))
         raise FileNotFoundError(f"no generator for asset: {name}")
@@ -712,6 +716,98 @@ def _gen_chest() -> pygame.Surface:
             pygame.draw.rect(surf, dark, (px + 7, 15, 18, 5))
             pygame.draw.rect(surf, wood, (px + 5, 4, 22, 6), border_radius=3)
             pygame.draw.rect(surf, dark, (px + 5, 4, 22, 6), 2, border_radius=3)
+    return surf
+
+
+# Room props (props.PROP_KINDS order): row 0 standing, row 1 broken.
+PROP_SHEET_KINDS = ("barrel", "crate", "pot", "sack", "bucket", "bones", "rubble")
+
+
+def _gen_props() -> pygame.Surface:
+    """Sewer clutter, one column per kind: standing (row 0) and smashed
+    into debris (row 1)."""
+    import random
+    rng = random.Random(11)             # same art on every machine
+    surf = _new_sheet(len(PROP_SHEET_KINDS), 2)
+    wood, wood_dark, wood_light = (128, 84, 46), (84, 54, 30), (160, 110, 64)
+    iron, iron_dark = (112, 116, 120), (70, 72, 76)
+    clay, clay_dark = (170, 96, 64), (116, 62, 40)
+    cloth, cloth_dark = (186, 164, 120), (132, 112, 78)
+    rust, rust_dark = (140, 82, 44), (92, 52, 30)
+    bone, stone, stone_dark = (214, 206, 186), (120, 122, 116), (80, 82, 78)
+    shadow = (0, 0, 0, 80)
+    for col, kind in enumerate(PROP_SHEET_KINDS):
+        x0 = col * FRAME_SIZE
+        # -- standing (row 0) --
+        f = pygame.Surface((FRAME_SIZE, FRAME_SIZE), pygame.SRCALPHA)
+        pygame.draw.ellipse(f, shadow, (5, 24, 22, 6))
+        if kind == "barrel":
+            pygame.draw.ellipse(f, wood_dark, (7, 5, 18, 23))
+            pygame.draw.ellipse(f, wood, (8, 6, 16, 21))
+            for x in (12, 16, 20):
+                pygame.draw.line(f, wood_dark, (x, 7), (x, 25), 1)
+            for y in (9, 22):
+                pygame.draw.line(f, iron, (8, y), (23, y), 2)
+            pygame.draw.ellipse(f, wood_light, (9, 4, 14, 5))
+            pygame.draw.ellipse(f, wood_dark, (9, 4, 14, 5), 1)
+        elif kind == "crate":
+            pygame.draw.rect(f, wood, (6, 8, 20, 19))
+            pygame.draw.rect(f, wood_dark, (6, 8, 20, 19), 2)
+            pygame.draw.line(f, wood_dark, (7, 9), (24, 25), 2)
+            pygame.draw.line(f, wood_dark, (24, 9), (7, 25), 2)
+            pygame.draw.rect(f, wood_light, (6, 8, 20, 3))
+        elif kind == "pot":
+            pygame.draw.ellipse(f, clay_dark, (7, 10, 18, 17))
+            pygame.draw.ellipse(f, clay, (8, 11, 16, 15))
+            pygame.draw.rect(f, clay_dark, (11, 6, 10, 6), border_radius=2)
+            pygame.draw.ellipse(f, (40, 26, 20), (12, 6, 8, 3))
+            pygame.draw.line(f, (210, 140, 100), (11, 15), (13, 20), 2)
+        elif kind == "sack":
+            pygame.draw.ellipse(f, cloth_dark, (6, 10, 20, 17))
+            pygame.draw.ellipse(f, cloth, (7, 11, 18, 15))
+            pygame.draw.polygon(f, cloth, [(13, 12), (16, 4), (19, 12)])
+            pygame.draw.line(f, (90, 70, 40), (13, 10), (19, 10), 2)
+            pygame.draw.line(f, cloth_dark, (11, 18), (15, 23), 1)
+        elif kind == "bucket":
+            pygame.draw.polygon(f, rust_dark, [(8, 11), (24, 11), (22, 27), (10, 27)])
+            pygame.draw.polygon(f, rust, [(9, 12), (23, 12), (21, 26), (11, 26)])
+            pygame.draw.ellipse(f, (30, 50, 30), (9, 10, 14, 4))
+            pygame.draw.arc(f, iron, (8, 3, 16, 14), 0, math.pi, 2)
+            pygame.draw.line(f, rust_dark, (10, 19), (22, 19), 1)
+        elif kind == "bones":
+            pygame.draw.line(f, bone, (6, 24), (22, 18), 3)
+            pygame.draw.line(f, bone, (10, 16), (24, 26), 3)
+            for (x, y) in ((5, 25), (7, 22), (22, 16), (23, 19), (9, 15), (25, 27)):
+                pygame.draw.circle(f, bone, (x, y), 2)
+            pygame.draw.circle(f, bone, (16, 13), 6)
+            pygame.draw.rect(f, bone, (13, 16, 6, 4))
+            for ex in (14, 18):
+                pygame.draw.circle(f, (40, 36, 32), (ex, 13), 2)
+        else:  # rubble
+            for (x, y, r) in ((11, 20, 6), (20, 21, 5), (15, 14, 5), (23, 15, 3), (8, 24, 3)):
+                pygame.draw.circle(f, stone_dark, (x, y), r)
+                pygame.draw.circle(f, stone, (x - 1, y - 1), r - 1)
+        surf.blit(f, (x0, 0))
+        # -- broken (row 1): flat debris --
+        f = pygame.Surface((FRAME_SIZE, FRAME_SIZE), pygame.SRCALPHA)
+        pieces = {"barrel": (wood, wood_dark), "crate": (wood, wood_dark),
+                  "pot": (clay, clay_dark), "sack": (cloth, cloth_dark),
+                  "bucket": (rust, rust_dark), "bones": (bone, stone_dark),
+                  "rubble": (stone, stone_dark)}[kind]
+        for _ in range(7):
+            x, y = rng.randint(5, 25), rng.randint(14, 27)
+            if kind in ("barrel", "crate"):
+                end = (x + rng.randint(-6, 6), y + rng.randint(-2, 2))
+                pygame.draw.line(f, pieces[1], (x, y + 1), (end[0], end[1] + 1), 3)
+                pygame.draw.line(f, pieces[0], (x, y), end, 2)
+            else:
+                pts = [(x, y), (x + rng.randint(2, 5), y + rng.randint(-2, 1)),
+                       (x + rng.randint(0, 3), y + rng.randint(2, 4))]
+                pygame.draw.polygon(f, pieces[0], pts)
+                pygame.draw.polygon(f, pieces[1], pts, 1)
+        if kind == "barrel":
+            pygame.draw.arc(f, iron, (8, 16, 16, 10), 0, math.pi, 2)
+        surf.blit(f, (x0, FRAME_SIZE))
     return surf
 
 
