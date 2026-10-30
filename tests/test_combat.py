@@ -129,18 +129,61 @@ def test_preview_matches_the_hit(style):
 
 
 def test_every_weapon_has_its_own_attacks():
-    every = set()
-    for w in I.WEAPONS + I.WEAPON_TIERS:
+    every, sets = set(), set()
+    for w in I.WEAPONS:
         keys = C.styles_for(w)
-        assert 3 <= len(keys) <= 4 and all(k in C.STYLES for k in keys)
+        assert len(keys) == 4 and all(k in C.STYLES for k in keys)
+        assert keys not in sets, w.id                # no two weapons share a set
+        sets.add(keys)
         every.update(keys)
-    assert set(C.STYLES) == every | set(C.FAMILY_STYLES["unarmed"])
+    for w in I.WEAPON_TIERS:                          # tiers keep their base's set
+        assert C.styles_for(w) == C.styles_for(I.item_by_id(w.id.rsplit("_", 1)[0]))
+    assert set(C.STYLES) == every | set(C.WEAPON_STYLES[None])
     names = lambda i: [C.STYLES[k].name for k in C.styles_for(I.item_by_id(i))]
     assert names("bow") == ["Shot", "Aimed Shot", "Volley", "Barbed Arrow"]
-    assert names("bow_3") == names("bow")
-    assert "Slash" not in names("bow") and "Smash" in names("mace")
-    assert names("fiery_staff")[0] == "Firebolt" and names("electric_wand")[0] == "Spark"
-    assert C.styles_for(None) == C.FAMILY_STYLES["unarmed"]
+    assert "Backstab" in names("dagger") and "Meteor" in names("fiery_staff")
+    assert names("fiery_staff")[0] == "Firebolt" and names("electric_wand")[0] == "Zap"
+    assert C.styles_for(None) == C.WEAPON_STYLES[None]
+
+
+def test_backstab_doubles_on_an_ailing_foe():
+    def hit(ailing):
+        p, e = hero("dagger"), tough()
+        if ailing:
+            e.statuses["stun"] = 1                  # it can't hit back either
+        b = C.Battle(p, e, FixedRng())
+        lo, hi = b.attack_preview("backstab")
+        b.attack("backstab")
+        dealt = e.max_hp - e.hp
+        assert lo <= dealt <= hi
+        return dealt
+    assert hit(True) > 1.7 * hit(False)
+
+
+def test_spells_cost_mp_and_need_it():
+    p, e = hero("fiery_staff"), tough()
+    b = C.Battle(p, e, FixedRng())
+    mp = p.current_mp
+    b.attack("meteor")
+    assert p.current_mp == mp - C.STYLES["meteor"].mp and e.hp < e.max_hp
+    p.current_mp = 2
+    assert not b.can_attack("meteor") and b.can_attack("firebolt")
+    hp = e.hp
+    assert b.attack("meteor") == [] and e.hp == hp and p.current_mp == 2
+
+
+def test_siphon_heals_and_parry_blocks():
+    p, e = hero("poisonous_wand"), tough()
+    p.current_hp = 50
+    b = C.Battle(p, e, FixedRng())
+    b.attack("siphon")
+    assert any(line.startswith("You drain") for line in b.log)
+    p, e = hero("sword"), tough("rat", floor=3)
+    C.Battle(p, e, FixedRng()).attack("strike")
+    plain = p.max_hp - p.current_hp
+    p, e = hero("sword"), tough("rat", floor=3)
+    C.Battle(p, e, FixedRng()).attack("parry")
+    assert p.max_hp - p.current_hp == max(1, plain - 4)
 
 
 def test_unknown_style_is_the_plain_hit():
@@ -158,7 +201,7 @@ def test_styles_trade_damage_for_ailments():
         p, e = hero("sword"), tough()
         C.Battle(p, e, FixedRng()).attack(style)
         dmg[style] = e.max_hp - e.hp
-    assert dmg["slash"] < dmg["strike"] and dmg["cleave"] < dmg["strike"]
+    assert dmg["slash"] < dmg["strike"] and dmg["parry"] < dmg["strike"]
     p, e = hero("sword"), tough()
     C.Battle(p, e, FixedRng(roll=50.0)).attack("slash")     # 25 + 30 > 50
     assert "bleeding" in e.statuses
@@ -168,8 +211,8 @@ def test_styles_trade_damage_for_ailments():
 
 
 def test_heavy_can_miss():
-    p, e = hero("mace"), tough()
-    C.Battle(p, e, FixedRng(roll=0.0)).attack("heavy")
+    p, e = hero("club"), tough()
+    C.Battle(p, e, FixedRng(roll=0.0)).attack("wild_swing")
     assert e.hp == e.max_hp
 
 
@@ -190,7 +233,7 @@ def test_volley_hits_every_enemy_and_flurry_hits_twice():
     p, e = hero("dagger"), tough()
     b = C.Battle(p, e, FixedRng())
     b.attack("flurry")
-    assert sum("(Flurry) hits" in line for line in b.log) == 2
+    assert sum("(Flurry) hits" in line for line in b.log) == 3
 
 
 def test_incoming_preview_and_cast_preview():

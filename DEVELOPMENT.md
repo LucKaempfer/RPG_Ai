@@ -400,16 +400,16 @@ play-testing.
   `total()`). Weapon power = 4 + 2 × level (unarmed 2); ability power = `damage` ÷ 2; bombs deal
   `damage` flat. Enemy hit = 2 × attack × 0.85-1.15 − hero `dp` / `rdp` / `mdp` (by enemy attack type)
   − Shield guard, minimum 1.
-* **Attack styles** (`combat.STYLES`, chosen under *Attack*) depend on the weapon family
-  (`combat.FAMILY_STYLES`, looked up by the level-1 id in `WEAPON_FAMILY`): blade (Strike /
-  Slash / Thrust / Cleave), dagger, spear, blunt (Smash / Crush / Daze / Heavy Swing), bow and
-  crossbow (Shot / Aimed Shot / Volley / Barbed Arrow), blowpipe, boomerang, slingshot, whip,
-  and per element a staff set (ends in Overcharge, ×1.35, 25 % fizzle) and a wand set (ends in
-  Twin Bolts, 2 × 0.55); bare hands get Punch / Kick / Haymaker. The first style is the plain
-  ×1.0 hit with the weapon's own ailment; the others use: a likelier ailment (×0.7-0.8,
-  +15-30 %), `pierce` (ignores half or all of the enemy's defense, ×0.9), `hits` (2 × 0.55),
-  `sweep` (every living enemy, ×0.55-0.6) or a big hit (×1.35-1.4, 25 % miss, no ailment). A
-  style's ailment replaces the weapon's.
+* **Attack styles** (`combat.STYLES`, chosen under *Attack*): every weapon has its own four
+  (`combat.WEAPON_STYLES`, by level-1 id; tiers share their base's set), bare hands get Punch /
+  Kick / Haymaker. E.g. bow: Shot / Aimed Shot / Volley / Barbed Arrow; dagger: Stab / Flurry /
+  Backstab / Venom Edge; fiery staff: Firebolt / Flame Wave / Meteor / Ignite. The first style
+  is the plain ×1.0 hit with the weapon's own ailment; the others use: a likelier ailment
+  (×0.4-0.8, +15-40 %), `pierce` (ignores half or all of the enemy's defense), `hits` (2-3
+  weaker hits), `sweep` (every living enemy), `exploit` (×2 on a target with an ailment),
+  `drain` (heals 50 % of the damage), `guard` (+4/+5 defense during the enemies' reply) or a big
+  hit (×1.35-1.7, 20-35 % miss). Staff and wand power spells cost 3-5 MP (`mp`) and grey out
+  without it. A style's ailment replaces the weapon's.
 * **Previews:** every attack style and damaging ability shows its min-max damage against this
   enemy, and the hero panel shows the enemy's next hit (`attack_preview`, `cast_preview`,
   `incoming_preview`).

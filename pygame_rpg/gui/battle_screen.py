@@ -8,9 +8,9 @@ use the menu's Target row to aim at another one.  Left: the hero
 battle log.  Bottom right: the menu.
 
 Menu: Attack / Abilities / Items / Run.  Attack opens the attacks the
-equipped weapon offers (a bow: Shot / Aimed Shot / Volley / Barbed
-Arrow; a sword: Strike / Slash / Thrust / Cleave; see
-``combat.FAMILY_STYLES``), Abilities the 4 ability slots with MP
+equipped weapon offers (every weapon its own four, e.g. a bow: Shot /
+Aimed Shot / Volley / Barbed Arrow; see ``combat.WEAPON_STYLES``; MP
+spells grey out without the MP), Abilities the 4 ability slots with MP
 cost and cooldown, Items the backpack's battle consumables; Back or Esc
 returns to the main menu.  Every damaging entry shows the damage it
 would deal to the target now, and the hero panel shows what all the
@@ -134,9 +134,12 @@ class BattleScreen(Screen):
             for key in b.styles():
                 st = STYLES[key]
                 lo, hi = b.attack_preview(key)
-                each = " each" if st.sweep and len(b.alive()) > 1 else ""
-                rows.append((f"{st.name} {lo}-{hi}{each}  ({st.note})",
-                             ("attack", key), True))
+                note = st.note
+                if note == "weapon ailment":
+                    weapon = self.player.equipment.get("weapon")
+                    note = getattr(weapon, "effect", "") or "plain hit"
+                rows.append((f"{st.name} {lo}-{hi}  ({note})",
+                             ("attack", key), b.can_attack(key)))
             return rows + [("Back", ("back",), True)]
         if self.mode == "abilities":
             rows = []
