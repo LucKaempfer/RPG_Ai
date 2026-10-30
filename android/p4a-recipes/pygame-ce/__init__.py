@@ -11,21 +11,19 @@ Fixes for cross-compiling on a CI runner:
   ``MAC_ARCH=arm64`` is its own switch to turn that off.
 * setup.py adds ``-Werror`` when ``CI`` is set (as on GitHub Actions),
   which an NDK build's harmless warnings would break; ``CI`` is dropped.
-* pip installs the built package with the build backend named in
-  pyproject.toml (meson-python), so that file is swapped for one naming
-  setuptools, which runs the same setup.py.
+* p4a installs a package with ``pip install .``, which would use the
+  build backend in pyproject.toml (meson-python) and rebuild for the
+  host.  Instead ``setup.py build`` builds everything (C modules and the
+  Python files) and the result is copied into site-packages, with the
+  default font that ``pygame.font.Font(None)`` needs.
 """
 
+import glob
+import shutil
 from os.path import join
 
 from pythonforandroid.recipe import CompiledComponentsPythonRecipe
 from pythonforandroid.toolchain import current_directory
-
-PYPROJECT = """\
-[build-system]
-requires = ["setuptools", "wheel", "cython<=3.1.4"]
-build-backend = "setuptools.build_meta:__legacy__"
-"""
 
 
 class PygameCeRecipe(CompiledComponentsPythonRecipe):
@@ -42,12 +40,12 @@ class PygameCeRecipe(CompiledComponentsPythonRecipe):
     hostpython_prerequisites = ["setuptools", "cython<=3.1.4"]
     call_hostpython_via_targetpython = False  # Due to setuptools
     install_in_hostpython = False
+    build_cmd = "build"           # build_ext + the pure-Python modules
+    DATA_FILES = ("freesansbold.ttf", "pygame_icon.bmp")
 
     def prebuild_arch(self, arch):
         super().prebuild_arch(arch)
         with current_directory(self.get_build_dir(arch.arch)):
-            with open("pyproject.toml", "w") as f:
-                f.write(PYPROJECT)
             with open(join("buildconfig", "Setup.Android.SDL2.in")) as f:
                 setup_template = f.read()
             env = self.get_recipe_env(arch)
@@ -85,6 +83,15 @@ class PygameCeRecipe(CompiledComponentsPythonRecipe):
             )
             with open("Setup", "w") as f:
                 f.write(setup_file)
+
+    def install_python_package(self, arch, name=None, env=None, is_dir=True):
+        target = join(self.ctx.get_python_install_dir(arch.arch), "pygame")
+        with current_directory(self.get_build_dir(arch.arch)):
+            (built,) = glob.glob(join("build", "lib.*", "pygame"))
+            shutil.rmtree(target, ignore_errors=True)
+            shutil.copytree(built, target)
+            for name in self.DATA_FILES:
+                shutil.copy(join("src_py", name), target)
 
     def get_recipe_env(self, arch, **kwargs):
         env = super().get_recipe_env(arch, **kwargs)
