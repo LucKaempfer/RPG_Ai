@@ -19,6 +19,7 @@ python -m pytest
 ## Controls
 
 * Menus: mouse, or Up / Down + Enter; Esc goes back.
+* New hero: type a name, then pick a look (Up / Down choose, Left / Right change, R random).
 * Dungeon: arrows / WASD to walk, bump into an enemy to fight, Esc returns to the Base (the run
   is kept: *Continue (Floor N)*).
 * Battle: Attack / Abilities / Items / Run.

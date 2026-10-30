@@ -13,7 +13,8 @@ Layouts (all frames are 32x32 pixels):
 * ``tileset.png``          10 x 1 grid, one tile per index (see TILE_*);
   the original stone set, kept for real art / other screens
 * ``sewer/tiles_v2.png``   20 x 1 grid, the dungeon's sewer set (SEWER_*)
-* ``player/hero_sheet.png`` 8 x 4 grid
+* hero frames (``AssetManager.hero_frames(look)``, drawn in code per
+  character look, not a file): 8 x 4 grid
     columns: 0-1 idle, 2-5 walk, 6-7 attack
     rows:    0 down, 1 up, 2 left, 3 right
 * ``enemies/<name>.png``   8 x 1 grid:
@@ -121,15 +122,16 @@ class AssetManager:
         """Return a list of frames from a sheet, row-major."""
         key = ("sheet", name, cols, rows)
         if key not in self._cache:
-            surf = self.load_image(name)
-            w, h = surf.get_size()
-            fw, fh = w // cols, h // rows
-            frames = [
-                surf.subsurface(pygame.Rect(c * fw, r * fh, fw, fh)).copy()
-                for r in range(rows)
-                for c in range(cols)
-            ]
-            self._cache[key] = frames
+            self._cache[key] = _slice(self.load_image(name), cols, rows)
+        return self._cache[key]
+
+    def hero_frames(self, look=None):
+        """The hero's frames (HERO_COLS x HERO_ROWS, row-major) drawn in
+        ``look`` (a ``Player.look`` dict).  Drawn in code and cached per
+        look; nothing is saved to disk."""
+        key = ("hero", tuple(sorted((look or {}).items())))
+        if key not in self._cache:
+            self._cache[key] = _slice(_gen_hero_sheet(look), HERO_COLS, HERO_ROWS)
         return self._cache[key]
 
     # -- placeholder generation ---------------------------------------
@@ -139,8 +141,6 @@ class AssetManager:
             return _gen_tileset()
         if name == "sewer/tiles_v2.png":
             return _gen_sewer_tiles()
-        if name == "player/hero_sheet.png":
-            return _gen_hero_sheet()
         if name.startswith("enemies/"):
             return _gen_enemy_sheet(name.rsplit("/", 1)[-1].removesuffix(".png"))
         if name.startswith("items/"):
@@ -150,6 +150,14 @@ class AssetManager:
         if name.startswith("ui/"):
             return _gen_ui(name.rsplit("/", 1)[-1].removesuffix(".png"))
         raise FileNotFoundError(f"no generator for asset: {name}")
+
+
+def _slice(surf: pygame.Surface, cols: int, rows: int):
+    """Cut a sheet into its frames, row-major."""
+    w, h = surf.get_size()
+    fw, fh = w // cols, h // rows
+    return [surf.subsurface(pygame.Rect(c * fw, r * fh, fw, fh)).copy()
+            for r in range(rows) for c in range(cols)]
 
 
 # Module-level convenience instance.
@@ -362,40 +370,90 @@ def _gen_sewer_tiles() -> pygame.Surface:
     return surf
 
 
-def _gen_hero_sheet() -> pygame.Surface:
-    """Draw a simple knight figure for every (direction, phase) cell."""
+# ---------------------------------------------------------------------------
+# Hero looks (character customization).  A look is a dict of option
+# indices, one per LOOK_OPTIONS key (``player.LOOK_KEYS``); the hero is
+# drawn from it in code, so every look gets its own frames.
+# ---------------------------------------------------------------------------
+LOOK_OPTIONS = {
+    "skin": (("Pale", (245, 216, 192)), ("Light", (235, 200, 160)),
+             ("Tan", (205, 160, 115)), ("Brown", (152, 106, 72)),
+             ("Dark", (102, 70, 50))),
+    "hair": (("Short", "short"), ("Long", "long"), ("Spiky", "spiky"),
+             ("Bald", "bald"), ("Helmet", "helmet"), ("Hood", "hood")),
+    "hair_color": (("Brown", (112, 74, 42)), ("Black", (42, 38, 38)),
+                   ("Blond", (226, 196, 112)), ("Red", (178, 72, 40)),
+                   ("Grey", (150, 150, 156)), ("White", (236, 236, 230))),
+    "tunic": (("Blue", (70, 130, 210)), ("Red", (190, 62, 60)),
+              ("Green", (72, 150, 82)), ("Purple", (132, 82, 172)),
+              ("Brown", (132, 96, 62)), ("Black", (58, 58, 68))),
+}
+LOOK_LABELS = {"skin": "Skin", "hair": "Hair", "hair_color": "Hair colour",
+               "tunic": "Tunic"}
+
+
+def look_choice(look, key):
+    """(label, value) of the option ``look`` picks for ``key`` (index
+    wraps, a missing key means the first option)."""
+    options = LOOK_OPTIONS[key]
+    return options[int((look or {}).get(key, 0)) % len(options)]
+
+
+def _shade(color, d):
+    return tuple(max(0, min(255, c + d)) for c in color)
+
+
+def _gen_hero_sheet(look=None) -> pygame.Surface:
+    """Draw the hero in ``look`` for every (direction, phase) cell."""
     surf = _new_sheet(HERO_COLS, HERO_ROWS)
     for row in range(HERO_ROWS):
         for col in range(HERO_COLS):
             px, py = col * FRAME_SIZE, row * FRAME_SIZE
-            _draw_hero_frame(surf, px, py, row, col)
+            _draw_hero_frame(surf, px, py, row, col, look or {})
     return surf
 
 
 def _draw_hero_frame(surf: pygame.Surface, px: int, py: int,
-                     direction: int, col: int):
+                     direction: int, col: int, look: dict):
     """Draw one 32x32 hero frame at (px, py) facing ``direction``."""
+    skin = look_choice(look, "skin")[1]
+    tunic = look_choice(look, "tunic")[1]
     x, y = px + 16, py + 16  # centre of the frame
     attacking = col in HERO_ATTACK_COLS
     # Bob the body slightly on alternate frames for a life-like idle/walk.
     bob = 1 if (col % 2 == 1) else 0
-    body_c = (70, 130, 210) if not attacking else (220, 180, 60)
-    pygame.draw.ellipse(surf, body_c, (x - 8, y - 4 - bob, 16, 18))  # torso
-    pygame.draw.circle(surf, (235, 200, 160), (x, y - 10 - bob), 7)  # head
-    # Helmet: arc over the head, tinted by facing direction.
-    helm = (40, 90, 160)
-    if direction == HERO_DIR_UP:
-        pygame.draw.ellipse(surf, helm, (x - 8, y - 17 - bob, 16, 12))
+    side_view = direction in (HERO_DIR_LEFT, HERO_DIR_RIGHT)
+    # Legs and boots.
+    for lx in ((x,) if side_view else (x - 3, x + 3)):
+        pygame.draw.rect(surf, (62, 54, 48), (lx - 2, y + 6, 4, 6))
+        pygame.draw.rect(surf, (46, 32, 24), (lx - 2, y + 11, 4, 3))
+    # Tunic with a belt.
+    top = y - 3 - bob
+    width = 10 if side_view else 12
+    body = pygame.Rect(x - width // 2, top, width, 11)
+    pygame.draw.rect(surf, tunic, body, border_radius=3)
+    pygame.draw.rect(surf, _shade(tunic, -50), body, 1, border_radius=3)
+    pygame.draw.line(surf, (92, 62, 36), (body.left, top + 7),
+                     (body.right - 1, top + 7), 2)
+    # Arms: both at the sides from the front / back, one from the side.
+    if side_view:
+        ax = x + (2 if direction == HERO_DIR_RIGHT else -2)
+        pygame.draw.rect(surf, _shade(tunic, -25), (ax - 1, top + 1, 3, 6))
+        pygame.draw.rect(surf, skin, (ax - 1, top + 7, 3, 2))
     else:
-        pygame.draw.arc(surf, helm, (x - 8, y - 18 - bob, 16, 14), 0, math.pi, 3)
-    # Facing marker: a small notch on the side the hero faces.
+        for ax in (x - 8, x + 6):
+            pygame.draw.rect(surf, _shade(tunic, -25), (ax, top + 1, 3, 6))
+            pygame.draw.rect(surf, skin, (ax, top + 7, 3, 2))
+    # Head.
+    hy = y - 9 - bob
+    pygame.draw.circle(surf, skin, (x, hy), 6)
+    _draw_hair(surf, x, hy, direction, look, tunic, skin)
     if direction == HERO_DIR_DOWN:
-        pygame.draw.circle(surf, (20, 20, 20), (x - 3, y - 10 - bob), 1)
-        pygame.draw.circle(surf, (20, 20, 20), (x + 3, y - 10 - bob), 1)
-    elif direction == HERO_DIR_LEFT:
-        pygame.draw.rect(surf, (20, 20, 20), (x - 8, y - 11 - bob, 4, 2))
-    elif direction == HERO_DIR_RIGHT:
-        pygame.draw.rect(surf, (20, 20, 20), (x + 4, y - 11 - bob, 4, 2))
+        for ex in (x - 2, x + 2):
+            pygame.draw.rect(surf, (25, 20, 20), (ex, hy, 1, 2))
+    elif side_view:
+        ex = x + (3 if direction == HERO_DIR_RIGHT else -4)
+        pygame.draw.rect(surf, (25, 20, 20), (ex, hy, 1, 2))
     # Attack: a slash line extending from the weapon hand.
     if attacking:
         slash = (240, 240, 240)
@@ -407,6 +465,56 @@ def _draw_hero_frame(surf: pygame.Surface, px: int, py: int,
             pygame.draw.line(surf, slash, (x - 6, y - 2), (x - 16, y - 6), 2)
         else:
             pygame.draw.line(surf, slash, (x + 6, y - 2), (x + 16, y - 6), 2)
+
+
+def _draw_hair(surf, x, hy, direction, look, tunic, skin):
+    """Hair or headgear over a head of radius 6 centred on (x, hy)."""
+    style = look_choice(look, "hair")[1]
+    color = look_choice(look, "hair_color")[1]
+    back = direction == HERO_DIR_UP
+    lean = {HERO_DIR_LEFT: 1, HERO_DIR_RIGHT: -1}.get(direction, 0)
+    if style == "bald":
+        pygame.draw.circle(surf, _shade(skin, 30), (x - 2, hy - 3), 1)
+        return
+    if style == "helmet":
+        steel = (156, 160, 170)
+        pygame.draw.ellipse(surf, steel, (x - 7, hy - 8, 14, 10 if not back else 14))
+        pygame.draw.line(surf, _shade(steel, -50), (x - 7, hy), (x + 6, hy), 1)
+        if direction == HERO_DIR_DOWN:
+            pygame.draw.line(surf, _shade(steel, -40), (x, hy), (x, hy + 3), 1)
+        return
+    if style == "hood":
+        cloth = _shade(tunic, -35)
+        pygame.draw.circle(surf, cloth, (x, hy), 7)
+        if not back:
+            # The face shows through the hood's opening.
+            fx = x - 2 * lean
+            pygame.draw.circle(surf, skin, (fx, hy + 1), 4)
+            if direction == HERO_DIR_DOWN:
+                for ex in (x - 2, x + 2):
+                    pygame.draw.rect(surf, (25, 20, 20), (ex, hy + 1, 1, 2))
+        return
+    # Hair: a cap over the top (the whole head from behind).
+    if back:
+        pygame.draw.circle(surf, color, (x, hy), 6)
+    else:
+        pygame.draw.ellipse(surf, color, (x - 6 + lean, hy - 7, 12, 6))
+        if lean:   # side view: hair covers the back of the head
+            bx = x + 2 * lean
+            pygame.draw.ellipse(surf, color, (bx - 3, hy - 6, 6, 9))
+    if style == "long":
+        if back:
+            pygame.draw.rect(surf, color, (x - 6, hy, 12, 7), border_radius=2)
+        elif lean:
+            pygame.draw.rect(surf, color, (x + 3 * lean - 2, hy - 2, 4, 9))
+        else:
+            for sx in (x - 7, x + 5):
+                pygame.draw.rect(surf, color, (sx, hy - 3, 2, 9))
+    elif style == "spiky":
+        for dx in (-5, -2, 1, 4):
+            pygame.draw.polygon(surf, color, [(x + dx - 1, hy - 4),
+                                              (x + dx + 1, hy - 10),
+                                              (x + dx + 3, hy - 4)])
 
 
 # Placeholder body colours per enemy name: (body, outline).
