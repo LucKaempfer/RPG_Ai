@@ -24,6 +24,7 @@ Layouts (all frames are 32x32 pixels):
 * ``ui/<name>.png``        single UI sprite
 * ``objects/chest.png``    2 x 1 grid: 0 closed, 1 open
 * ``objects/merchant.png`` 2 x 1 grid: idle frames of the shop keeper
+* ``objects/anvil.png``    2 x 1 grid: the forge's anvil, coals flickering
 * ``objects/props.png``    7 x 2 grid: one column per ``props.PROP_KINDS``,
   row 0 standing, row 1 broken
 """
@@ -158,6 +159,8 @@ class AssetManager:
             return _gen_props()
         if name == "objects/merchant.png":
             return _gen_merchant()
+        if name == "objects/anvil.png":
+            return _gen_anvil()
         if name.startswith("ui/"):
             return _gen_ui(name.rsplit("/", 1)[-1].removesuffix(".png"))
         raise FileNotFoundError(f"no generator for asset: {name}")
@@ -835,6 +838,31 @@ def _gen_merchant() -> pygame.Surface:
         glow = (255, 210, 110) if col == 0 else (255, 180, 80)
         pygame.draw.rect(f, glow, (23, 18, 4, 5))
         pygame.draw.rect(f, (90, 90, 96), (23, 18, 4, 5), 1)
+        surf.blit(f, (col * FRAME_SIZE, 0))
+    return surf
+
+
+def _gen_anvil() -> pygame.Surface:
+    """Two frames of an iron anvil on a stump beside a brazier of
+    coals; the coals flicker between the frames."""
+    surf = _new_sheet(2, 1)
+    iron, iron_dark, iron_light = (96, 100, 108), (56, 58, 64), (150, 154, 162)
+    for col in range(2):
+        f = pygame.Surface((FRAME_SIZE, FRAME_SIZE), pygame.SRCALPHA)
+        pygame.draw.ellipse(f, (0, 0, 0, 80), (3, 25, 26, 6))
+        pygame.draw.rect(f, (104, 70, 40), (9, 19, 12, 9))            # stump
+        pygame.draw.rect(f, (70, 46, 26), (9, 19, 12, 9), 1)
+        pygame.draw.polygon(f, iron_dark, [(4, 11), (25, 11), (22, 15), (19, 15),
+                                           (19, 19), (11, 19), (11, 15), (7, 15)])
+        pygame.draw.polygon(f, iron, [(5, 11), (24, 11), (21, 14), (8, 14)])
+        pygame.draw.polygon(f, iron, [(1, 11), (5, 11), (5, 13)])     # horn
+        pygame.draw.line(f, iron_light, (6, 11), (23, 11), 1)
+        pygame.draw.rect(f, (60, 60, 64), (24, 20, 7, 8), border_radius=2)  # brazier
+        hot = ((255, 150, 60), (255, 210, 110)) if col == 0 else ((230, 100, 40), (255, 170, 80))
+        pygame.draw.circle(f, hot[0], (27, 20), 3)
+        pygame.draw.circle(f, hot[1], (27 if col == 0 else 28, 19), 1)
+        pygame.draw.line(f, (130, 130, 136), (14, 9), (18, 5), 2)     # hammer
+        pygame.draw.rect(f, iron_dark, (16, 3, 5, 3))
         surf.blit(f, (col * FRAME_SIZE, 0))
     return surf
 

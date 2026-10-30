@@ -1,6 +1,7 @@
 """Special rooms: one room per floor for each kind in SPECIAL_KINDS (a
-shop with a merchant).  A special room is safe: no enemies, no chests
-and no props, just its keeper standing near the top wall.
+shop with a merchant, a forge with an anvil).  A special room is safe:
+no enemies, no chests and no props, just its keeper (the merchant, the
+anvil) standing near the top wall.
 
 Picked with their own RNG seeded from the floor seed, never the
 entrance or the boss's lair.
@@ -9,7 +10,7 @@ import random
 
 from .enemies import boss_room
 
-SPECIAL_KINDS = ("shop",)
+SPECIAL_KINDS = ("shop", "anvil")
 
 
 def special_rooms(dungeon, seed) -> dict:

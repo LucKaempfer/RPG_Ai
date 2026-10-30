@@ -41,8 +41,11 @@ from .config import (
     DAMAGE_VARIANCE, ABILITY_CHANCE_BONUS, LEVEL_CHANCE_BONUS, WARD_PER_LEVEL,
     BOMB_EFFECT_CHANCE, RUN_CHANCE, LOOT_CHANCE, WIN_HEAL_PCT, WIN_MP,
 )
-from .config import ENEMY_GOLD, BOSS_GOLD_MULT, ENEMY_JUNK_CHANCE
-from .items import roll_loot, roll_junk
+from .config import (
+    ENEMY_GOLD, BOSS_GOLD_MULT, ENEMY_JUNK_CHANCE, BLUEPRINT_ENEMY_CHANCE,
+)
+from .crafting import roll_blueprint
+from .items import roll_loot, roll_junk, item_by_id
 
 ONGOING, WON, LOST, FLED = "ongoing", "won", "lost", "fled"
 
@@ -113,6 +116,7 @@ class Battle:
         self.guard_turns = 0
         self.xp_gained = 0
         self.gold_gained = 0
+        self.blueprint = None     # weapon base id of a blueprint found
         self.loot = []            # items put into the backpack
         self.log = [f"A {enemy.name} appears!" if not enemy.boss
                     else f"The {enemy.name} blocks the way!"]
@@ -254,6 +258,11 @@ class Battle:
                 p.inventory.append(junk)
                 self.loot.append(junk)
                 self._say(out, f"Found: {junk.name} (junk).")
+        if e.boss or self.rng.uniform(0, 100) < BLUEPRINT_ENEMY_CHANCE:
+            self.blueprint = roll_blueprint(self.rng, p.blueprints)
+            if self.blueprint:
+                p.blueprints.append(self.blueprint)
+                self._say(out, f"Found a blueprint: {item_by_id(self.blueprint).name}!")
 
     def _lose(self, out):
         self.state = LOST

@@ -37,6 +37,17 @@ dips when a foot lands), driven by the distance walked rather than time so the f
 each footstep plays the splash sound and kicks up a few drops. The hero and enemies cast soft
 shadows, and each enemy breathes on its own beat.
 
+**Blueprints and the anvil room:** each floor also has a forge room (second special room,
+same rules as the shop) with an anvil; E next to it opens the forge screen
+(`gui/forge_screen.py`, rules in `crafting.py`). *Craft* makes the level-1 weapon of any known
+blueprint from materials (by family: blade iron 3 + wood 1, blunt iron 2 + wood 2 + stone 1,
+ranged wood 3 + cloth 2, magic wood 2 + bone 2 + cloth 1) plus 10 gold. *Upgrade* raises a
+carried weapon one tier (`sword` → `sword_2` …, up to 4) for the family's materials × the new
+level plus 15 gold × the new level; it needs that weapon's blueprint and the hero's level, and an
+equipped weapon stays equipped. Blueprints (`Player.blueprints`, weapon base ids, saved; new and
+old heroes know the Sword) drop from the boss always (one the hero doesn't know yet), enemies 10 %,
+chests 30 %, smashed props 3 % (`BLUEPRINT_*_CHANCE`). `RUN_VERSION` is 5.
+
 **Shop room:** every floor has one safe room (`special_rooms.py`: own RNG, never the entrance
 or the lair; no enemies, chests or props) with a merchant on a rug near the top wall. E next to
 them opens the shop screen (`gui/shop_screen.py`, rules in `shop.py`): health potions, rations and
@@ -44,7 +55,7 @@ mana potions at the floor's tier never run out, plus four pieces of gear rolled 
 to floor + 1) that sell out. Prices: gear base × the level's triangle number (weapon 20 / 60 /
 120 / 200), consumables 8 × level; the merchant buys junk at its value and anything else at a
 quarter of the price. The minimap marks the shop once visited. Run saves keep `shop_sold`;
-`RUN_VERSION` is 4 (the shop changes enemy, chest and prop placement).
+`RUN_VERSION` went to 4 (the shop changes enemy, chest and prop placement).
 
 **Money and junk:** every won fight pays gold (`ENEMY_GOLD` 3-8 × floor, the boss ×5) and
 has a 25 % chance of a piece of junk; smashed props hold coins (30 %, 1-4 × floor) or junk
@@ -131,13 +142,15 @@ wake up rested in the Base.
 |------|--------|-------|
 | `pygame_rpg/main.py` | ✅ M4 | State machine: `build_screen()` factory, per-event screen switching, global clock loop. `handle_update` may also return a transition; `("resume", {"screen": s})` switches back to an existing screen object (dungeon floor after a battle / level-up). The M1 dungeon demo loop was removed (recoverable from git, commit `d2a0ec2`). |
 | `pygame_rpg/config.py` | ✅ M5 | Screen 800×600 @ 60 FPS, starting stats, XP curve (`max_xp_for`), `BASE_MAX_WEIGHT = 50`, `SAVE_DIR`, rarity weights, and the **Balance** section (weapon power, enemy hit multiplier, variance, ailment bonuses, run / loot chances, post-win recovery, enemy growth, enemies per room, chests per floor). |
-| `pygame_rpg/player.py` | ✅ M3 | `Player` dataclass: base stats, XP/level-up, upgrade counts, backpack, 11 equipment slots, `bonus()`/`total()`, `max_hp`/`current_hp`/`heal()`, `look` (appearance indices, `LOOK_KEYS`), `gold`, `materials` (pouch, `MATERIALS`), `max_mp`/`current_mp`/`restore_mp()`/`can_cast()`/`spend_mp()`/`equipped_abilities()`, `slot_for`/`can_equip`/`slot_of`/`equip`/`unequip`/`drop`, `can_use`/`use`, weight, `to_dict`/`from_dict` (with old-save migration). |
+| `pygame_rpg/player.py` | ✅ M3 | `Player` dataclass: base stats, XP/level-up, upgrade counts, backpack, 11 equipment slots, `bonus()`/`total()`, `max_hp`/`current_hp`/`heal()`, `look` (appearance indices, `LOOK_KEYS`), `gold`, `materials` (pouch, `MATERIALS`), `blueprints`, `max_mp`/`current_mp`/`restore_mp()`/`can_cast()`/`spend_mp()`/`equipped_abilities()`, `slot_for`/`can_equip`/`slot_of`/`equip`/`unequip`/`drop`, `can_use`/`use`, weight, `to_dict`/`from_dict` (with old-save migration). |
 | `pygame_rpg/items.py` | 🚧 M2 | `Item` dataclass; builders `_wp`/`_arm`/`_con`/`_trinket`/`_ab` + tier helpers `_tier`/`_arm_tier`/`_con_tier`/`_trinket_tier`/`_ab_tier`; `JUNK` (`_junk`, sell `value`), `CATALOG` (222 items), `LOOT_KINDS`, `roll_junk()`; `STARTER_INVENTORY = ["sword", "potion", "fireball"]`; `item_by_id()` returns a copy. |
 | `pygame_rpg/savegame.py` | ✅ M5 | `saves/<name>.json` per character + `saves/index.json`; runs in `saves/runs/<name>.json` (`save_run` / `load_run` / `delete_run`; a broken run file reads as no run); `_safe_name()` validates names (`^[\w .-]{1,20}$`), index self-prunes missing files; `_resolve()` turns saved item refs (id or `{"id", "charges"}`) into items. |
 | `pygame_rpg/gui/screen.py` | ✅ M3 | `Screen` base class, `Button`, cached `font()`, shared palette, `QUIT` sentinel. |
 | `pygame_rpg/gui/*.py` (8 screens) | ✅ M3 | `title_screen`, `tutorial_screen`, `hero_maker`, `hero_chooser`, `base_screen`, `inventory_screen`, `stats_screen`, `level_up_screen` (takes `return_to`: resume a dungeon floor instead of the Base). |
 | `pygame_rpg/dungeon.py` | ✅ M4 | Seeded generation (private `rng`, same seed = same floor): 60 × 44 tiles, up to 13 rooms with `ROOM_GAP` free tiles between them; rooms are linked by a minimum spanning tree over wall-to-wall gaps (shortest corridors that still reach every room) with A*-routed corridors from a door on the wall facing the target to a door on the target, never entering another room or the ring around it, so walls stay solid and every door is a single tile (one door per wall, reused). `door_outside()` gives the corridor cell outside a door. `visible_from()` (line of sight), `is_walkable()`, `spawn_point()`, sewer-tileset rendering (`sewer/tiles_v2.png`, doorways drawn as a thin gate on the corridor side, per-cell variants cached in `_tile_cache`) with camera offset, fog (`seen` cells + their walls), dimming outside `visible`, `overrides` for the manhole stairs, minimap of visited rooms + walked corridors. |
 | `pygame_rpg/special_rooms.py` | ✅ | `SPECIAL_KINDS`, `special_rooms(dungeon, seed)` (kind → room, own RNG), `keeper_cell(room)` (interior, clear of doors and the centre). |
+| `pygame_rpg/crafting.py` | ✅ | `BLUEPRINTS`, `RECIPES` by `family()`, `base_id()`, `craft_cost` / `can_craft` / `craft`, `upgrade_cost` / `can_upgrade` / `upgrade` (in place), `upgradeable()`, `roll_blueprint()`; no drawing. |
+| `pygame_rpg/gui/forge_screen.py` | ✅ | `ForgeScreen(player, return_to)`: Craft / Upgrade tabs, cost panel (green / red per material), keyboard + mouse. |
 | `pygame_rpg/shop.py` | ✅ | `price()`, `sell_price()`, `roll_stock(seed, floor)`, `buy(player, stock, sold, index)`, `sell(player, item)`; no drawing. |
 | `pygame_rpg/gui/shop_screen.py` | ✅ | `ShopScreen(player, stock, sold, return_to)`: goods and backpack side by side, keyboard + mouse, saves the hero after each trade. |
 | `pygame_rpg/props.py` | ✅ | `Prop` (kind, cell, broken, hp; `solid` while standing, `hit()`), `PROP_HP`, `PROP_MATERIALS`, `salvage()`, `PROP_KINDS` (sheet order), `edge_cells()`, `place_props(dungeon, seed)` with its own `Random(f"props-{seed}")`. |
@@ -188,6 +201,7 @@ pygame_rpg/
 ├── props.py           # room clutter (barrels, crates, pots...) and its placement
 ├── special_rooms.py   # the floor's shop room and where its keeper stands
 ├── shop.py            # prices, stock, buy / sell rules
+├── crafting.py        # blueprints, crafting and upgrading weapons at the anvil
 ├── combat.py          # turn-based battle rules: damage, ailments, cooldowns, XP, loot
 ├── audio.py           # synthesised sound effects + sewer ambience, play()/set_ambience()
 ├── gui/
@@ -211,6 +225,7 @@ tests/
 ├── test_dungeon.py        # no overlap, connectivity, seeding, boss + entrance rules
 ├── test_saves.py          # player + run round trips, migration, broken run file
 ├── test_gui.py            # keyboard menus, particles, battle end animations, enemy sheets
+├── test_crafting.py       # families, blueprints in saves / drops, craft, upgrade, anvil room, forge screen
 ├── test_shop.py           # safe shop room, merchant, prices, stock, buying / selling, saves
 ├── test_money.py          # gold per win / floor, junk drops, saves, coins and junk in props
 ├── test_props.py          # props on edges away from doors, nothing cut off, seeded, blocking
@@ -257,7 +272,7 @@ name a group (`player.SLOT_GROUPS`) and take the first free slot of it. Equippin
 equipped even above the gate.
 
 **Saves** (`saves/<name>.json`): `name, lvl, xp, hp, current_hp, ap, rap, map, dp, rdp, mdp,
-current_mp, lvl_up_counts, look {skin, hair, hair_color, tunic: option index}, gold, materials {wood, iron, cloth, bone, stone: count}, equipment {slot: ref | null}, inventory [ref, ...]`. A `ref` is an item id, or
+current_mp, lvl_up_counts, look {skin, hair, hair_color, tunic: option index}, gold, materials {wood, iron, cloth, bone, stone: count}, blueprints [weapon base id, ...], equipment {slot: ref | null}, inventory [ref, ...]`. A `ref` is an item id, or
 `{"id": ..., "charges": n}` for a consumable with used charges.
 **Old saves keep loading:** a missing `current_hp` / `current_mp` means full HP / MP, a missing `look` the default look; legacy slot `accessory` maps
 to `trinket1`; an item in an unknown slot (e.g. the old `armor` slot) or a slot it doesn't fit
@@ -540,4 +555,7 @@ with the HUD active.
 * **Food:** rations are currently a weaker, multi-use heal. Make them heal over time or give a
   temporary buff instead?
 * **Overload:** should exceeding `max_weight` block pickups only, or also slow movement?
-* **Base content:** shop or crafting later? The hub screen can host extra buttons.
+* **Base content:** the shop and the anvil live in the dungeon (one room each per floor). Add
+  them to the Base too, or keep them as a reason to explore?
+* **Armor crafting:** blueprints and the anvil cover weapons only; armor could follow the same
+  pattern (`crafting.RECIPES` per slot).

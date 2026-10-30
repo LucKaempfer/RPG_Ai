@@ -13,6 +13,7 @@ what is left to cast abilities with.
 """
 from dataclasses import dataclass, field
 
+from .crafting import BLUEPRINTS, STARTER_BLUEPRINTS
 from .config import (
     START_LEVEL, START_XP, START_HP, START_AP, START_RAP, START_MAP,
     START_DP, START_RDP, START_MDP, START_MP, MP_PER_LEVEL,
@@ -77,6 +78,8 @@ class Player:
     gold: int = 0
     # Crafting materials in the pouch: MATERIALS -> count (no weight).
     materials: dict = field(default_factory=dict)
+    # Weapon blueprints learned (weapon base ids, see crafting.py).
+    blueprints: list = field(default_factory=lambda: list(STARTER_BLUEPRINTS))
 
     def __post_init__(self):
         for slot in EQUIP_SLOTS:
@@ -315,6 +318,7 @@ class Player:
             "look": dict(self.look),
             "gold": self.gold,
             "materials": dict(self.materials),
+            "blueprints": list(self.blueprints),
             "equipment": {slot: ref(item)
                           for slot, item in self.equipment.items()},
             "inventory": [ref(i) for i in self.inventory],
@@ -328,7 +332,8 @@ class Player:
         Migrates saves from before the M2 wiring: legacy slot names are
         renamed, and items in unknown slots or in a slot they don't fit
         go back to the backpack.  A save without a ``look`` gets the
-        default look, one without ``materials`` an empty pouch.  A missing ``current_hp`` /
+        default look, one without ``materials`` an empty pouch, one without ``blueprints``
+        the starter blueprints.  A missing ``current_hp`` /
         ``current_mp`` means full HP / MP.
         """
         p = cls(
@@ -345,6 +350,9 @@ class Player:
         )
         p.lvl_up_counts.update(data.get("lvl_up_counts", {}))
         p.gold = max(0, int(data.get("gold", 0)))
+        known = data.get("blueprints")
+        if isinstance(known, list):
+            p.blueprints = [b for b in known if b in BLUEPRINTS]
         mats = data.get("materials", {})
         if isinstance(mats, dict):
             p.materials.update({k: max(0, v) for k, v in mats.items()
