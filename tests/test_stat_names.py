@@ -20,9 +20,12 @@ def test_stat_line_uses_friendly_names():
 
 @pytest.fixture(scope="module")
 def display():
+    from pygame_rpg.gui import screen
+    screen._FONTS.clear()       # fonts cached before another module's pygame.quit()
     pygame.init()
     yield pygame.display.set_mode((800, 600))
     pygame.quit()
+    screen._FONTS.clear()       # don't leave dead fonts for the next module
 
 
 def test_stat_screens_render(display, saves):
