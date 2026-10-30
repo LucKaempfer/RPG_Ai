@@ -169,6 +169,7 @@ wake up rested in the Base.
 | `pygame_rpg/crafting.py` | ✅ | `BLUEPRINTS` (weapon + armour bases), `RECIPES` by `family()` (incl. `leather` / `iron` armour), `base_id()`, `craft_cost` / `can_craft` / `craft`, `upgrade_cost` / `can_upgrade` / `upgrade` (in place), `upgradeable()`, `roll_blueprint()`; no drawing. |
 | `pygame_rpg/gui/forge_screen.py` | ✅ | `ForgeScreen(player, return_to)`: Craft / Upgrade tabs, cost panel (green / red per material), keyboard + mouse. |
 | `pygame_rpg/shop.py` | ✅ | `price()`, `sell_price()`, `roll_stock(seed, floor)`, `buy(player, stock, sold, index)`, `sell(player, item)`; no drawing. |
+| `pygame_rpg/classes.py` | ✅ | Hero classes picked in the hero maker (stage after the name): Warrior, Archer, Mage, Rogue (`CLASSES`, `HeroClass`: stats, `mp_bonus`, starter `kit`, `gold`, `blueprints`). All share the 30-point combat budget of the old flat 5s. `make_hero()` builds the level-1 hero with the kit's weapon and ability equipped. `Player.hero_class` is saved; old saves have "" (shown as Adventurer, old stats). |
 | `pygame_rpg/stat_names.py` | ✅ | Player-facing stat names: `LABEL` ("Melee Attack"), `SHORT` ("Melee Atk"), `ABOUT` (one-line description), `ATTACK` / `DEFENSE` per attack type, `stat_line(item)`. Screens never show the code keys (`ap`, `rdp` …); saves keep them. |
 | `pygame_rpg/gui/shop_screen.py` | ✅ | `ShopScreen(player, stock, sold, return_to)`: goods and backpack side by side, keyboard + mouse, saves the hero after each trade. A details strip under the lists shows the selected item's kind, level, weight, description and, for gear, its stats against what the hero wears in that slot (`stat_names.stat_diffs`, weapons include their power). |
 | `pygame_rpg/props.py` | ✅ | `Prop` (kind, cell, broken, hp; `solid` while standing, `hit()`), `PROP_HP`, `PROP_MATERIALS`, `salvage()`, `PROP_KINDS` (sheet order), `edge_cells()`, `place_props(dungeon, seed)` with its own `Random(f"props-{seed}")`. |
@@ -360,7 +361,11 @@ close / Adventure; in the dungeon on floor entry, after each battle, on Esc and 
   for 3 turns). Each has an MP cost and a cooldown in turns. Tiers: damage +10, heal +15,
   guard +2, MP cost +2 per level; the level gate unlocks them. Cooldown tracking belongs to
   `combat.py` (battle state, not saved).
-* **Starter kit:** `sword` + `potion` + `fireball` (V3 started empty).
+* **Starter kit:** by class (`classes.py`): Warrior sword + potion + Power Strike, Archer bow + potion
+  + Piercing Shot, Mage fiery wand + potion + mana potion + Fireball (+10 MP), Rogue dagger + potion +
+  poison bomb + Shield + 30 gold. Starting stats per class (Warrior 120 HP, ap 8 / dp 8; Archer 95 HP,
+  rap 9 / rdp 7; Mage 85 HP, map 10 / mdp 8; Rogue 100 HP, ap 7 / rap 6). `STARTER_INVENTORY` is the
+  pre-class kit (V3 started empty).
 
 **Combat (M4, `combat.py` / `enemies.py`).** Design calls made without V3 guidance; tune after
 play-testing.

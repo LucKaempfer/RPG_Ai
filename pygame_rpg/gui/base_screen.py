@@ -17,6 +17,7 @@ to the title screen.
 import pygame
 
 from ..assets import AssetManager, gear_of
+from ..classes import class_name
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, RUN_VERSION, max_xp_for
 from ..savegame import save_player, load_run, delete_run
 from ..stat_names import TYPES, ATTACK, DEFENSE
@@ -153,7 +154,7 @@ class BaseScreen(Screen):
         surface.blit(self.portrait, (45, 100))
         name = font(28).render(p.name, True, TEXT_COLOR)
         surface.blit(name, name.get_rect(midtop=(panel.centerx, 245)))
-        lvl = font(22).render(f"Level {p.lvl}", True, DIM_TEXT)
+        lvl = font(22).render(f"Level {p.lvl} {class_name(p)}", True, DIM_TEXT)
         surface.blit(lvl, lvl.get_rect(midtop=(panel.centerx, 278)))
 
         # XP bar.
