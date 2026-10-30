@@ -82,7 +82,8 @@ def build_screen(name, display, kwargs=None):
         if name == "forge":
             return ForgeScreen(display, player, return_to=kwargs.get("return_to"))
         if name == "battle":
-            return BattleScreen(display, player, kwargs["enemy"],
+            return BattleScreen(display, player,
+                                kwargs.get("enemies") or kwargs["enemy"],
                                 kwargs["dungeon"])
         if name == "dungeon":
             return DungeonScreen(display, player,

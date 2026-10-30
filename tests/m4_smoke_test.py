@@ -260,14 +260,20 @@ target = r[1]["enemy"]
 bs = build_screen("battle", screen, r[1]); ok(isinstance(bs, BattleScreen), "battle screen built")
 bs.draw(screen)
 hero.xp = hero.max_xp - 1                     # next win levels up
+foes = r[1]["enemies"]
+ok(target in foes and all(ds.dungeon.get_room_at(E.cell_of(f)) is ds.dungeon.get_room_at(E.cell_of(target))
+                          for f in foes), "everyone in the room joins the fight")
 for _ in range(60):
     if bs.battle.state != C.ONGOING:
         break
-    target.hp = min(target.hp, 1)
-    res = press(bs, pygame.K_RETURN)          # focus 0 = Attack
+    for f in foes:
+        f.hp = min(f.hp, 1)
+    if bs.mode == "main":                     # aim the cursor at Attack
+        bs.focus = next(i for i, (_, a, _) in enumerate(bs.buttons) if a == ("mode", "attack"))
+    res = press(bs, pygame.K_RETURN)
 ok(bs.battle.state == C.WON, "won through the menu")
 ok(any(t.startswith("-") for t, *_ in bs.pops), "damage numbers pop up")
-bs.handle_update(5.0); ok(not bs.pops and bs.hurt_t == 0, "pops and flashes fade")
+bs.handle_update(5.0); ok(not bs.pops and not bs.hurt_t, "pops and flashes fade")
 bs.draw(screen)
 res = press(bs, pygame.K_RETURN)              # Continue
 ok(res[0] == "resume" and res[1]["screen"] is ds,

@@ -160,3 +160,73 @@ def test_incoming_preview_and_cast_preview():
     hp = e.hp
     b.cast(fb)
     assert lo <= hp - e.hp <= hi              # roll 99.9: no burning tick
+
+
+# -- fights against several enemies -------------------------------------------
+
+def group(*kinds, hp=999):
+    foes = [E.make_enemy(E.ENEMY_TYPES[k], 1) for k in kinds]
+    for f in foes:
+        f.hp = f.max_hp = hp
+    return foes
+
+
+def test_group_gets_letters_and_one_intro_line():
+    b = C.Battle(hero("sword"), group("slime", "slime", "bat"), FixedRng())
+    assert [b.name_of(e) for e in b.enemies] == ["Slime A", "Slime B", "Bat"]
+    assert b.log == ["Slime A, Slime B and Bat attack!"]
+
+
+def test_attack_hits_only_the_target_and_everyone_hits_back():
+    p = hero("sword")
+    foes = group("slime", "bat")
+    b = C.Battle(p, foes, FixedRng())
+    assert b.set_target(1) and b.enemy is foes[1]
+    b.attack()
+    assert foes[0].hp == foes[0].max_hp and foes[1].hp < foes[1].max_hp
+    taken = sum(max(1, 2 * f.attack - p.total("dp")) for f in foes)
+    assert p.max_hp - p.current_hp == taken
+    lo, hi = b.incoming_preview()               # both hits, summed
+    assert lo == sum(max(1, round(2 * f.attack * 0.85) - p.total("dp")) for f in foes)
+    assert hi == sum(max(1, round(2 * f.attack * 1.15) - p.total("dp")) for f in foes)
+
+
+def test_target_moves_on_when_it_falls_and_win_needs_everyone():
+    p = hero("sword")
+    foes = group("slime", "bat", hp=1)
+    foes[1].hp = foes[1].max_hp = 999
+    b = C.Battle(p, foes, FixedRng())
+    b.attack()                                   # the slime falls
+    assert not foes[0].alive and b.state == C.ONGOING
+    assert b.enemy is foes[1] and "The Slime falls!" in b.log
+    assert not b.set_target(0)                   # can't aim at the fallen
+    foes[1].hp = 1
+    b.attack()
+    assert b.state == C.WON
+    assert b.xp_gained == foes[0].xp + foes[1].xp
+
+
+def test_cycle_target_skips_the_fallen():
+    foes = group("slime", "rat", "bat")
+    b = C.Battle(hero(), foes, FixedRng())
+    foes[1].hp = 0
+    b.cycle_target(1)
+    assert b.enemy is foes[2]
+    b.cycle_target(1)
+    assert b.enemy is foes[0]
+    b.cycle_target(-1)
+    assert b.enemy is foes[2]
+
+
+def test_group_gold_adds_up_and_no_running_from_a_boss_group():
+    p = hero("sword")
+    foes = group("slime", "bat", hp=1)
+    b = C.Battle(p, foes, random.Random(3))
+    while b.state == C.ONGOING:
+        for f in foes:
+            f.hp = min(f.hp, 1)
+        b.attack()
+    assert b.state == C.WON and p.gold == b.gold_gained > 0
+    boss = E.make_enemy(E.BOSS_TYPE, 1, boss=True)
+    b = C.Battle(hero(), [boss] + group("rat"), FixedRng(0.0))
+    assert b.run() == ["You can't run from this fight!"]

@@ -362,10 +362,13 @@ close / Adventure; in the dungeon on floor entry, after each battle, on Esc and 
 **Combat (M4, `combat.py` / `enemies.py`).** Design calls made without V3 guidance; tune after
 play-testing.
 
-* **Flow:** stepping into a room where enemies stand starts a battle with the nearest one at
-  once, then the next, until the room is clear (play-test round 1: bumping let you walk around
-  enemies). Each hero action (Attack / ability / item / Run) is
-  followed by the enemy's turn. Ailments tick at the start of the afflicted side's turn; ability
+* **Flow:** stepping into a room where enemies stand starts one battle against all of them at
+  once (play-test round 1: bumping let you walk around enemies). The hero aims at one target
+  (nearest first; tap an enemy, Left / Right, or the menu's *Target* row to switch; it moves on
+  when the target falls); attacks, abilities and bombs hit the target only. Same-named enemies
+  get letters (Slime A / Slime B). Each hero action (Attack / ability / item / Run) is
+  followed by every living enemy's turn; the hero panel shows their hits summed. XP is the sum,
+  gold / loot / junk are rolled per enemy (at most one blueprint per fight). Ailments tick at the start of the afflicted side's turn; ability
   cooldowns and the Shield count down at the end of each round (cooldown 2 = usable again two
   turns after the cast).
 * **Damage:** hero hit = (stat + power) × 0.85-1.15 − enemy defense, minimum 1. The stat follows
