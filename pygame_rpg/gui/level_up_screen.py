@@ -16,6 +16,8 @@ from .. import audio
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, MP_PER_LEVEL, max_xp_for
 from ..player import UPGRADABLE_STATS
 from ..savegame import save_player
+from ..stat_names import LABEL, ABOUT
+from .inventory_screen import _wrap
 from .base_screen import pending_levels
 from .effects import Particles, menu_key
 from .screen import (
@@ -54,7 +56,7 @@ class LevelUpScreen(Screen):
         p = self.player
         for stat, btn in self.stat_buttons.items():
             btn.label = (
-                f"{stat.upper()}  {getattr(p, stat)}  "
+                f"{LABEL[stat]}  {getattr(p, stat)}  "
                 f"(raised {p.lvl_up_counts.get(stat, 0)}x)")
 
     def _bank(self, stat):
@@ -127,6 +129,16 @@ class LevelUpScreen(Screen):
         surface.blit(xpt, xpt.get_rect(midtop=(SCREEN_WIDTH // 2, 96)))
         for btn in self.stat_buttons.values():
             btn.draw(surface, hot=(btn is self.hot))
+        # What each stat does, beside its button (readable on touch
+        # screens too, where nothing hovers).
+        for stat, btn in self.stat_buttons.items():
+            color = TEXT_COLOR if btn is self.hot else DIM_TEXT
+            lines = _wrap(ABOUT[stat], 17, 370)[:2]
+            y = btn.rect.centery - 8 * len(lines)
+            for line in lines:
+                img = font(17).render(line, True, color)
+                surface.blit(img, img.get_rect(topright=(btn.rect.x - 14, y)))
+                y += 16
         self.fx.draw(surface)
         hint = font(18).render(
             "Pick a stat to raise (+1), mouse or Up/Down + Enter.  Esc: "

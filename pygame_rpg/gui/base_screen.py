@@ -19,13 +19,13 @@ import pygame
 from ..assets import AssetManager, gear_of
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, RUN_VERSION, max_xp_for
 from ..savegame import save_player, load_run, delete_run
+from ..stat_names import TYPES, ATTACK, DEFENSE
 from .effects import menu_key
 from .screen import (
     QUIT, Screen, Button, font,
     BG_COLOR, PANEL_COLOR, TEXT_COLOR, DIM_TEXT, GOLD, BORDER_COLOR,
 )
 
-STATS = ("hp", "ap", "rap", "map", "mp", "dp", "rdp", "mdp")
 
 
 def pending_levels(player) -> int:
@@ -169,19 +169,22 @@ class BaseScreen(Screen):
         xpt = font(18).render(f"XP {p.xp} / {p.max_xp}", True, DIM_TEXT)
         surface.blit(xpt, xpt.get_rect(midtop=(panel.centerx, 324)))
 
-        # Stats in two columns.
-        y0, rowh, cx = 365, 30, panel.centerx
-        for i, stat in enumerate(STATS):
-            col, row = divmod(i, 4)
-            label = font(20).render(stat.upper(), True, DIM_TEXT)
-            shown = (f"{p.current_hp}/{p.max_hp}" if stat == "hp"
-                     else f"{p.current_mp}/{p.max_mp}" if stat == "mp"
-                     else str(p.total(stat)))
-            value = font(20).render(shown, True, TEXT_COLOR)
-            x = cx - 60 + col * 120
-            surface.blit(label, label.get_rect(midright=(x, y0 + row * rowh)))
-            surface.blit(value, value.get_rect(
-                midleft=(x + 8, y0 + row * rowh)))
+        # Health and mana, then attack / defense per type as a table.
+        cx = panel.centerx
+        hm = font(20).render(f"Health {p.current_hp}/{p.max_hp}     "
+                             f"Mana {p.current_mp}/{p.max_mp}", True, TEXT_COLOR)
+        surface.blit(hm, hm.get_rect(midtop=(cx, 350)))
+        cols = (cx + 30, cx + 110)
+        for x, head in zip(cols, ("Attack", "Defense")):
+            img = font(18).render(head, True, DIM_TEXT)
+            surface.blit(img, img.get_rect(midtop=(x, 378)))
+        for row, kind in enumerate(TYPES):
+            y = 400 + row * 24
+            label = font(20).render(kind.capitalize(), True, DIM_TEXT)
+            surface.blit(label, label.get_rect(topright=(cx - 30, y)))
+            for x, stat in zip(cols, (ATTACK[kind], DEFENSE[kind])):
+                img = font(20).render(str(p.total(stat)), True, TEXT_COLOR)
+                surface.blit(img, img.get_rect(midtop=(x, y)))
         wt = font(18).render(
             f"Weight {p.weight} / {p.max_weight}    Gold {p.gold}", True, DIM_TEXT)
         surface.blit(wt, wt.get_rect(midbottom=(panel.centerx, panel.bottom - 12)))

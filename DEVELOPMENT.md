@@ -168,6 +168,7 @@ wake up rested in the Base.
 | `pygame_rpg/crafting.py` | ✅ | `BLUEPRINTS` (weapon + armour bases), `RECIPES` by `family()` (incl. `leather` / `iron` armour), `base_id()`, `craft_cost` / `can_craft` / `craft`, `upgrade_cost` / `can_upgrade` / `upgrade` (in place), `upgradeable()`, `roll_blueprint()`; no drawing. |
 | `pygame_rpg/gui/forge_screen.py` | ✅ | `ForgeScreen(player, return_to)`: Craft / Upgrade tabs, cost panel (green / red per material), keyboard + mouse. |
 | `pygame_rpg/shop.py` | ✅ | `price()`, `sell_price()`, `roll_stock(seed, floor)`, `buy(player, stock, sold, index)`, `sell(player, item)`; no drawing. |
+| `pygame_rpg/stat_names.py` | ✅ | Player-facing stat names: `LABEL` ("Melee Attack"), `SHORT` ("Melee Atk"), `ABOUT` (one-line description), `ATTACK` / `DEFENSE` per attack type, `stat_line(item)`. Screens never show the code keys (`ap`, `rdp` …); saves keep them. |
 | `pygame_rpg/gui/shop_screen.py` | ✅ | `ShopScreen(player, stock, sold, return_to)`: goods and backpack side by side, keyboard + mouse, saves the hero after each trade. |
 | `pygame_rpg/props.py` | ✅ | `Prop` (kind, cell, broken, hp; `solid` while standing, `hit()`), `PROP_HP`, `PROP_MATERIALS`, `salvage()`, `PROP_KINDS` (sheet order), `edge_cells()`, `place_props(dungeon, seed)` with its own `Random(f"props-{seed}")`. |
 | `pygame_rpg/enemies.py` | ✅ M4 | `EnemyType` (frozen data) for slime, bat, goblin, skeleton + `BOSS_TYPE`; `make_enemy()` scales per floor; `boss_room()` (farthest from room 0); `place_enemies()` with the dungeon's rng. |
@@ -318,7 +319,8 @@ close / Adventure; in the dungeon on floor entry, after each battle, on Esc and 
   refills HP and MP (leaving the dungeon, defeat).
 * **Stats** (from V3): `hp`, plus six combat stats `ap` (melee attack), `rap` (ranged attack;
   `config.py` comments call it "raw"), `map` (magic attack), `dp`, `rdp`, `mdp` (matching
-  defences). Start: level 1, 0 XP, 100 HP, 5 in each combat stat.
+  defences). The player sees them as Health, Melee / Ranged / Magic Attack and
+  Melee / Ranged / Magic Defense (`stat_names.py`), with a description on the stats and level-up screens. Start: level 1, 0 XP, 100 HP, 5 in each combat stat.
 * **XP:** `max_xp = level × 100`. Level-up triggers at `xp >= max_xp` (V3 used strict `>`);
   leftover XP carries over, multiple level-ups can be pending. Each level-up gives +1 to one
   chosen stat (any of the seven) and increments `lvl_up_counts[stat]`.

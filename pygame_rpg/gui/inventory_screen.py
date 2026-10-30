@@ -47,6 +47,7 @@ RARITY_COLOR = {
 }
 
 from ..player import EQUIP_SLOTS as SLOTS
+from ..stat_names import LABEL
 DIFF_STATS = ("hp", "ap", "rap", "map", "dp", "rdp", "mdp")
 SLOT_LABELS = {"trinket1": "trinket", "trinket2": "trinket",
                "ability1": "skill 1", "ability2": "skill 2",
@@ -282,8 +283,8 @@ class InventoryScreen(Screen):
         head = font(22).render("Backpack", True, TEXT_COLOR)
         surface.blit(head, (36, 70))
         wt = font(18).render(
-            f"{p.weight} / {p.max_weight} kg    HP {p.current_hp} / {p.max_hp}"
-            f"    MP {p.current_mp} / {p.max_mp}",
+            f"{p.weight} / {p.max_weight} kg    Health {p.current_hp} / {p.max_hp}"
+            f"    Mana {p.current_mp} / {p.max_mp}",
             True, DIM_TEXT)
         surface.blit(wt, wt.get_rect(
             midbottom=(self.backpack.centerx, self.backpack.bottom - 10)))
@@ -370,7 +371,7 @@ class InventoryScreen(Screen):
                 color = (GOOD if new > old else
                          BAD if new < old else TEXT_COLOR)
                 txt = font(18).render(
-                    f"{stat.upper():>3}  {old} -> {new}", True, color)
+                    f"{LABEL[stat]}  {old} -> {new}", True, color)
                 surface.blit(txt, (500, y))
                 y += 22
             if p.slot_of(sel) is not None:
