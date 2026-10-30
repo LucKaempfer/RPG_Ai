@@ -560,7 +560,7 @@ def _draw_hero_frame(surf: pygame.Surface, px: int, py: int,
     # Head (bobs with the body, a pixel less than the torso).
     hy = y - 10 + bob
     pygame.draw.circle(surf, skin, (x, hy), 6)
-    _draw_hair(surf, x, hy, direction, look, tunic, skin)
+    _draw_hair(surf, x, hy, direction, look, tunic, skin, covered=head is not None)
     if head == "iron":                          # an iron helmet over the hair
         steel = GEAR_COLORS["iron"][0]
         pygame.draw.ellipse(surf, steel, (x - 7, hy - 8, 14, 10 if direction != HERO_DIR_UP else 14))
@@ -590,8 +590,77 @@ def _draw_hero_frame(surf: pygame.Surface, px: int, py: int,
             pygame.draw.line(surf, slash, (x + 6, y - 2), (x + 16, y - 6), 2)
 
 
-def _draw_hair(surf, x, hy, direction, look, tunic, skin):
-    """Hair or headgear over a head of radius 6 centred on (x, hy)."""
+# Spiky hair as pixel masks, one row per line from the top of the head
+# (hy - 6; the frame's top row when the head bobs up, so nothing may
+# reach higher) and one column per pixel from x - 8 (the head itself
+# covers columns 2 to 13).  "#" is the hair,
+# "+" its dark shade (the gaps between spikes over the head), "." is
+# left alone.  The side view faces right; facing left mirrors it.
+SPIKY_FRONT = (".#..#.+##+.#..#..",
+               ".##.##+##+##.##..",
+               ".##############..",
+               "..############...",
+               "..#.#.#..#.#.#...")
+SPIKY_BACK = (".#..#.+##+.#..#..",
+              ".##.##+##+##.##..",
+              ".##+##+##+##+##..",
+              "..############...",
+              "..############...",
+              "..############...",
+              "..############...",
+              "..############...",
+              "...##########....",
+              "...##########....",
+              "....#.####.#.....")
+SPIKY_SIDE = ("..#...#+++#......",
+              ".###.###+###.....",
+              "#############....",
+              ".############....",
+              ".#########.#.....",
+              "#########........",
+              ".#######.........",
+              "..######.........",
+              ".######..........",
+              "...###...........")
+# Under a helmet or cap only tufts show, poking out below the brim.
+SPIKY_COVERED_FRONT = ("#..............#.",
+                       ".#............#..")
+SPIKY_COVERED_SIDE = ("##...............",
+                      ".#...............",
+                      "#................")
+
+
+def _blit_mask(surf, mask, x, top, color, dark, mirror=False):
+    """Paint a hair mask (see SPIKY_FRONT) with column 0 at x - 8 (or
+    x + 7, counting leftwards, when ``mirror``: the head spans x - 6 to
+    x + 5) and row 0 at ``top``."""
+    for r, line in enumerate(mask):
+        for c, ch in enumerate(line):
+            if ch == ".":
+                continue
+            px = x + 7 - c if mirror else x - 8 + c
+            if 0 <= px < surf.get_width() and 0 <= top + r < surf.get_height():
+                surf.set_at((px, top + r), color if ch == "#" else dark)
+
+
+def _draw_spiky(surf, x, hy, direction, color, covered):
+    # Black hair would shade to holes, so it gets lighter gaps instead.
+    dark = _shade(color, -45 if sum(color) > 240 else 35)
+    mirror = direction == HERO_DIR_LEFT
+    side = direction in (HERO_DIR_LEFT, HERO_DIR_RIGHT)
+    if covered:
+        if side:
+            _blit_mask(surf, SPIKY_COVERED_SIDE, x, hy - 1, color, dark, mirror)
+        else:
+            _blit_mask(surf, SPIKY_COVERED_FRONT, x, hy - 1, color, dark)
+        return
+    mask = SPIKY_SIDE if side else SPIKY_BACK if direction == HERO_DIR_UP else SPIKY_FRONT
+    _blit_mask(surf, mask, x, hy - 6, color, dark, mirror)
+
+
+def _draw_hair(surf, x, hy, direction, look, tunic, skin, covered=False):
+    """Hair or headgear over a head of radius 6 centred on (x, hy);
+    ``covered`` means a helmet or cap from the gear goes on top."""
     style = look_choice(look, "hair")[1]
     color = look_choice(look, "hair_color")[1]
     back = direction == HERO_DIR_UP
@@ -617,6 +686,9 @@ def _draw_hair(surf, x, hy, direction, look, tunic, skin):
                 for ex in (x - 2, x + 2):
                     pygame.draw.rect(surf, (25, 20, 20), (ex, hy + 1, 1, 2))
         return
+    if style == "spiky":
+        _draw_spiky(surf, x, hy, direction, color, covered)
+        return
     # Hair: a cap over the top (the whole head from behind).
     if back:
         pygame.draw.circle(surf, color, (x, hy), 6)
@@ -633,11 +705,6 @@ def _draw_hair(surf, x, hy, direction, look, tunic, skin):
         else:
             for sx in (x - 7, x + 5):
                 pygame.draw.rect(surf, color, (sx, hy - 3, 2, 9))
-    elif style == "spiky":
-        for dx in (-5, -2, 1, 4):
-            pygame.draw.polygon(surf, color, [(x + dx - 1, hy - 4),
-                                              (x + dx + 1, hy - 10),
-                                              (x + dx + 3, hy - 4)])
 
 
 # Placeholder body colours per enemy name: (body, outline).

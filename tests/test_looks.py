@@ -55,6 +55,18 @@ def test_each_look_draws_its_own_frames(display):
         assert a.hero_frames({"hair": style})                       # every style draws
 
 
+def test_spiky_hair_fits_the_frame_and_shows_spikes(display):
+    a = AssetManager()
+    brown = LOOK_OPTIONS["hair_color"][0][1]
+    spiky = a.hero_frames({"hair": 2})
+    # Idle, facing down and up: the head bobs to the frame's top row, so
+    # the spike tips must land there as separate points, not be cut off.
+    for frame in (spiky[0], spiky[HERO_COLS]):
+        row = "".join("#" if frame.get_at((c, 0))[:3] == brown else "."
+                      for c in range(32))
+        assert len([run for run in row.split(".") if run]) >= 4, row
+
+
 def test_hero_maker_look_stage(display, saves):
     from pygame_rpg.gui.hero_maker import HeroMakerScreen
     h = HeroMakerScreen(display)
