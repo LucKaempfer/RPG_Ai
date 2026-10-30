@@ -73,6 +73,18 @@ def _wrap(text, size, width):
 
 ROW_H = 36
 VISIBLE_ROWS = 10
+ROWS_TOP = 128      # first backpack row (below the filter tabs)
+
+# Backpack filters: (tab label, item kinds shown; None = everything).
+FILTERS = (
+    ("All", None),
+    ("Weapons", ("weapon",)),
+    ("Armor", ("armor",)),
+    ("Potions", ("consumable",)),
+    ("Trinkets", ("trinket",)),
+    ("Skills", ("ability",)),
+    ("Junk", ("junk",)),
+)
 
 
 class InventoryScreen(Screen):
@@ -91,6 +103,7 @@ class InventoryScreen(Screen):
         self.selected = None
         self.hot = None
         self.scroll = 0
+        self.filter = 0             # index into FILTERS
         self.assets = AssetManager()
         self._icons = {}
 
@@ -106,19 +119,45 @@ class InventoryScreen(Screen):
             for col in range(len(names))
         ]
 
+        # Filter tabs across the top of the backpack.
+        tab_w = (self.backpack.w - 24) // len(FILTERS)
+        self.tab_rects = [pygame.Rect(36 + i * tab_w, 94, tab_w - 4, 28)
+                          for i in range(len(FILTERS))]
+
         self.btn_back = Button("Back", (24, 548, 140, 40), size=22)
         self.btn_equip = Button("Equip", (286, 548, 120, 40), size=22)
         self.btn_unequip = Button("Unequip", (416, 548, 120, 40), size=22)
         self.btn_use = Button("Use", (546, 548, 120, 40), size=22)
         self.btn_drop = Button("Drop", (666, 548, 110, 40), size=22)
 
+    # -- filtering -----------------------------------------------------
+    def shown(self):
+        """Backpack items that pass the current filter, in backpack order."""
+        kinds = FILTERS[self.filter][1]
+        return [i for i in self.player.inventory
+                if kinds is None or i.kind in kinds]
+
+    def set_filter(self, index):
+        """Switch the backpack filter; a hidden backpack selection is
+        dropped and the list scrolls back to the top."""
+        self.filter = index % len(FILTERS)
+        self.scroll = 0
+        if self.selected in self.player.inventory and self.selected not in self.shown():
+            self.selected = None
+
+    def _scroll_by(self, step):
+        max_scroll = max(0, len(self.shown()) - VISIBLE_ROWS)
+        self.scroll = max(0, min(max_scroll, self.scroll + step))
+
     # -- geometry ------------------------------------------------------
     def _row_rects(self):
         """Rects of the visible backpack rows (recomputed: list changes)."""
         rects = []
-        top = 96
+        top = ROWS_TOP
+        # Keep the scroll in range after the list shrank (use / drop).
+        self.scroll = max(0, min(self.scroll, len(self.shown()) - VISIBLE_ROWS))
         lo = self.scroll
-        hi = min(len(self.player.inventory), lo + VISIBLE_ROWS)
+        hi = min(len(self.shown()), lo + VISIBLE_ROWS)
         for _ in range(lo, hi):
             rects.append(pygame.Rect(40, top, 398, ROW_H - 4))
             top += ROW_H
@@ -148,6 +187,9 @@ class InventoryScreen(Screen):
         for i, r in enumerate(self.slot_rects):
             if r.collidepoint(pos):
                 return ("slot", i)
+        for i, r in enumerate(self.tab_rects):
+            if r.collidepoint(pos):
+                return ("tab", i)
         enabled = self._enabled_actions()
         for btn in (self.btn_back, self.btn_equip, self.btn_unequip,
                     self.btn_use, self.btn_drop):
@@ -195,8 +237,10 @@ class InventoryScreen(Screen):
                 if hit is None:
                     return None
                 kind, val = hit
-                if kind == "row":
-                    item = self.player.inventory[val]
+                if kind == "tab":
+                    self.set_filter(val)
+                elif kind == "row":
+                    item = self.shown()[val]
                     self.selected = (
                         None if self.selected is item else item)
                 elif kind == "slot":
@@ -215,17 +259,14 @@ class InventoryScreen(Screen):
                 elif val is self.btn_drop:
                     self._drop()
             elif event.button in (4, 5):
-                step = -1 if event.button == 4 else 1
-                max_scroll = max(0, len(self.player.inventory) - VISIBLE_ROWS)
-                self.scroll = max(0, min(max_scroll, self.scroll + step))
+                self._scroll_by(-1 if event.button == 4 else 1)
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 return self._leave()
             elif event.key in (pygame.K_UP, pygame.K_DOWN):
-                step = -1 if event.key == pygame.K_UP else 1
-                max_scroll = max(0,
-                                 len(self.player.inventory) - VISIBLE_ROWS)
-                self.scroll = max(0, min(max_scroll, self.scroll + step))
+                self._scroll_by(-1 if event.key == pygame.K_UP else 1)
+            elif event.key in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_TAB):
+                self.set_filter(self.filter + (-1 if event.key == pygame.K_LEFT else 1))
         return None
 
     # -- drawing helpers ---------------------------------------------
@@ -280,8 +321,23 @@ class InventoryScreen(Screen):
         pygame.draw.rect(surface, PANEL_COLOR, self.backpack, border_radius=8)
         pygame.draw.rect(surface, BORDER_COLOR, self.backpack,
                          width=2, border_radius=8)
-        head = font(22).render("Backpack", True, TEXT_COLOR)
+        shown = self.shown()
+        count = (f"{len(p.inventory)}" if FILTERS[self.filter][1] is None
+                 else f"{len(shown)} of {len(p.inventory)}")
+        head = font(22).render(f"Backpack  ({count})", True, TEXT_COLOR)
         surface.blit(head, (36, 70))
+        for i, (rect, (label, _)) in enumerate(zip(self.tab_rects, FILTERS)):
+            active = i == self.filter
+            is_hot = hover == ("tab", i)
+            pygame.draw.rect(surface, PANEL_HOT if active or is_hot else (30, 30, 42),
+                             rect, border_radius=5)
+            pygame.draw.rect(surface, FOCUS_BORDER if active else BORDER_COLOR,
+                             rect, width=2 if active else 1, border_radius=5)
+            txt = font(17).render(label, True, GOLD if active else DIM_TEXT)
+            surface.blit(txt, txt.get_rect(center=rect.center))
+        if not shown:
+            note = font(18).render("Nothing of this kind in the backpack.", True, DIM_TEXT)
+            surface.blit(note, (44, ROWS_TOP + 8))
         wt = font(18).render(
             f"{p.weight} / {p.max_weight} kg    Health {p.current_hp} / {p.max_hp}"
             f"    Mana {p.current_mp} / {p.max_mp}",
@@ -290,7 +346,7 @@ class InventoryScreen(Screen):
             midbottom=(self.backpack.centerx, self.backpack.bottom - 10)))
 
         for i, r in enumerate(self._row_rects()):
-            item = p.inventory[self.scroll + i]
+            item = shown[self.scroll + i]
             idx = self.scroll + i
             is_sel = self.selected is item
             is_hot = (hover is not None and hover[0] == "row"
@@ -394,7 +450,7 @@ class InventoryScreen(Screen):
 
         hint = font(16).render(
             "Esc: back to " + ("the dungeon" if self.return_to else "base")
-            + "    wheel / Up Down: scroll", True, DIM_TEXT)
+            + "    Left Right: filter    wheel / Up Down: scroll", True, DIM_TEXT)
         surface.blit(hint, (24, 522))
         pouch = "   ".join(f"{mat} {n}" for mat, n in p.materials.items())
         mats = font(16).render(f"Gold {p.gold}    Materials:  {pouch}", True, DIM_TEXT)
