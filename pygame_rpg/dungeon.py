@@ -38,6 +38,9 @@ NUM_ROOMS = 13
 # Free tiles kept between rooms: room walls stay solid and a corridor
 # (with wall on both sides) fits through every gap.
 ROOM_GAP = 3
+# Darkness (alpha 0-255) over cells seen before but not in sight now:
+# dark enough that remembered rooms never look like you see into them.
+MEMORY_SHADE = 215
 # Extra cost of a corridor bend, so routes stay mostly straight.
 TURN_COST = 3
 
@@ -387,7 +390,7 @@ class Dungeon:
         if visible is not None and (self._shade is None
                                     or self._shade.get_size() != (TILE_SIZE, TILE_SIZE)):
             self._shade = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-            self._shade.fill((0, 0, 0, 150))
+            self._shade.fill((0, 0, 0, MEMORY_SHADE))
         offset_x, offset_y = camera_offset
         tiles = self._tiles()
         surf_w, surf_h = surface.get_size()

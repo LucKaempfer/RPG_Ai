@@ -269,9 +269,15 @@ class DungeonScreen(Screen):
                 self.visited.append(room)
         else:
             self.dungeon.visited_corridors.add(cell)
-        if cell != getattr(self, "_sight_from", None):
-            self._sight_from = cell
-            self.visible = {c for c in self.dungeon.visible_from(cell, SIGHT)
+        # A gate stays shut until you step through it: on a door cell the
+        # hero still sees from the side they came from.
+        if cell in self.dungeon.door_tiles:
+            eye = getattr(self, "_last_open_cell", cell)
+        else:
+            eye = self._last_open_cell = cell
+        if eye != getattr(self, "_sight_from", None):
+            self._sight_from = eye
+            self.visible = {c for c in self.dungeon.visible_from(eye, SIGHT)
                             if self.dungeon.is_walkable(c)}
             self.seen |= self.visible
 

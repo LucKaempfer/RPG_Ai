@@ -319,8 +319,8 @@ play-testing.
   rests the hero.
 * **Floors:** 2 chests per floor (not in the entrance room, loot up to floor + 1). The boss's
   room shows stairs once the boss is beaten; the stairs make a new floor (+1) with a new seed.
-  Sight: line of sight up to `SIGHT` = 8 tiles; walls and doors block it (standing in a doorway shows both sides; no diagonal peeking past a gate). Cells seen
-  before stay on the map, dimmed; enemies show only while in sight. A torch-light vignette
+  Sight: line of sight up to `SIGHT` = 8 tiles; walls and doors block it (standing on a gate the hero still sees only the side they came from; the room opens up once they step through; no diagonal peeking past a gate). Cells seen
+  before stay on the map, heavily dimmed (`MEMORY_SHADE`); enemies show only while in sight. A torch-light vignette
   darkens the screen edges.
 * **Balance check** (simulated, not play-tested): a fresh hero clears floor 1 comfortably; the
   floor-4 boss wins about a quarter of fights for a hero without potions, so potions and level-ups
