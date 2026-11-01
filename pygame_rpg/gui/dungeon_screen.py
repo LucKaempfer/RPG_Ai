@@ -24,6 +24,9 @@ fog of war, and what stands on the floor:
   forge screen (craft weapons from blueprints, upgrade them;
   ``crafting.py``).  Blueprints drop from the boss, sometimes from
   enemies, chests and smashed props.
+* the healing fountain: a third safe room; E next to it opens a choice
+  (``fountain_screen.py``): fill a flask (a Health Potion of the floor's
+  tier) or drink (heal 50% of max HP).  Once per floor, then it runs dry.
 * lost writings (``lore.py``): books, notes, scrolls, letters and
   slates on floors 1-5 that tell the story; walking onto one opens the
   story reader and files it in the hero's journal.  Beating the floor-5
@@ -78,7 +81,8 @@ from ..props import place_props, salvage, PROP_KINDS
 from ..traps import (place_traps, trap_damage, ARROW_DELAY, FIRE_TICK,
                      SPIKE_DELAY, SPIKE_UP)
 from ..shop import roll_stock
-from ..special_rooms import special_rooms, keeper_cell
+from ..special_rooms import (special_rooms, keeper_cell, fountain_potion,
+                             fountain_heal)
 from ..savegame import save_player, save_run
 from .base_screen import pending_levels
 from .effects import Particles
@@ -142,7 +146,8 @@ WIRE_COLOR = (196, 186, 150)
 TRAP_MARK = (210, 70, 60)       # known traps on the minimap
 
 MINIMAP_SCALE = 2
-MINIMAP_MARK = {"shop": (230, 190, 90), "anvil": (240, 120, 50)}
+MINIMAP_MARK = {"shop": (230, 190, 90), "anvil": (240, 120, 50),
+                "fountain": (90, 170, 240)}
 BANNER_TIME = 2.0   # seconds the "Floor N" banner shows on arrival
 
 
@@ -285,6 +290,7 @@ class DungeonScreen(Screen):
         self.keepers = {kind: keeper_cell(room) for kind, room in self.special.items()}
         self.shop_stock = roll_stock(seed, floor)
         self.shop_sold = set()               # stock indices bought out
+        self.fountain_used = False           # one gift per floor
         self.prop_at = {p.cell: p for p in self.props}
         self.traps = place_traps(self.dungeon, seed, floor)
         self.trap_at = {t.cell: t for t in self.traps}
@@ -330,7 +336,8 @@ class DungeonScreen(Screen):
                     f"enemies/{e.type.sprite}.png", ENEMY_COLS, ENEMY_ROWS)
         self.chest_frames = assets.load_sheet("objects/chest.png", 2, 1)
         self.keeper_frames = {"shop": assets.load_sheet("objects/merchant.png", 2, 1),
-                              "anvil": assets.load_sheet("objects/anvil.png", 2, 1)}
+                              "anvil": assets.load_sheet("objects/anvil.png", 2, 1),
+                              "fountain": assets.load_sheet("objects/fountain.png", 3, 1)}
         self.prop_frames = assets.load_sheet("objects/props.png",
                                              len(PROP_KINDS), 2)
         self._prop_shade = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
@@ -358,6 +365,7 @@ class DungeonScreen(Screen):
             "props": [i for i, p in enumerate(self.props) if p.broken],
             "traps": [i for i, t in enumerate(self.traps) if t.spent],
             "shop_sold": sorted(self.shop_sold),
+            "fountain_used": self.fountain_used,
             "stairs": self.stairs is not None,
             "seen": sorted(self.seen),
             "visited": [rooms.index(r) for r in self.visited],
@@ -373,6 +381,7 @@ class DungeonScreen(Screen):
             chest[1] = bool(opened)
         self.shop_sold = {i for i in run.get("shop_sold", [])
                           if 0 <= i < len(self.shop_stock)}
+        self.fountain_used = bool(run.get("fountain_used", False))
         for i in run.get("props", []):
             if 0 <= i < len(self.props):
                 self.props[i].broken, self.props[i].hp = True, 0
@@ -512,6 +521,9 @@ class DungeonScreen(Screen):
                     self.hud.say("A merchant has set up shop here. Press E to trade.")
                 elif room is self.special.get("anvil"):
                     self.hud.say("An anvil glows here. Press E to craft and upgrade.")
+                elif room is self.special.get("fountain"):
+                    self.hud.say("A healing fountain bubbles here. Press E to use it"
+                                 " (once per floor).")
                 elif (room is getattr(self, "miniboss_room", None)
                       and self.miniboss is not None and self.miniboss.alive):
                     self.hud.say(self.miniboss.type.intro)
@@ -660,7 +672,44 @@ class DungeonScreen(Screen):
                              "sold": self.shop_sold, "return_to": self})
         if kind == "anvil":
             return ("forge", {"player": self.player, "return_to": self})
+        if kind == "fountain":
+            if self.fountain_used:
+                self.hud.say("The fountain has run dry for this floor.")
+                return None
+            return ("fountain", {"player": self.player, "return_to": self})
         return None
+
+    def fountain_options(self):
+        """The fountain's two gifts: (potion, can carry it) and the HP
+        drinking would restore now (0 = already at full HP)."""
+        potion = fountain_potion(self.floor)
+        return potion, self.player.can_carry(potion), fountain_heal(self.player)
+
+    def use_fountain(self, choice: str) -> str:
+        """Take one gift ("potion" or "heal"); the fountain then runs dry
+        for the floor.  Returns the message for the log ("" = refused)."""
+        if self.fountain_used:
+            return ""
+        potion, fits, heal = self.fountain_options()
+        if choice == "potion":
+            if not fits:
+                return ""
+            self.player.inventory.append(potion)
+            msg = f"You fill a flask: {potion.name}."
+        elif choice == "heal":
+            if heal <= 0:
+                return ""
+            self.player.heal(heal)
+            msg = f"You drink from the fountain and recover {heal} HP."
+        else:
+            return ""
+        self.fountain_used = True
+        self.fx.burst(*self._centre(self.keepers["fountain"]), MINIMAP_MARK["fountain"],
+                      count=24)
+        self.hud.say(msg)
+        save_player(self.player)
+        self.save_run()
+        return msg
 
     def _find_blueprint(self, chance):
         """Maybe learn a new weapon or armour blueprint (``chance`` %); returns its
@@ -1090,9 +1139,15 @@ class DungeonScreen(Screen):
             if kind == "shop":                      # the merchant's rug
                 pygame.draw.rect(surface, (78, 34, 34), rug, border_radius=4)
                 pygame.draw.rect(surface, (150, 116, 56), rug, 2, border_radius=4)
+            elif kind == "fountain":                # wet flagstones
+                pygame.draw.ellipse(surface, (34, 44, 56), rug)
             else:                                   # soot around the forge
                 pygame.draw.ellipse(surface, (26, 24, 22), rug)
-            img = self.keeper_frames[kind][int(self.anim_t / (0.5 if kind == "shop" else 0.15)) % 2]
+            if kind == "fountain" and self.fountain_used:
+                img = self.keeper_frames[kind][2]   # run dry
+            else:
+                beat = {"shop": 0.5, "fountain": 0.3}.get(kind, 0.15)
+                img = self.keeper_frames[kind][int(self.anim_t / beat) % 2]
             surface.blit(img, img.get_rect(center=(x - ox, y - oy)))
             if cell not in self.visible:
                 surface.blit(self._prop_shade, (cell[0] * TILE_SIZE - ox, cell[1] * TILE_SIZE - oy))
@@ -1149,8 +1204,10 @@ class DungeonScreen(Screen):
         if near:
             x, y = self._centre(self.keepers[near])
             use = settings.action_label("interact")
-            tip = font(20).render(f"{use}: trade" if near == "shop"
-                                  else f"{use}: forge", True, (235, 200, 90))
+            verb = {"shop": "trade", "anvil": "forge", "fountain": "use fountain"}[near]
+            text = ("Run dry" if near == "fountain" and self.fountain_used
+                    else f"{use}: {verb}")
+            tip = font(20).render(text, True, (235, 200, 90))
             surface.blit(tip, tip.get_rect(midbottom=(x - ox, y - oy - 18)))
 
         # On a touch screen the D-pad covers the bottom-left corner.
@@ -1175,7 +1232,7 @@ class DungeonScreen(Screen):
                 pygame.draw.rect(surface, TRAP_MARK,
                                  (mm_pos[0] + tx * MINIMAP_SCALE,
                                   mm_pos[1] + ty * MINIMAP_SCALE, 2, 2))
-        for kind, room in self.special.items():   # mark the shop and forge
+        for kind, room in self.special.items():   # mark the shop, forge, fountain
             if room in self.visited:
                 cx, cy = room.rect.center
                 pygame.draw.rect(surface, MINIMAP_MARK[kind],

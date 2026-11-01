@@ -1,16 +1,24 @@
 """Special rooms: one room per floor for each kind in SPECIAL_KINDS (a
-shop with a merchant, a forge with an anvil).  A special room is safe:
-no enemies, no chests and no props, just its keeper (the merchant, the
-anvil) standing near the top wall.
+shop with a merchant, a forge with an anvil, a healing fountain).  A
+special room is safe: no enemies, no chests and no props, just its
+keeper (the merchant, the anvil, the fountain) standing near the top
+wall.
+
+The fountain can be used once per floor, for one of two gifts: fill a
+flask (a Health Potion of the floor's tier, like the shop sells) or
+drink (heal FOUNTAIN_HEAL_PERCENT of max HP).
 
 Picked with their own RNG seeded from the floor seed, never the
 entrance or the boss's lair.
 """
 import random
 
+from .config import FOUNTAIN_HEAL_PERCENT
 from .enemies import boss_room
+from .items import item_by_id
 
-SPECIAL_KINDS = ("shop", "anvil")
+# Order matters: on a floor with too few rooms the last kinds are left out.
+SPECIAL_KINDS = ("shop", "anvil", "fountain")
 
 
 def special_rooms(dungeon, seed) -> dict:
@@ -35,3 +43,18 @@ def keeper_cell(room) -> tuple:
         if cell not in near_door and cell != r.center:
             return cell
     return r.center
+
+
+# -- the healing fountain ---------------------------------------------------
+def fountain_potion(floor: int):
+    """The flask the fountain fills: a Health Potion of the floor's tier
+    (I on floor 1 ... IV from floor 4 on), the same one the shop sells."""
+    tier = max(1, min(4, floor))
+    return item_by_id("potion" if tier == 1 else f"potion_{tier}")
+
+
+def fountain_heal(player) -> int:
+    """HP that drinking would restore: FOUNTAIN_HEAL_PERCENT of max HP,
+    capped by what is missing."""
+    amount = max(1, player.max_hp * FOUNTAIN_HEAL_PERCENT // 100)
+    return min(amount, player.max_hp - player.current_hp)

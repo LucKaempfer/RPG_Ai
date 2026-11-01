@@ -4,8 +4,8 @@ button on a touch screen).
 
 It shows only what the hero has found: every floor cell seen so far
 (dim), the rooms walked into (bright), the corridor cells walked, the
-walls around them, the shop and forge, the miniboss's room while it
-lives, unopened chests seen, the
+walls around them, the shop, forge and fountain, the miniboss's room
+while it lives, unopened chests seen, the
 stairs once open, and the hero as a blinking dot.  M, Esc or Back
 returns to the floor exactly as it was (the dungeon is paused).
 """
@@ -28,8 +28,9 @@ WALL_COLOR = (66, 62, 80)         # walls next to seen floor
 HERO_COLOR = (110, 215, 255)
 CHEST_COLOR = (200, 150, 60)
 STAIRS_COLOR = (90, 200, 120)
-MARK_COLORS = {"shop": (230, 190, 90), "anvil": (240, 120, 50)}
-MARK_NAMES = {"shop": "Merchant", "anvil": "Forge"}
+MARK_COLORS = {"shop": (230, 190, 90), "anvil": (240, 120, 50),
+               "fountain": (90, 170, 240)}
+MARK_NAMES = {"shop": "Merchant", "anvil": "Forge", "fountain": "Fountain"}
 MINIBOSS_COLOR = (220, 70, 70)    # the miniboss's room, until it falls
 
 

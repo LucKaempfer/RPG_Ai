@@ -56,6 +56,7 @@ from .gui.dungeon_screen import DungeonScreen
 from .gui.battle_screen import BattleScreen
 from .gui.shop_screen import ShopScreen
 from .gui.forge_screen import ForgeScreen
+from .gui.fountain_screen import FountainScreen
 from .gui.settings_screen import SettingsScreen
 from .gui.story_screen import StoryScreen
 from .gui.journal_screen import JournalScreen
@@ -86,7 +87,7 @@ def build_screen(name, display, kwargs=None):
     if name == "settings":
         return SettingsScreen(display, return_to=kwargs.get("return_to"))
     if name in ("base", "inventory", "stats", "level_up", "dungeon",
-                "battle", "shop", "forge", "journal"):
+                "battle", "shop", "forge", "fountain", "journal"):
         player = kwargs.get("player")
         if name == "base":
             return BaseScreen(display, player)
@@ -102,6 +103,8 @@ def build_screen(name, display, kwargs=None):
                               return_to=kwargs.get("return_to"))
         if name == "forge":
             return ForgeScreen(display, player, return_to=kwargs.get("return_to"))
+        if name == "fountain":
+            return FountainScreen(display, player, kwargs["return_to"])
         if name == "battle":
             return BattleScreen(display, player,
                                 kwargs.get("enemies") or kwargs["enemy"],
