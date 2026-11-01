@@ -23,8 +23,10 @@ old ("logical") sizes and positions.  The result:
 ``gui/display.py`` scales the real pixels of the canvas into the window
 (smoothly when shrinking, pixel for pixel when enlarging).
 
-Not installed on touch screens (Android), where the on-screen controls
-draw straight onto the window: the phone keeps the 1x canvas.
+The window and the on-screen touch controls (``gui/touch.py``) work in
+real pixels: they use plain surfaces (:data:`Plain`) and
+``screen.window_font``.  On Android the window is SCALE x the canvas
+size, so the phone gets the high-resolution picture too.
 """
 
 import math

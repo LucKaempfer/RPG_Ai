@@ -18,6 +18,7 @@ def touch_display(saves, monkeypatch):
     monkeypatch.setattr(settings, "virtual_held", set())
     pygame.init()
     screen_mod._FONTS.clear()      # fonts from an earlier pygame.init
+    screen_mod._WINDOW_FONTS.clear()
     d = Display()
     d.window = pygame.display.set_mode((1920, 1080), pygame.RESIZABLE)
     d._layout()
@@ -25,6 +26,7 @@ def touch_display(saves, monkeypatch):
     yield d
     pygame.quit()
     screen_mod._FONTS.clear()
+    screen_mod._WINDOW_FONTS.clear()
 
 
 def finger(kind, pos, d, fid=1):

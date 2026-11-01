@@ -8,7 +8,7 @@ from pygame_rpg.gui import dungeon_screen, screen as S
 
 
 def _clear_caches():
-    for cache in (S._FONTS, S._BACKGROUNDS, dungeon_screen._LIGHT,
+    for cache in (S._FONTS, S._WINDOW_FONTS, S._BACKGROUNDS, dungeon_screen._LIGHT,
                   dungeon_screen._SHADOWS, dungeon_screen._LORE_SPRITES,
                   A.assets._cache):
         cache.clear()
@@ -110,3 +110,27 @@ def test_every_screen_draws_in_hires(hi, saves):
             d._layout()
             d.present()
             assert d.window.get_at(d.view.center) is not None
+
+
+def test_touch_screen_in_hires(hi, saves, monkeypatch):
+    """Phone layout: the window holds the canvas's real pixels, the wide
+    dungeon canvas is shown 1:1 and the controls draw on the window."""
+    from pygame_rpg import device, settings
+    from pygame_rpg.gui.display import Display, android_size, WIDE_HEIGHT
+    from pygame_rpg.main import build_screen
+    from pygame_rpg.player import Player
+    assert android_size((2400, 1080))[1] == WIDE_HEIGHT * 2
+    monkeypatch.setattr(device, "TOUCH", True)
+    monkeypatch.setattr(settings, "virtual_held", set())
+    d = Display()
+    d.window = pygame.display.set_mode(android_size((2400, 1080)))
+    d._layout()
+    dung = build_screen("dungeon", d.canvas, {"player": Player(name="Phone"), "seed": 1})
+    canvas = d.canvas_for(dung)
+    assert canvas.get_size()[1] == WIDE_HEIGHT
+    assert hires.raw_size(canvas) == d.view.size == d.window.get_size()
+    d.update(0.0, "dungeon")
+    dung.draw(canvas)
+    d.present()
+    (cx, cy), _ = d.touch.pad
+    assert d.window.get_at((cx, cy)) is not None
