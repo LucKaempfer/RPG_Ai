@@ -92,6 +92,13 @@ BLUEPRINT_ENEMY_CHANCE = 10
 BLUEPRINT_CHEST_CHANCE = 30
 BLUEPRINT_PROP_CHANCE = 3
 PROPS_PER_ROOM = (1, 3)    # min, max scenery props per room (+1 per 30 cells)
+# Corridor traps (traps.py): how many per floor, and what a hit costs.
+TRAPS_PER_FLOOR = 4        # on floor 1 ...
+TRAPS_PER_EXTRA_FLOOR = 1  # ... plus this per floor deeper
+TRAPS_MAX = 9
+TRAP_DAMAGE = {"tripwire": 9, "firepit": 5, "spikes": 7}          # per hit on floor 1
+TRAP_DAMAGE_PER_FLOOR = {"tripwire": 3, "firepit": 2, "spikes": 2}
+TRAP_ARMOUR_DIV = 3        # damage minus hero defense // this
 
 # --- Audio (audio.py synthesises everything; N mutes in game) ---
 # Defaults only: the settings screen changes them (settings.py).

@@ -22,8 +22,11 @@ python -m pytest
 * New hero: type a name, then pick a look (Up / Down choose, Left / Right change, R random).
 * Dungeon: arrows / WASD to walk, Space (or F) to swing your weapon or shoot your bow / wand at
   barrels, crates and other clutter (they break into crafting materials), E next to the merchant to trade or next to the anvil to craft and upgrade weapons (one shop and
-  one anvil room per floor), bump into an enemy to fight, M opens the full map of the floor (the rooms and corridors you
-  have explored), Esc returns to the Base (the run
+  one anvil room per floor), bump into an enemy to fight, mind the corridor traps (tripwires
+  fire arrows from the walls a moment after you snag them, so keep moving or swing at a wire
+  to cut it; time your dash past fire pits; spike plates pop just after you step on them),
+  M opens the full map of the floor (the rooms and corridors you have explored), Esc returns
+  to the Base (the run
   is kept: *Continue (Floor N)*).
 * Battle: Attack / Abilities / Items / Run.
 * N: mute / unmute sound (effects and the sewer ambience).

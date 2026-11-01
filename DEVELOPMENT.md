@@ -118,6 +118,17 @@ never on or beside a door, and block the way; interiors, doors and corridors alw
 reachable. Placement has its own RNG seeded from the floor seed (`PROPS_PER_ROOM` in `config.py`),
 so floors, enemies and chests are unchanged and old runs still load.
 
+**Corridor traps:** corridors hold traps (`traps.py`, drawn in code by the dungeon screen):
+tripwires that click and, `ARROW_DELAY` s later, loose arrows from slots in one wall across the
+wire's cell and its neighbours (keep walking and you're past the volley; a melee swing cuts a wire
+you can see), fire pits that cycle cold / smoking / burning on their own beat (hurt every
+`FIRE_TICK` s while lit), and spike plates that pop `SPIKE_DELAY` s after you step on them. They
+sit only on straight corridor cells away from doors and each other, so they never block the way,
+and they wound but never kill (1 HP at worst). Count and damage grow with depth (`TRAPS_*`,
+`TRAP_DAMAGE*` in `config.py`; armour soaks `defense // TRAP_ARMOUR_DIV`). Placement has its own
+seeded RNG, so floors are unchanged and old runs still load; spent wires are saved (`traps`).
+Live traps you've seen show as red dots on the minimap. New sounds: `trip`, `flame`, `spikes`.
+
 **Play-test round 2 (PR #9):** the dungeon is a sewer. A new `sewer/tiles_v2.png` has mossy
 flagstones, slimy brick walls with pipes, stains and moss, puddles, drains, bones, grated
 walkways, thin iron gates on doorways and manhole stairs, and there is torch-light darkness. Walls block line of
