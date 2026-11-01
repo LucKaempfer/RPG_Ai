@@ -1,4 +1,4 @@
-"""On-screen controls for touch screens: a D-pad and A / B / Bag / Menu.
+"""On-screen controls for touch screens: a D-pad and A / B / Bag / Map / Menu.
 
 In menus they sit in the black bars left and right of the canvas
 (``Display`` keeps those bars wide enough when ``device.TOUCH`` is on);
@@ -9,10 +9,11 @@ the keyboard, so no screen needs to know about touch:
 * In the dungeon the D-pad holds the move actions (``settings.held``
   sees them through ``settings.virtual_held``) and the buttons send a
   KEYDOWN carrying the action (``settings.pressed`` checks it): A
-  attacks, B talks / uses, Bag opens the inventory, Menu is Escape.
+  attacks, B talks / uses, Bag opens the inventory, Map opens the full
+  map, Menu is Escape.
 * Everywhere else the D-pad sends arrow keys (repeating while held), A
   (OK) is Enter and B (Back) is Escape, which every menu already
-  handles; Bag and Menu are hidden.
+  handles; Bag, Map and Menu are hidden.
 
 Taps on the canvas itself are left to SDL's touch-to-mouse events, so
 buttons on the screens work by tapping them.  Each finger is tracked
@@ -41,7 +42,8 @@ RIM_COLOR = (110, 110, 140)
 LABEL_COLOR = (225, 225, 235)
 OVERLAY_ALPHA = 140           # see-through over the dungeon
 BUTTON_COLORS = {"a": (60, 120, 70), "b": (130, 60, 60),
-                 "bag": (70, 70, 100), "menu": (70, 70, 100)}
+                 "bag": (70, 70, 100), "menu": (70, 70, 100),
+                 "map": (70, 90, 110)}
 
 
 def key_event(key, action=None):
@@ -98,6 +100,7 @@ class TouchControls:
                 "b": ((ax - int(rb * 2.3), ay + int(rb * 1.2)), rb, "B"),
                 "bag": ((ax, ay - int(rb * 2.6)), rs, "Bag"),
                 "menu": ((ax - int(rb * 2.3), ay - int(rb * 1.6)), rs, "Menu"),
+                "map": ((ax - int(rb * 2.3), ay - int(rb * 3.6)), rs, "Map"),
             }
             return
         bar = max(1, self.view.x)
@@ -111,6 +114,7 @@ class TouchControls:
             "b": ((rx - int(rb * 1.15), int(wh * 0.58) + int(rb * 1.3)), rb, "B"),
             "bag": ((rx, int(wh * 0.18)), rs, "Bag"),
             "menu": ((bar // 2, int(wh * 0.18)), rs, "Menu"),
+            "map": ((rx, int(wh * 0.34)), rs, "Map"),
         }
 
     def visible_buttons(self):
@@ -217,6 +221,7 @@ class TouchControls:
             ev = {"a": key_event(pygame.K_UNKNOWN, "attack"),
                   "b": key_event(pygame.K_UNKNOWN, "interact"),
                   "bag": key_event(pygame.K_UNKNOWN, "inventory"),
+                  "map": key_event(pygame.K_UNKNOWN, "map"),
                   "menu": key_event(pygame.K_ESCAPE)}[name]
         else:
             ev = key_event(pygame.K_RETURN if name == "a" else pygame.K_ESCAPE)

@@ -38,7 +38,8 @@ The run is saved (``savegame.save_run``) on entering a floor, after
 every battle, on Esc and on window close: floor, seed, beaten enemies,
 opened chests, stairs, fog and the hero's spot.  Enemy and chest
 placement follow the seed, so the save only records what changed.
-I opens the inventory (equip, use potions) and comes back to the floor.
+I (or a tap on the HUD's gear strip) opens the inventory (equip, use
+potions) and comes back to the floor.
 Esc returns to the Base *without* resting; the Base's Continue picks
 the run up again, New Adventure (or a defeat) ends it.
 """
@@ -224,7 +225,7 @@ def controls_hint():
     """The bottom-line key hint, following the player's key bindings
     (or naming the on-screen controls on a touch screen)."""
     if device.TOUCH:
-        return "D-pad: move    A: attack    B: talk    Bag: inventory    Menu: Base"
+        return "D-pad: move    A: attack    B: talk    Bag: inventory    Map: map    Menu: Base"
     moves = ("up", "left", "down", "right")
     if all(settings.current.keys[a] == settings.DEFAULT_KEYS[a] for a in moves):
         move = "Arrows / WASD"
@@ -232,7 +233,7 @@ def controls_hint():
         move = " ".join(settings.action_label(a) for a in moves)
     a = settings.action_label
     return (f"{move}: move    {a('attack')}: attack    {a('interact')}: talk"
-            f"    {a('inventory')}: inventory    Esc: Base")
+            f"    {a('inventory')}: inventory    {a('map')}: map    Esc: Base")
 
 class DungeonScreen(Screen):
     name = "dungeon"
@@ -941,8 +942,14 @@ class DungeonScreen(Screen):
         if settings.pressed(event, "attack"):
             self.attack()
             return None
-        if settings.pressed(event, "inventory"):
+        if settings.pressed(event, "inventory") or (
+                event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
+                and self.hud.gear_rect.collidepoint(event.pos)):
+            # The HUD's gear strip opens the inventory too (tap or click).
             return ("inventory", {"player": self.player, "return_to": self})
+        if settings.pressed(event, "map"):
+            self.moving = False
+            return ("map", {"dungeon": self})
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             save_player(self.player)
             self.save_run()

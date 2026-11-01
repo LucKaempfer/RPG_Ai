@@ -100,7 +100,7 @@ TRAP_DAMAGE = {"tripwire": 9, "firepit": 5, "spikes": 7}          # per hit on f
 TRAP_DAMAGE_PER_FLOOR = {"tripwire": 3, "firepit": 2, "spikes": 2}
 TRAP_ARMOUR_DIV = 3        # damage minus hero defense // this
 
-# --- Audio (audio.py synthesises everything; M mutes in game) ---
+# --- Audio (audio.py synthesises everything; N mutes in game) ---
 # Defaults only: the settings screen changes them (settings.py).
 SFX_VOLUME = 0.7       # 0..1, all one-shot effects
 AMBIENT_VOLUME = 0.35  # 0..1, the sewer water loop and its drips

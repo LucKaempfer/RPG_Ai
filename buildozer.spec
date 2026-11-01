@@ -2,8 +2,9 @@
 #
 # The APK runs the same code as the desktop game: main.py in this folder
 # starts pygame_rpg, and pygame_rpg/device.py switches on the touch
-# controls and app storage.  GitHub Actions builds it on every push
-# (.github/workflows/android.yml); to build by hand on Linux / WSL:
+# controls and app storage.  GitHub Actions builds it when the
+# "Android APK" workflow is run by hand (.github/workflows/android.yml);
+# to build it locally on Linux / WSL:
 #     pip install buildozer "cython<3.2" && buildozer android debug
 # The APK lands in bin/.
 

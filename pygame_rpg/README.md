@@ -24,14 +24,16 @@ python -m pytest
   barrels, crates and other clutter (they break into crafting materials), E next to the merchant to trade or next to the anvil to craft and upgrade weapons (one shop and
   one anvil room per floor), bump into an enemy to fight, mind the corridor traps (tripwires
   fire arrows from the walls a moment after you snag them, so keep moving or swing at a wire
-  to cut it; time your dash past fire pits; spike plates pop just after you step on them), Esc returns to the Base (the run
+  to cut it; time your dash past fire pits; spike plates pop just after you step on them),
+  M opens the full map of the floor (the rooms and corridors you have explored), Esc returns
+  to the Base (the run
   is kept: *Continue (Floor N)*).
 * Battle: Attack / Abilities / Items / Run.
-* M: mute / unmute sound (effects and the sewer ambience).
+* N: mute / unmute sound (effects and the sewer ambience).
 * Window: drag the edges or maximise to resize (the picture keeps its shape); F11 toggles
   fullscreen.
 * Settings (title screen or Base): brightness, ambience and effects volume, fullscreen, and
   the dungeon keys (two per action; Enter on a slot, then press the new key). Saved in
-  `saves/settings.json`. Esc, F11 and M can't be rebound.
+  `saves/settings.json`. Esc, F11 and N can't be rebound.
 
 Everything else (architecture, rules, numbers, roadmap) is in `DEVELOPMENT.md` at the repo root.

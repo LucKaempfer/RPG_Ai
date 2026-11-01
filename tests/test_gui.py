@@ -181,3 +181,38 @@ def test_battle_screen_targets_by_tap_and_keys(display, saves):
     bs._build_buttons()
     assert bs.enemy is foes[0] and bs.buttons[0][1] != ("target",)
     bs.draw(display)
+
+
+def test_full_map_opens_on_m_and_resumes(display, saves):
+    from pygame_rpg import settings
+    from pygame_rpg.gui.dungeon_screen import DungeonScreen
+    from pygame_rpg.gui.map_screen import MapScreen, map_scale, MAP_AREA, HERO_COLOR
+    from pygame_rpg.dungeon import DUNGEON_WIDTH, DUNGEON_HEIGHT
+    from pygame_rpg.main import build_screen
+    settings.current = settings.Settings()
+    p = Player(name="Mapper")
+    ds = DungeonScreen(display, p, seed=5)
+    assert ds.handle_event(key(pygame.K_m)) == ("map", {"dungeon": ds})
+    m = build_screen("map", display, {"dungeon": ds})
+    assert isinstance(m, MapScreen)
+    assert m.explored == (1, len(ds.dungeon.rooms))
+    s = map_scale()
+    assert DUNGEON_WIDTH * s <= MAP_AREA.w and DUNGEON_HEIGHT * s <= MAP_AREA.h
+    canvas = pygame.Surface((800, 600))
+    m.draw(canvas)
+    # The hero blinks on the map at their cell.
+    frame = m._base.get_rect(center=MAP_AREA.center)
+    hx, hy = ds.cell()
+    assert canvas.get_at((frame.x + hx * s + s // 2,
+                          frame.y + hy * s + s // 2))[:3] == HERO_COLOR
+    # Unexplored rooms stay hidden.
+    hidden = next(r for r in ds.dungeon.rooms if r not in ds.visited
+                  and not any(r.rect.collidepoint(c) for c in ds.seen))
+    cx, cy = hidden.rect.center
+    assert m._base.get_at((cx * s + s // 2, cy * s + s // 2)).a == 0
+    for ev in (key(pygame.K_m), key(pygame.K_ESCAPE)):
+        assert m.handle_event(ev) == ("resume", {"screen": ds})
+    tap = pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=(10, 10))
+    assert m.handle_event(tap) == ("resume", {"screen": ds})
+    touch_map = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_UNKNOWN, action="map")
+    assert ds.handle_event(touch_map)[0] == "map"

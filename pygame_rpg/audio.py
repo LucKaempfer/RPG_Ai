@@ -17,7 +17,7 @@ Use the module-level helpers:
   sewer loop is bubbling, flowing water; ``update`` scatters drips,
   distant metal clanks, pipe groans and the odd rat squeak over it.
 * ``update(dt)``: once per frame from ``main.py`` (delays, ambience).
-* ``toggle_mute()``: M in game.
+* ``toggle_mute()``: N in game.
 
 If the mixer can't start (no sound device, or the dummy driver in a
 broken state) every call is a no-op, so the game and tests run silent.
