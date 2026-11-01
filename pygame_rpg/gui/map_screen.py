@@ -4,7 +4,8 @@ button on a touch screen).
 
 It shows only what the hero has found: every floor cell seen so far
 (dim), the rooms walked into (bright), the corridor cells walked, the
-walls around them, the shop and forge, unopened chests seen, the
+walls around them, the shop and forge, the miniboss's room while it
+lives, unopened chests seen, the
 stairs once open, and the hero as a blinking dot.  M, Esc or Back
 returns to the floor exactly as it was (the dungeon is paused).
 """
@@ -29,6 +30,7 @@ CHEST_COLOR = (200, 150, 60)
 STAIRS_COLOR = (90, 200, 120)
 MARK_COLORS = {"shop": (230, 190, 90), "anvil": (240, 120, 50)}
 MARK_NAMES = {"shop": "Merchant", "anvil": "Forge"}
+MINIBOSS_COLOR = (220, 70, 70)    # the miniboss's room, until it falls
 
 
 def map_scale(area=MAP_AREA):
@@ -111,7 +113,18 @@ class MapScreen(Screen):
                 cx, cy = room.rect.center
                 pygame.draw.circle(img, MARK_COLORS[kind],
                                    (cx * s + s // 2, cy * s + s // 2), max(3, s // 2 + 1))
+        if self._miniboss_marked():
+            cx, cy = ds.miniboss_room.rect.center
+            pygame.draw.circle(img, MINIBOSS_COLOR,
+                               (cx * s + s // 2, cy * s + s // 2), max(3, s // 2 + 1))
         return img
+
+    def _miniboss_marked(self) -> bool:
+        """The miniboss's room is marked once found, while it lives."""
+        ds = self.ds
+        mini = getattr(ds, "miniboss", None)
+        return (mini is not None and mini.alive
+                and ds.miniboss_room in ds.visited)
 
     def draw(self, surface):
         draw_background(surface)
@@ -144,6 +157,8 @@ class MapScreen(Screen):
         for kind, room in self.ds.special.items():
             if room in self.ds.visited:
                 items.append((MARK_NAMES[kind], MARK_COLORS[kind], "dot"))
+        if self._miniboss_marked():
+            items.append(("Miniboss", MINIBOSS_COLOR, "dot"))
         if self.ds.stairs is not None:
             items.append(("Stairs", STAIRS_COLOR, "box"))
         f = font(17)

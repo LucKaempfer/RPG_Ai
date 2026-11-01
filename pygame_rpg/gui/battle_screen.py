@@ -90,7 +90,7 @@ class BattleScreen(Screen):
         n = len(self.enemies)
         self.columns = [pygame.Rect(460 + i * 320 // n, 30, 320 // n, 310)
                         for i in range(n)]
-        self.sizes = [((192 if e.boss else 128) if n == 1
+        self.sizes = [((192 if e.boss else 160 if e.miniboss else 128) if n == 1
                        else (128, 96, 76)[min(n, 4) - 2]) for e in self.enemies]
         self.enemy_frames = {}      # (sprite, size) -> scaled frames
         for e, size in zip(self.enemies, self.sizes):

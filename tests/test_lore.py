@@ -30,7 +30,11 @@ def test_three_writings_per_story_floor_and_none_after():
         assert len(entries) == 3 and floor in lore.CHAPTERS
         assert all(e.kind in lore.LORE_KINDS and e.pages for e in entries)
     assert lore.entries_for_floor(lore.LORE_FLOORS + 1) == []
-    assert len(lore.BY_ID) == len(lore.LORE)        # ids are unique
+    minis = list(lore.MINIBOSS_LORE.values())
+    assert len(lore.BY_ID) == len(lore.LORE) + len(minis)   # ids are unique
+    assert sorted(lore.MINIBOSS_LORE) == list(range(1, lore.LORE_FLOORS + 1))
+    assert all(e.kind in lore.LORE_KINDS and e.pages for e in minis)
+    assert all(e.id in lore.LORE_IDS for e in minis)
 
 
 @pytest.mark.parametrize("seed", range(20))
@@ -53,7 +57,7 @@ def test_writings_lie_on_free_interior_cells(seed):
 
 def test_every_page_fits_the_parchment(display):
     from pygame_rpg.gui.story_screen import layout, PAGE, LINE_H, MARGIN
-    pages = [p for e in lore.LORE for p in e.pages]
+    pages = [p for e in lore.BY_ID.values() for p in e.pages]
     pages += list(lore.EPILOGUE) + lore.prologue("Maximilianus")
     for page in pages:
         lines = layout(page)
@@ -145,10 +149,12 @@ def test_journal_lists_found_and_hides_the_rest(display, saves):
     p.lore = ["ledger"]
     j = JournalScreen(display, p)
     j.draw(display)
-    assert j.found_count == 1 and len(j.rows) == len(lore.LORE) + 2
+    n = len(lore.LORE) + len(lore.MINIBOSS_LORE)
+    assert j.found_count == 1 and len(j.rows) == n + 2
     name, kw = j.open(0)                            # the prologue
     assert name == "story" and kw["return_to"] is j
-    ledger = 1 + [e.id for e in lore.LORE].index("ledger")
+    from pygame_rpg.gui.journal_screen import WRITINGS
+    ledger = 1 + [e.id for e in WRITINGS].index("ledger")
     assert j.open(ledger)[1]["title"] == lore.BY_ID["ledger"].title
     assert j.open(1) is None                        # "tally" not found yet
     assert j.open(len(j.rows) - 1) is None          # no epilogue yet
