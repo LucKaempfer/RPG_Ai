@@ -27,8 +27,9 @@ canvas the shape of the window instead, ``WIDE_HEIGHT`` px high, so the
 floor fills the whole screen a little zoomed in and the controls float
 over it (:meth:`Display.canvas_for`).  On Android the window is always
 fullscreen and the GPU does the scaling (``SCALED``): the window is a
-logical surface ``WIDE_HEIGHT`` px high, so the dungeon is drawn 1:1 and
-only the menus are scaled on the CPU.  The phone's Back button counts as
+logical surface ``WIDE_HEIGHT`` canvas px high (x ``hires.SCALE`` real
+pixels), so the dungeon is drawn 1:1 and only the menus are scaled on
+the CPU.  The phone's Back button counts as
 Escape.
 """
 
@@ -68,9 +69,12 @@ def letterbox(window, canvas=None, side=0):
 
 def android_size(desktop):
     """Logical window size on Android: the phone's shape (landscape),
-    ``WIDE_HEIGHT`` px high; the GPU scales it to the screen."""
+    ``WIDE_HEIGHT`` canvas px high, in real pixels (``hires.SCALE`` per
+    canvas pixel, so the wide canvas is shown 1:1); the GPU scales it
+    to the screen."""
     dw, dh = max(desktop), min(desktop)
-    return (round(WIDE_HEIGHT * dw / dh), WIDE_HEIGHT)
+    w = round(WIDE_HEIGHT * dw / dh)     # in canvas px, then real
+    return (round(w * hires.SCALE), round(WIDE_HEIGHT * hires.SCALE))
 
 
 def wide_size(window):
