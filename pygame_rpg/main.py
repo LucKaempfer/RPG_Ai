@@ -20,7 +20,7 @@ adventure in ``gui/dungeon_screen.py``.
 
 Sound: ``audio.py`` synthesises every effect at start-up; screens call
 ``audio.play`` for their actions and declare an ``ambience`` (the loop
-played while they are shown).  M toggles mute.
+played while they are shown).  N toggles mute.
 
 Window: screens draw on a fixed 800 x 600 canvas; ``gui/display.py``
 scales it into a resizable window (F11: fullscreen) and maps the mouse
@@ -57,6 +57,7 @@ from .gui.forge_screen import ForgeScreen
 from .gui.settings_screen import SettingsScreen
 from .gui.story_screen import StoryScreen
 from .gui.journal_screen import JournalScreen
+from .gui.map_screen import MapScreen
 
 
 def build_screen(name, display, kwargs=None):
@@ -78,6 +79,8 @@ def build_screen(name, display, kwargs=None):
                            next=kwargs.get("next"),
                            heading=kwargs.get("heading", ""),
                            return_to=kwargs.get("return_to"))
+    if name == "map":
+        return MapScreen(display, kwargs["dungeon"])
     if name == "settings":
         return SettingsScreen(display, return_to=kwargs.get("return_to"))
     if name in ("base", "inventory", "stats", "level_up", "dungeon",
@@ -146,8 +149,8 @@ def main():
             event = display.handle_event(event)
             if event is None:
                 continue
-            # M mutes everywhere except while typing a hero name.
-            if (event.type == pygame.KEYDOWN and event.key == pygame.K_m
+            # N mutes everywhere except while typing a hero name.
+            if (event.type == pygame.KEYDOWN and event.key == settings.MUTE_KEY
                     and current.name != "hero_maker"):
                 audio.toggle_mute()
                 continue

@@ -94,7 +94,7 @@ def test_settings_screen_keyboard(fresh, canvas):
     s.handle_event(key(pygame.K_RETURN))
     assert s.listening == ("up", 0)
     s.draw(canvas)
-    s.handle_event(key(pygame.K_m))                      # reserved
+    s.handle_event(key(pygame.K_n))                      # reserved (mute)
     assert settings.current.keys["up"][0] == pygame.K_UP and s.message
     s.handle_event(key(pygame.K_RETURN))
     s.handle_event(key(pygame.K_u))

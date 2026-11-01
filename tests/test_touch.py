@@ -88,7 +88,8 @@ def test_dungeon_pad_and_buttons(touch_display):
     assert settings.virtual_held == set()
     assert posted() == []                       # moving sends no keys
 
-    for name, action in (("a", "attack"), ("b", "interact"), ("bag", "inventory")):
+    for name, action in (("a", "attack"), ("b", "interact"), ("bag", "inventory"),
+                         ("map", "map")):
         (bx, by), _, _ = d.touch.buttons[name]
         d.handle_event(finger(pygame.FINGERDOWN, (bx, by), d, fid=2))
         d.handle_event(finger(pygame.FINGERUP, (bx, by), d, fid=2))
@@ -132,6 +133,7 @@ def test_menu_pad_sends_arrows_and_repeats(touch_display):
     assert [e.key for e in posted()] == [pygame.K_RETURN, pygame.K_ESCAPE]
     assert d.touch.hit(d.touch.buttons["bag"][0]) is None   # dungeon only
     assert d.touch.hit(d.touch.buttons["menu"][0]) is None
+    assert d.touch.hit(d.touch.buttons["map"][0]) is None
 
 
 def test_taps_on_the_canvas_reach_the_screens(touch_display):

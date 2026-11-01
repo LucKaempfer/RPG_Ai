@@ -32,6 +32,7 @@ ACTIONS = {
     "attack": "Attack",
     "interact": "Talk / use",
     "inventory": "Inventory",
+    "map": "Map",
 }
 DEFAULT_KEYS = {
     "up": [pygame.K_UP, pygame.K_w],
@@ -41,11 +42,13 @@ DEFAULT_KEYS = {
     "attack": [pygame.K_SPACE, pygame.K_f],
     "interact": [pygame.K_e, None],
     "inventory": [pygame.K_i, None],
+    "map": [pygame.K_m, None],
 }
 # Keys with a fixed job everywhere: back / Base, fullscreen, mute.
-RESERVED_KEYS = (pygame.K_ESCAPE, pygame.K_F11, pygame.K_m)
+MUTE_KEY = pygame.K_n
+RESERVED_KEYS = (pygame.K_ESCAPE, pygame.K_F11, MUTE_KEY)
 # What the on-screen buttons are called, for hints ("A: attack").
-TOUCH_LABELS = {"attack": "A", "interact": "B", "inventory": "Bag"}
+TOUCH_LABELS = {"attack": "A", "interact": "B", "inventory": "Bag", "map": "Map"}
 
 
 class Settings:

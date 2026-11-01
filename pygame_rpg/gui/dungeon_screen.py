@@ -214,7 +214,7 @@ def controls_hint():
     """The bottom-line key hint, following the player's key bindings
     (or naming the on-screen controls on a touch screen)."""
     if device.TOUCH:
-        return "D-pad: move    A: attack    B: talk    Bag: inventory    Menu: Base"
+        return "D-pad: move    A: attack    B: talk    Bag: inventory    Map: map    Menu: Base"
     moves = ("up", "left", "down", "right")
     if all(settings.current.keys[a] == settings.DEFAULT_KEYS[a] for a in moves):
         move = "Arrows / WASD"
@@ -222,7 +222,7 @@ def controls_hint():
         move = " ".join(settings.action_label(a) for a in moves)
     a = settings.action_label
     return (f"{move}: move    {a('attack')}: attack    {a('interact')}: talk"
-            f"    {a('inventory')}: inventory    Esc: Base")
+            f"    {a('inventory')}: inventory    {a('map')}: map    Esc: Base")
 
 class DungeonScreen(Screen):
     name = "dungeon"
@@ -726,6 +726,9 @@ class DungeonScreen(Screen):
             return None
         if settings.pressed(event, "inventory"):
             return ("inventory", {"player": self.player, "return_to": self})
+        if settings.pressed(event, "map"):
+            self.moving = False
+            return ("map", {"dungeon": self})
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             save_player(self.player)
             self.save_run()
