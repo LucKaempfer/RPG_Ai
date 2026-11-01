@@ -33,8 +33,8 @@ feeds the same actions as the keyboard (`settings.virtual_held`, KEYDOWNs with a
 screens don't know about touch. The phone's Back button is Escape, the hero name opens the
 on-screen keyboard, going to the background calls `Screen.suspend` (the dungeon saves), and the
 synthesised sounds are cached in `saves/cache/`. `buildozer.spec` + the local recipe
-`android/p4a-recipes/pygame-ce` build it; `.github/workflows/android.yml` runs the tests and builds
-the APK on every push / PR (download it from the run's *Artifacts*).
+`android/p4a-recipes/pygame-ce` build it; `.github/workflows/android.yml` runs the tests on every push / PR
+and builds the APK only when the workflow is run by hand (*Run workflow*; download it from the run's *Artifacts*).
 On a touch screen the dungeon (`wide = True`) gets its own canvas the shape of the screen,
 `WIDE_HEIGHT` (420) px high, so the floor fills the phone and is zoomed in, with the controls
 floating over it; menus keep the 800 × 600 canvas between the control bars
@@ -551,7 +551,7 @@ with the HUD active.
 * **Windows venv (main dev machine):** `venv/` with Python 3.14.7 and `pygame-ce` 2.5.8. Plain
   `pygame` 2.6.1 has no CPython 3.14 wheel; `pygame-ce` is API-compatible (still `import pygame`).
   Run: `.\venv\Scripts\python.exe -m pygame_rpg.main` from the repo root.
-* **Android:** pushed branches build in GitHub Actions (*Android APK* workflow, artifact
+* **Android:** GitHub Actions builds the APK when the *Android APK* workflow is run by hand (*Run workflow*, artifact
   `dungeon-crawler-apk`). By hand on Linux / WSL: `pip install buildozer "cython<3.2"`, then
   `buildozer android debug` (APK in `bin/`). Try the touch layout on a desktop with
   `RPG_TOUCH=1 python main.py`.
