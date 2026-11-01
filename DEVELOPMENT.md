@@ -54,6 +54,17 @@ Beating the floor-5 boss tells the epilogue once (`"epilogue"` in `Player.lore`)
 on without lore. The Base has a **Journal** button (`gui/journal_screen.py`) to reread the
 prologue, every writing found ("? ? ?" for the rest) and the epilogue. No `RUN_VERSION` change.
 
+**Minibosses (`miniboss.py`):** every floor has one more guarded room (own RNG
+`miniboss-{seed}`; never the entrance, the lair or a special room) with a named, tougher foe
+(`Enemy.miniboss`; between a normal enemy and the Rat King, guaranteed loot,
+`MINIBOSS_GOLD_MULT` gold, fleeing allowed). Floors 1-5 tie into the story: the Gutter Matron,
+a drowned watchman of Brenn's Drain Watch, Gnashtooth the goblin tithe-taker, Lord Aldric's
+Gnawed Steward and the Whispering Swarm (which leaves Hobb behind); floors 6+ get a Deep Warden.
+Beating a story miniboss opens its writing (`lore.MINIBOSS_LORE`, kept out of `lore_cells`) and
+files it in `Player.lore`; the journal lists it after its floor's writings and now scrolls. The
+miniboss is placed after everything else and appended to `all_enemies`, so placements and old
+run saves are unchanged (no `RUN_VERSION` change). The map marks its room in red until it falls.
+
 **Character customization:** the hero maker has a look stage between the name and the
 confirm (skin, hair style incl. helmet / hood, hair colour, tunic colour, with a walking preview
 and a Random button). The hero is drawn in code from `Player.look` (`AssetManager.hero_frames`),
@@ -266,6 +277,7 @@ pygame_rpg/
 ├── enemies.py         # enemy types, per-floor scaling, boss room, placement
 ├── props.py           # room clutter (barrels, crates, pots...) and its placement
 ├── special_rooms.py   # the floor's shop room and where its keeper stands
+├── miniboss.py        # one miniboss room per floor: types tied to the story, placement
 ├── shop.py            # prices, stock, buy / sell rules
 ├── crafting.py        # blueprints, crafting and upgrading weapons at the anvil
 ├── lore.py            # the story: prologue, lost writings per floor, epilogue, placement
@@ -300,6 +312,7 @@ tests/
 ├── test_props.py          # props on edges away from doors, nothing cut off, seeded, blocking
 ├── test_looks.py          # character customization: look stage, look in saves, frames per look
 ├── test_lore.py           # story: writings per floor, placement, pickup, journal, epilogue, saves
+├── test_miniboss.py       # miniboss room per floor, placement, saves, its writing, map, journal
 ├── test_smoke_scripts.py  # runs the two scripts below as pytest cases
 ├── m2_smoke_test.py       # end-to-end item / inventory checks (plain script)
 └── m4_smoke_test.py       # end-to-end dungeon / battle / run-save checks (plain script)

@@ -84,6 +84,7 @@ CHESTS_PER_FLOOR = 2
 # Money and junk (sold at the shop).  Gold amounts are x floor.
 ENEMY_GOLD = (3, 8)        # every won fight; the boss pays BOSS_GOLD_MULT x
 BOSS_GOLD_MULT = 5
+MINIBOSS_GOLD_MULT = 3    # a floor's miniboss (miniboss.py)
 ENEMY_JUNK_CHANCE = 25     # % a beaten enemy also drops a piece of junk
 PROP_GOLD = (1, 4)
 PROP_GOLD_CHANCE = 30      # % a smashed prop holds some coins

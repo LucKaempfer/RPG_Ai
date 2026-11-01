@@ -31,6 +31,9 @@ fog of war, and what stands on the floor:
 * corridor traps (``traps.py``): tripwires that loose arrows from the
   walls, fire pits that flare up on a beat, and spike plates.  They
   wound (never below 1 HP); a melee swing cuts a tripwire you can see.
+* the miniboss (``miniboss.py``): one more room per floor is guarded
+  by a named, tougher foe tied into the story; beating it leaves a
+  writing that is read on the spot and filed in the journal.
 * stairs: appear in the boss's room once the boss is beaten; stepping
   on them builds the next, harder floor.
 
@@ -69,7 +72,8 @@ from ..dungeon import (
 from ..enemies import place_enemies, boss_room, cell_of, BOSS_TYPE
 from ..items import roll_loot, roll_junk, item_by_id
 from ..lore import (lore_cells, CHAPTERS, LORE_FLOORS, EPILOGUE,
-                    EPILOGUE_TITLE)
+                    EPILOGUE_TITLE, MINIBOSS_LORE)
+from ..miniboss import miniboss_room, make_miniboss
 from ..props import place_props, salvage, PROP_KINDS
 from ..traps import (place_traps, trap_damage, ARROW_DELAY, FIRE_TICK,
                      SPIKE_DELAY, SPIKE_UP)
@@ -289,8 +293,18 @@ class DungeonScreen(Screen):
         # Lost writings not found yet: [(entry, cell)].
         blocked = ({cell_of(e) for e in self.enemies}
                    | {c for c, _ in self.chests} | set(self.keepers.values()))
-        self.lore = [(e, c) for e, c in lore_cells(self.dungeon, seed, floor, blocked)
-                     if e.id not in player.lore]
+        spots = lore_cells(self.dungeon, seed, floor, blocked)
+        self.lore = [(e, c) for e, c in spots if e.id not in player.lore]
+        # The miniboss and its room, placed last so nothing else moves
+        # (it goes at the end of all_enemies, so old saves still match).
+        self.miniboss_room = miniboss_room(self.dungeon, seed, safe)
+        self.miniboss = None
+        if self.miniboss_room is not None:
+            self.miniboss = make_miniboss(
+                floor, self.miniboss_room,
+                blocked | {c for _, c in spots} | set(self.prop_at))
+            self.enemies.append(self.miniboss)
+            self.all_enemies.append(self.miniboss)
         self.story = None                    # story transition to show next
         self.stairs = None                   # cell, once the boss is beaten
         self.check_levels = False
@@ -298,6 +312,8 @@ class DungeonScreen(Screen):
         self.fx = Particles()
         self.hud = Hud()
         self.hud.say(f"Floor {floor}: beat the {BOSS_TYPE.name} to open the stairs.")
+        if self.miniboss is not None:
+            self.hud.say(f"Beware: the {self.miniboss.name} guards a room here.")
         if self.lore:
             n = len(self.lore)
             self.hud.say(f"{n} lost writing{'s' if n > 1 else ''} lie{'' if n > 1 else 's'}"
@@ -496,6 +512,9 @@ class DungeonScreen(Screen):
                     self.hud.say("A merchant has set up shop here. Press E to trade.")
                 elif room is self.special.get("anvil"):
                     self.hud.say("An anvil glows here. Press E to craft and upgrade.")
+                elif (room is getattr(self, "miniboss_room", None)
+                      and self.miniboss is not None and self.miniboss.alive):
+                    self.hud.say(self.miniboss.type.intro)
         else:
             self.dungeon.visited_corridors.add(cell)
         # A gate stays shut until you step through it: on a door cell the
@@ -547,6 +566,8 @@ class DungeonScreen(Screen):
             if battle.blueprint:
                 self.hud.say(f"Blueprint: {item_by_id(battle.blueprint).name}"
                              " (craft it at an anvil)")
+            if any(e.miniboss for e in foes):
+                self._miniboss_beaten()
             if any(e.boss for e in foes):
                 self.stairs = boss_room(self.dungeon).rect.center
                 self.hud.say("Stairs down have appeared!")
@@ -567,6 +588,21 @@ class DungeonScreen(Screen):
                 self._mark_visited()
                 self.hud.say(f"You escaped from {'the ' if len(foes) == 1 else ''}{names}.")
         self.save_run()
+
+    def _miniboss_beaten(self) -> None:
+        """The miniboss fell: tell what it left behind (its writing, once
+        per hero) and file it in the journal."""
+        self.hud.say(f"The {self.miniboss.name} is beaten!")
+        entry = MINIBOSS_LORE.get(self.floor)
+        if entry is None or entry.id in self.player.lore:
+            return
+        self.player.lore.append(entry.id)
+        save_player(self.player)
+        self.hud.say(f"Filed in your journal: {entry.title}")
+        self.story = ("story", {"title": entry.title,
+                                "heading": f"Floor {self.floor}: {CHAPTERS[self.floor]}",
+                                "pages": list(entry.pages),
+                                "return_to": self})
 
     def _open_chests(self):
         for chest in self.chests:
@@ -1067,9 +1103,9 @@ class DungeonScreen(Screen):
             # Each enemy breathes on its own beat (offset by its index).
             t = self.anim_t + i * 0.37
             img = self.enemy_frames[e.type.sprite][ENEMY_IDLE[int(t / 0.4) % 2]]
-            size = 48 if e.boss else 32
-            if e.boss:
-                img = pygame.transform.scale(img, (48, 48))
+            size = 48 if e.boss else 40 if e.miniboss else 32
+            if size != 32:
+                img = pygame.transform.scale(img, (size, size))
             sx, sy = e.x - ox, e.y - oy
             surface.blit(_shadow(size), _shadow(size).get_rect(
                 center=(sx, sy + size * 0.38)))

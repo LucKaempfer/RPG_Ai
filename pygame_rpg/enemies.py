@@ -28,6 +28,7 @@ class EnemyType:
     effect: str = ""     # ailment its hits may cause (see combat.AILMENTS)
     xp: int = 10         # XP for beating it on floor 1
     min_floor: int = 1   # first floor it appears on
+    intro: str = ""      # battle's opening line (minibosses)
 
 
 # Floor-1 numbers; ``make_enemy`` scales them with the floor.  Tuned so a
@@ -70,6 +71,7 @@ class Enemy:
     x: float = 0.0       # world pixel centre
     y: float = 0.0
     boss: bool = False
+    miniboss: bool = False   # see miniboss.py
     # Ailment name -> turns left (managed by combat.py).
     statuses: dict = field(default_factory=dict)
 

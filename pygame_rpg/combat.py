@@ -54,7 +54,7 @@ from .config import (
     LOOT_CHANCE, WIN_HEAL_PCT, WIN_MP,
 )
 from .config import (
-    ENEMY_GOLD, BOSS_GOLD_MULT, ENEMY_JUNK_CHANCE, BLUEPRINT_ENEMY_CHANCE,
+    ENEMY_GOLD, BOSS_GOLD_MULT, MINIBOSS_GOLD_MULT, ENEMY_JUNK_CHANCE, BLUEPRINT_ENEMY_CHANCE,
 )
 from .crafting import roll_blueprint
 from .items import roll_loot, roll_junk, item_by_id
@@ -308,8 +308,11 @@ class Battle:
         self.blueprint = None     # weapon base id of a blueprint found
         self.loot = []            # items put into the backpack
         boss = next((e for e in self.enemies if e.boss), None)
+        mini = next((e for e in self.enemies if e.miniboss), None)
         if boss is not None:
             self.log = [f"The {boss.name} blocks the way!"]
+        elif mini is not None:
+            self.log = [mini.type.intro or f"The {mini.name} attacks!"]
         elif len(self.enemies) == 1:
             self.log = [f"A {self.enemies[0].name} appears!"]
         else:
@@ -499,9 +502,10 @@ class Battle:
     def _spoils(self, out, e):
         """Loot, gold, junk and a blueprint chance for one beaten enemy."""
         p = self.player
-        chance = 100 if e.boss else LOOT_CHANCE + p.bonus("loot_bonus")
+        big = e.boss or e.miniboss
+        chance = 100 if big else LOOT_CHANCE + p.bonus("loot_bonus")
         if self.rng.uniform(0, 100) < chance:
-            item = roll_loot(self.rng, max_level=min(4, e.floor + (2 if e.boss else 1)))
+            item = roll_loot(self.rng, max_level=min(4, e.floor + (2 if big else 1)))
             if p.can_carry(item):
                 p.inventory.append(item)
                 self.loot.append(item)
@@ -511,7 +515,9 @@ class Battle:
         # Money, and sometimes junk to sell (rolled after the loot, so
         # the loot a seed gives stays the same).
         lo, hi = ENEMY_GOLD
-        gold = self.rng.randint(lo, hi) * e.floor * (BOSS_GOLD_MULT if e.boss else 1)
+        mult = (BOSS_GOLD_MULT if e.boss
+                else MINIBOSS_GOLD_MULT if e.miniboss else 1)
+        gold = self.rng.randint(lo, hi) * e.floor * mult
         self.gold_gained += gold
         p.gold += gold
         if self.rng.uniform(0, 100) < ENEMY_JUNK_CHANCE:
