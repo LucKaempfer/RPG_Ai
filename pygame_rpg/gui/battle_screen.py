@@ -29,7 +29,7 @@ import pygame
 
 from .. import audio
 from ..assets import (
-    AssetManager, gear_of, upscale, HERO_COLS, HERO_IDLE_COLS, HERO_DIR_UP,
+    AssetManager, gear_of, outline, HERO_COLS, HERO_IDLE_COLS, HERO_DIR_UP,
     ENEMY_COLS, ENEMY_ROWS, ENEMY_IDLE, ENEMY_HURT, ENEMY_DEATH,
 )
 from ..combat import Battle, STYLES, AFFLICTED, ONGOING, WON, LOST, FLED
@@ -83,10 +83,9 @@ class BattleScreen(Screen):
         self.panel_menu = pygame.Rect(510, 404, 266, 176)
 
         assets = AssetManager()
-        hero = assets.hero_frames(player.look, gear_of(player.equipment))
-        self.hero_frames = [
-            upscale(hero[HERO_DIR_UP * HERO_COLS + c], 128, outline=True)
-            for c in HERO_IDLE_COLS]
+        hero = assets.hero_frames(player.look, gear_of(player.equipment), 128)
+        self.hero_frames = [outline(hero[HERO_DIR_UP * HERO_COLS + c])
+                            for c in HERO_IDLE_COLS]
         # Enemy columns across the top right; sprites shrink to fit.
         n = len(self.enemies)
         self.columns = [pygame.Rect(460 + i * 320 // n, 30, 320 // n, 310)
@@ -97,9 +96,9 @@ class BattleScreen(Screen):
         for e, size in zip(self.enemies, self.sizes):
             if (e.type.sprite, size) not in self.enemy_frames:
                 sheet = assets.load_sheet(f"enemies/{e.type.sprite}.png",
-                                          ENEMY_COLS, ENEMY_ROWS)
+                                          ENEMY_COLS, ENEMY_ROWS, size)
                 self.enemy_frames[(e.type.sprite, size)] = [
-                    upscale(f, size, outline=True) for f in sheet]
+                    outline(f) for f in sheet]
         self._build_buttons()
 
     @property

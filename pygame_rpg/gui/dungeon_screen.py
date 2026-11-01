@@ -31,6 +31,9 @@ fog of war, and what stands on the floor:
   slates on floors 1-5 that tell the story; walking onto one opens the
   story reader and files it in the hero's journal.  Beating the floor-5
   boss tells the epilogue.
+* corridor traps (``traps.py``): tripwires that loose arrows from the
+  walls, fire pits that flare up on a beat, and spike plates.  They
+  wound (never below 1 HP); a melee swing cuts a tripwire you can see.
 * stairs: appear in the boss's room once the boss is beaten; stepping
   on them builds the next, harder floor.
 
@@ -71,6 +74,8 @@ from ..items import roll_loot, roll_junk, item_by_id
 from ..lore import (lore_cells, CHAPTERS, LORE_FLOORS, EPILOGUE,
                     EPILOGUE_TITLE)
 from ..props import place_props, salvage, PROP_KINDS
+from ..traps import (place_traps, trap_damage, ARROW_DELAY, FIRE_TICK,
+                     SPIKE_DELAY, SPIKE_UP)
 from ..shop import roll_stock
 from ..special_rooms import (special_rooms, keeper_cell, fountain_potion,
                              fountain_heal)
@@ -130,6 +135,11 @@ BREAK_SOUND = {"barrel": "crack", "crate": "crack", "sack": "crack",
 SHOT_COLORS = {"ranged": (200, 170, 110), "burning": (255, 140, 60),
                "poison": (120, 220, 90), "electrocuted": (140, 200, 255),
                "magic": (170, 130, 255)}
+
+# Trap arrows: speed (px per second) and the colour of the wire.
+DART_SPEED = 380
+WIRE_COLOR = (196, 186, 150)
+TRAP_MARK = (210, 70, 60)       # known traps on the minimap
 
 MINIMAP_SCALE = 2
 MINIMAP_MARK = {"shop": (230, 190, 90), "anvil": (240, 120, 50),
@@ -278,6 +288,10 @@ class DungeonScreen(Screen):
         self.shop_sold = set()               # stock indices bought out
         self.fountain_used = False           # one gift per floor
         self.prop_at = {p.cell: p for p in self.props}
+        self.traps = place_traps(self.dungeon, seed, floor)
+        self.trap_at = {t.cell: t for t in self.traps}
+        self.trap_t = 0.0       # play clock the fire pits beat to
+        self.darts = []         # trap arrows: [x, y, dx, dy, left px, volley]
         # Lost writings not found yet: [(entry, cell)].
         blocked = ({cell_of(e) for e in self.enemies}
                    | {c for c, _ in self.chests} | set(self.keepers.values()))
@@ -294,6 +308,8 @@ class DungeonScreen(Screen):
             n = len(self.lore)
             self.hud.say(f"{n} lost writing{'s' if n > 1 else ''} lie{'' if n > 1 else 's'}"
                          " somewhere on this floor.")
+        if self.traps:
+            self.hud.say("Watch your step: the corridors are trapped.")
         self._mark_visited()
         assets = AssetManager()
         self.assets = assets
@@ -331,6 +347,7 @@ class DungeonScreen(Screen):
                        if not e.alive],
             "chests": [opened for _, opened in self.chests],
             "props": [i for i, p in enumerate(self.props) if p.broken],
+            "traps": [i for i, t in enumerate(self.traps) if t.spent],
             "shop_sold": sorted(self.shop_sold),
             "fountain_used": self.fountain_used,
             "stairs": self.stairs is not None,
@@ -352,6 +369,9 @@ class DungeonScreen(Screen):
         for i in run.get("props", []):
             if 0 <= i < len(self.props):
                 self.props[i].broken, self.props[i].hp = True, 0
+        for i in run.get("traps", []):
+            if 0 <= i < len(self.traps):
+                self.traps[i].spent = True
         if run.get("stairs"):
             self.stairs = boss_room(self.dungeon).rect.center
         self.seen = {tuple(c) for c in run.get("seen", [])}
@@ -681,10 +701,10 @@ class DungeonScreen(Screen):
         dx, dy = FACING_STEP[self.facing]
         if kind == "melee":
             prop = self._prop_near(self.x + dx * REACH, self.y + dy * REACH)
-            if prop is None:
-                audio.play("miss", volume=0.6)
-            else:
+            if prop is not None:
                 self._hit_prop(prop)
+            elif not self._cut_wire(self.x + dx * REACH, self.y + dy * REACH):
+                audio.play("miss", volume=0.6)
             return
         audio.play("shoot" if kind == "ranged" else "magic", volume=0.7)
         color = SHOT_COLORS["ranged"] if kind == "ranged" else SHOT_COLORS.get(
@@ -763,6 +783,203 @@ class DungeonScreen(Screen):
         what = ", ".join(found) or "nothing useful"
         self.hud.say(f"{prop.kind.capitalize()} smashed: {what}")
 
+    # -- traps -------------------------------------------------------------
+    def _cut_wire(self, x, y) -> bool:
+        """A melee swing reaching (x, y), or the hero's own cell, cuts an
+        armed tripwire in sight there; True if one was cut."""
+        for cell in ((int(x // TILE_SIZE), int(y // TILE_SIZE)), self.cell()):
+            trap = self.trap_at.get(cell)
+            if (trap is not None and trap.kind == "tripwire" and trap.armed
+                    and trap.timer <= 0 and cell in self.visible):
+                trap.spent = True
+                audio.play("strike", volume=0.6)
+                self.fx.burst(*self._centre(cell), WIRE_COLOR, count=8,
+                              speed=60, life=0.3, size=2)
+                self.hud.say("You cut the tripwire. The wall stays quiet.")
+                return True
+        return False
+
+    def _trap_hurt(self, kind, what) -> None:
+        """A trap hits the hero (never below 1 HP)."""
+        p = self.player
+        dmg = trap_damage(kind, self.floor, p.total("dp"))
+        before = p.current_hp
+        p.current_hp = max(1, p.current_hp - dmg)
+        lost = before - p.current_hp
+        audio.play("hurt", volume=0.8)
+        self.fx.burst(self.x, self.y, (210, 50, 40), count=10, speed=90,
+                      life=0.35, size=2)
+        self.hud.say(f"{what} -{lost} HP" if lost else f"{what} You shrug it off.")
+
+    def _update_traps(self, dt) -> None:
+        """Run the traps for ``dt`` seconds: trigger the ones the hero
+        steps on, tick the fire pits and spikes, fly the arrows."""
+        self.trap_t += dt
+        here = self.cell()
+        for trap in self.traps:
+            on = here == trap.cell
+            if trap.kind == "tripwire":
+                if trap.armed and trap.timer <= 0 and on:
+                    trap.spent = True
+                    trap.timer = ARROW_DELAY
+                    audio.play("trip")
+                    self.hud.say("Click! A tripwire - keep moving!")
+                elif trap.timer > 0:
+                    trap.timer -= dt
+                    if trap.timer <= 0:
+                        trap.timer = 0.0
+                        self._loose_volley(trap)
+            elif trap.kind == "firepit":
+                state = trap.fire_state(self.trap_t)
+                if (state == "burn" and trap.state != "burn"
+                        and trap.cell in self.visible):
+                    audio.play("flame", volume=0.5)
+                trap.state = state
+                if on and state == "burn":
+                    trap.tick -= dt
+                    if trap.tick <= 0:
+                        trap.tick = FIRE_TICK
+                        self._trap_hurt("firepit", "The fire pit flares up!")
+                else:
+                    trap.tick = 0.0
+            else:                                   # spikes
+                if trap.up > 0:
+                    trap.up = max(0.0, trap.up - dt)
+                elif trap.timer > 0:
+                    trap.timer -= dt
+                    if trap.timer <= 0:
+                        trap.timer, trap.up = 0.0, SPIKE_UP
+                        if trap.cell in self.visible:
+                            audio.play("spikes", volume=0.8)
+                        if self.cell() == trap.cell:
+                            self._trap_hurt("spikes", "Spikes shoot up!")
+                elif on:
+                    trap.timer = SPIKE_DELAY
+                    audio.play("click")
+        self._update_darts(dt)
+
+    def _loose_volley(self, trap) -> None:
+        """Arrows out of the slots in ``trap.side``'s wall, across the
+        corridor (one per volley cell)."""
+        sx, sy = trap.side
+        volley = {"hit": False}
+        for cx, cy in trap.volley_cells():
+            if not self.dungeon.is_walkable((cx, cy)):
+                continue
+            x, y = self._centre((cx + sx, cy + sy))
+            self.darts.append([x, y, -sx, -sy, 2 * TILE_SIZE, volley])
+        audio.play("shoot", volume=0.8)
+
+    def _update_darts(self, dt) -> None:
+        keep = []
+        half = HITBOX / 2 + 3
+        for x, y, dx, dy, left, volley in self.darts:
+            travel = min(left, DART_SPEED * dt)
+            n = int(travel // 6) + 1
+            alive = True
+            for _ in range(n):
+                x, y = x + dx * travel / n, y + dy * travel / n
+                left -= travel / n
+                if abs(x - self.x) < half and abs(y - self.y) < half:
+                    if not volley["hit"]:     # one volley hurts once
+                        volley["hit"] = True
+                        self._trap_hurt("tripwire", "Arrows from the wall!")
+                    alive = False
+                    break
+                if left <= 0:
+                    self.fx.burst(x, y, (150, 140, 120), count=4, speed=50,
+                                  life=0.2, size=2)
+                    alive = False
+                    break
+            if alive:
+                keep.append([x, y, dx, dy, left, volley])
+        self.darts = keep
+
+    def _draw_trap(self, surface, trap, ox, oy) -> None:
+        """One trap, drawn in code on its cell (and arrow slots on the
+        wall for a tripwire)."""
+        cx, cy = trap.cell
+        px, py = cx * TILE_SIZE - ox, cy * TILE_SIZE - oy
+        mid = (px + TILE_SIZE // 2, py + TILE_SIZE // 2)
+        lit = trap.cell in self.visible
+        t = self.anim_t
+        if trap.kind == "tripwire":
+            sx, sy = trap.side
+            for vx, vy in trap.volley_cells():    # slots in the wall
+                wx, wy = (vx + sx) * TILE_SIZE - ox, (vy + sy) * TILE_SIZE - oy
+                if sy:          # north / south wall: slot on its corridor edge
+                    edge = wy + (TILE_SIZE - 5 if sy < 0 else 1)
+                    slot = pygame.Rect(wx + 11, edge, 10, 4)
+                else:
+                    edge = wx + (TILE_SIZE - 5 if sx < 0 else 1)
+                    slot = pygame.Rect(edge, wy + 11, 4, 10)
+                pygame.draw.rect(surface, (14, 12, 12), slot)
+                pygame.draw.rect(surface, (70, 62, 54), slot, 1)
+            if trap.axis == "h":       # corridor runs east-west: wire N-S
+                a, b = (mid[0], py + 1), (mid[0], py + TILE_SIZE - 2)
+            else:
+                a, b = (px + 1, mid[1]), (px + TILE_SIZE - 2, mid[1])
+            for end in (a, b):
+                pygame.draw.circle(surface, (110, 96, 70), end, 2)
+            if trap.armed:
+                pygame.draw.line(surface, WIRE_COLOR, a, b, 1)
+            else:                      # cut: two slack ends
+                ma = ((a[0] * 2 + b[0]) // 3, (a[1] * 2 + b[1]) // 3)
+                mb = ((a[0] + b[0] * 2) // 3, (a[1] + b[1] * 2) // 3)
+                sag = (3, 3)
+                pygame.draw.line(surface, WIRE_COLOR, a, (ma[0] + sag[0], ma[1] + sag[1]), 1)
+                pygame.draw.line(surface, WIRE_COLOR, b, (mb[0] + sag[0], mb[1] + sag[1]), 1)
+        elif trap.kind == "firepit":
+            pit = pygame.Rect(0, 0, 26, 26)
+            pit.center = mid
+            state = trap.fire_state(self.trap_t) if lit else "cold"
+            glow = {"cold": (48, 24, 16), "warn": (120, 50, 20),
+                    "burn": (200, 90, 30)}[state]
+            pygame.draw.rect(surface, glow, pit, border_radius=4)
+            for i in range(1, 4):                 # the grate's bars
+                x = pit.left + i * pit.w // 4
+                pygame.draw.line(surface, (36, 34, 34), (x, pit.top + 2),
+                                 (x, pit.bottom - 3), 2)
+            pygame.draw.rect(surface, (60, 56, 54), pit, 2, border_radius=4)
+            if state == "warn":                   # smoke rising: a warning
+                for i in range(3):
+                    k = (t * 1.5 + i / 3) % 1.0
+                    r = 3 + int(5 * k)
+                    puff = pygame.Surface((2 * r, 2 * r), pygame.SRCALPHA)
+                    pygame.draw.circle(puff, (110, 110, 110, int(140 * (1 - k))),
+                                       (r, r), r)
+                    surface.blit(puff, (mid[0] - r + (i - 1) * 6,
+                                        mid[1] - r - int(18 * k)))
+            elif state == "burn":
+                for i in range(5):
+                    fx = pit.left + 3 + i * 5
+                    h = 14 + 8 * math.sin(t * 17 + i * 1.7) + 4 * math.sin(t * 29 + i)
+                    pygame.draw.polygon(surface, (240, 110, 30),
+                                        [(fx - 3, pit.bottom - 4), (fx + 3, pit.bottom - 4),
+                                         (fx + int(2 * math.sin(t * 11 + i)), pit.bottom - 4 - h)])
+                    pygame.draw.polygon(surface, (255, 220, 110),
+                                        [(fx - 1, pit.bottom - 5), (fx + 1, pit.bottom - 5),
+                                         (fx, pit.bottom - 5 - h * 0.55)])
+        else:                                     # spikes
+            plate = pygame.Rect(0, 0, 26, 26)
+            plate.center = mid
+            armed = trap.timer > 0
+            pygame.draw.rect(surface, (78, 76, 72) if armed else (92, 90, 86),
+                             plate, border_radius=3)
+            pygame.draw.rect(surface, (56, 54, 52), plate, 1, border_radius=3)
+            for i in range(3):
+                for j in range(3):
+                    hx = plate.left + 6 + i * 7
+                    hy = plate.top + 6 + j * 7
+                    if trap.up > 0 and lit:
+                        pygame.draw.polygon(surface, (210, 214, 222),
+                                            [(hx - 3, hy + 3), (hx + 3, hy + 3), (hx, hy - 7)])
+                        pygame.draw.line(surface, (120, 124, 132), (hx, hy - 7), (hx + 3, hy + 3), 1)
+                    else:
+                        pygame.draw.circle(surface, (30, 28, 28), (hx, hy), 2)
+        if not lit:                               # remembered, not in sight
+            surface.blit(self._prop_shade, (px, py))
+
     # -- Screen hooks ----------------------------------------------------
     def handle_event(self, event):
         if event.type == pygame.QUIT:
@@ -813,6 +1030,7 @@ class DungeonScreen(Screen):
             return story
         self.move(dx, dy, dt)
         self._update_shots(dt)
+        self._update_traps(dt)
         self._open_chests()
         story = self._read_lore()
         if story is not None:
@@ -821,6 +1039,7 @@ class DungeonScreen(Screen):
         if foes:
             self.moving = False
             self.shots.clear()
+            self.darts.clear()
             audio.play("encounter")
             return ("battle", {"player": self.player, "enemy": foes[0],
                                "enemies": foes, "dungeon": self})
@@ -844,6 +1063,10 @@ class DungeonScreen(Screen):
         overrides = {self.stairs: SEWER_MANHOLE} if self.stairs else None
         self.dungeon.render(surface, (ox, oy), seen=self.seen,
                             overrides=overrides, visible=self.visible)
+
+        for trap in self.traps:
+            if trap.cell in self.seen:
+                self._draw_trap(surface, trap, ox, oy)
 
         for cell, opened in self.chests:
             if cell in self.seen:
@@ -916,6 +1139,12 @@ class DungeonScreen(Screen):
                 pygame.draw.circle(surface, color, (int(sx), int(sy)), 5)
                 pygame.draw.circle(surface, (255, 255, 255), (int(sx), int(sy)), 2)
 
+        for x, y, dx, dy, _, _ in self.darts:
+            sx, sy = x - ox, y - oy
+            pygame.draw.line(surface, (170, 150, 110),
+                             (sx - dx * 10, sy - dy * 10), (sx, sy), 2)
+            pygame.draw.circle(surface, (210, 210, 220), (int(sx), int(sy)), 2)
+
         self.fx.draw(surface, (ox, oy))
 
         if self.swing_t > 0:
@@ -961,6 +1190,12 @@ class DungeonScreen(Screen):
         mm_pos = (vw - mm_w - 10, 10)
         self.dungeon.draw_minimap(surface, self.visited, mm_pos,
                                   self.cell(), scale=MINIMAP_SCALE)
+        for trap in self.traps:                   # known, live traps
+            if trap.cell in self.seen and not trap.spent:
+                tx, ty = trap.cell
+                pygame.draw.rect(surface, TRAP_MARK,
+                                 (mm_pos[0] + tx * MINIMAP_SCALE,
+                                  mm_pos[1] + ty * MINIMAP_SCALE, 2, 2))
         for kind, room in self.special.items():   # mark the shop, forge, fountain
             if room in self.visited:
                 cx, cy = room.rect.center

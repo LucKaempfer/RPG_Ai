@@ -128,6 +128,17 @@ never on or beside a door, and block the way; interiors, doors and corridors alw
 reachable. Placement has its own RNG seeded from the floor seed (`PROPS_PER_ROOM` in `config.py`),
 so floors, enemies and chests are unchanged and old runs still load.
 
+**Corridor traps:** corridors hold traps (`traps.py`, drawn in code by the dungeon screen):
+tripwires that click and, `ARROW_DELAY` s later, loose arrows from slots in one wall across the
+wire's cell and its neighbours (keep walking and you're past the volley; a melee swing cuts a wire
+you can see), fire pits that cycle cold / smoking / burning on their own beat (hurt every
+`FIRE_TICK` s while lit), and spike plates that pop `SPIKE_DELAY` s after you step on them. They
+sit only on straight corridor cells away from doors and each other, so they never block the way,
+and they wound but never kill (1 HP at worst). Count and damage grow with depth (`TRAPS_*`,
+`TRAP_DAMAGE*` in `config.py`; armour soaks `defense // TRAP_ARMOUR_DIV`). Placement has its own
+seeded RNG, so floors are unchanged and old runs still load; spent wires are saved (`traps`).
+Live traps you've seen show as red dots on the minimap. New sounds: `trip`, `flame`, `spikes`.
+
 **Play-test round 2 (PR #9):** the dungeon is a sewer. A new `sewer/tiles_v2.png` has mossy
 flagstones, slimy brick walls with pipes, stains and moss, puddles, drains, bones, grated
 walkways, thin iron gates on doorways and manhole stairs, and there is torch-light darkness. Walls block line of
@@ -201,6 +212,7 @@ wake up rested in the Base.
 | `pygame_rpg/player.py` | ✅ M3 | `Player` dataclass: base stats, XP/level-up, upgrade counts, backpack, 11 equipment slots, `bonus()`/`total()`, `max_hp`/`current_hp`/`heal()`, `look` (appearance indices, `LOOK_KEYS`), `gold`, `materials` (pouch, `MATERIALS`), `blueprints`, `max_mp`/`current_mp`/`restore_mp()`/`can_cast()`/`spend_mp()`/`equipped_abilities()`, `slot_for`/`can_equip`/`slot_of`/`equip`/`unequip`/`drop`, `can_use`/`use`, weight, `to_dict`/`from_dict` (with old-save migration). |
 | `pygame_rpg/items.py` | 🚧 M2 | `Item` dataclass; builders `_wp`/`_arm`/`_con`/`_trinket`/`_ab` + tier helpers `_tier`/`_arm_tier`/`_con_tier`/`_trinket_tier`/`_ab_tier`; `JUNK` (`_junk`, sell `value`), `CATALOG` (222 items), `LOOT_KINDS`, `roll_junk()`; `STARTER_INVENTORY = ["sword", "potion", "fireball"]`; `item_by_id()` returns a copy. |
 | `pygame_rpg/savegame.py` | ✅ M5 | `saves/<name>.json` per character + `saves/index.json`; runs in `saves/runs/<name>.json` (`save_run` / `load_run` / `delete_run`; a broken run file reads as no run); `_safe_name()` validates names (`^[\w .-]{1,20}$`), index self-prunes missing files; `_resolve()` turns saved item refs (id or `{"id", "charges"}`) into items. |
+| `pygame_rpg/hires.py` | ✅ | High-resolution rendering (desktop, `config.RENDER_SCALE` = 2): `install()` swaps `pygame.Surface` for `HiSurface` (2x the real pixels, same logical sizes and positions) and wraps `pygame.draw` / `pygame.transform`, so the whole game draws at 1600×1200 with the 800×600 layout. Text renders through `HiFont`; fractional widths/positions (0.5 = one real pixel) add finer sprite detail; `zoom()` + `rewrap()` let the AssetManager draw sprites at the size they are shown (`hero_frames(size=128)`, `load_sheet(..., size)`, `item_icon(item, size)`). Code-drawn art is generated in code rather than loaded from `assets/` while it is on. Not installed on touch screens (Android keeps the 1x canvas). |
 | `pygame_rpg/gui/display.py` | ✅ | The window. Screens still draw on the fixed 800×600 canvas; `Display` opens a resizable window as large as fits the desktop (`fit_scale`, 0.25 steps), scales the canvas into it with hard pixel blocks and black bars (`letterbox`; nearest-neighbour, no smoothing filter, so text and pixel art stay crisp), maps mouse events back to canvas coordinates (`to_canvas`) and toggles fullscreen on F11. `main.py` passes every event through `display.handle_event` and ends each frame with `display.present()`. |
 | `pygame_rpg/settings.py` | ✅ | Player settings in one shared `settings.current`: `brightness` (0.5–2.0), `ambience_volume`, `effects_volume` (defaults from `config.py`), `fullscreen`, and `keys` (action → two key slots; actions up / down / left / right / attack / interact / inventory / map). `load()` at start-up, `save()` to `saves/settings.json` (bad values fall back to defaults). `bind()` takes a key off any other slot first; Esc, F11 and N (mute) are reserved. The dungeon asks `pressed(event, action)` / `held(keys, action)`; hints use `action_label()`. Menus keep their fixed arrows / Enter. |
 | `pygame_rpg/gui/settings_screen.py` | ✅ | Sliders, fullscreen toggle and the key table, plus Reset keys / Back; opened from the title screen and the Base with `return_to` (resumed on leaving), saves on leaving. Plays the sewer ambience so its volume can be heard. Brightness is applied by `Display` (colours multiplied, black stays black); volumes by `audio` (`refresh_volume()` for the running loop). |

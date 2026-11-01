@@ -3,7 +3,7 @@ the shared panel / bar / background drawing."""
 import pygame
 import pytest
 
-from pygame_rpg.assets import AssetManager, upscale, SPRITE_OUTLINE
+from pygame_rpg.assets import AssetManager, upscale, outline, SPRITE_OUTLINE
 from pygame_rpg.gui import screen as S
 from pygame_rpg.gui.display import Display
 
@@ -52,10 +52,10 @@ def test_odd_size_window_has_no_smoothing(display):
 
 def test_upscale_sizes_and_outline(display):
     hero = AssetManager().hero_frames()[0]
-    big = upscale(hero, 128)
-    assert big.get_size() == (128, 128)
+    assert upscale(hero, 128).get_size() == (128, 128)
     assert upscale(hero, (48, 48)).get_size() == (48, 48)
-    lined = upscale(hero, 128, outline=True)
+    assert AssetManager().hero_frames(size=128)[0].get_size() == (128, 128)
+    lined = outline(upscale(hero, 128))
     colours = {tuple(lined.get_at((x, y))) for x in range(128) for y in range(128)}
     assert SPRITE_OUTLINE + (255,) in colours
     # Transparent around the sprite stays transparent.

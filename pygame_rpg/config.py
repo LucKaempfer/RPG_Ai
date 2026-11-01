@@ -7,6 +7,8 @@ keeps the same stats, XP curve and weight limits.
 # --- Display (shared by all GUI screens) ---
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
 FPS = 60
+# Real pixels per canvas pixel on desktops (hires.py); 1 = off.
+RENDER_SCALE = 2
 
 # --- Starting character stats ---
 # V3 hero_maker writes: name / 1 / 0 / 100 / 5 / 5 / 5 / 5 / 5 / 5
@@ -94,6 +96,13 @@ BLUEPRINT_PROP_CHANCE = 3
 PROPS_PER_ROOM = (1, 3)    # min, max scenery props per room (+1 per 30 cells)
 # The healing fountain (special_rooms.py): drinking heals this % of max HP.
 FOUNTAIN_HEAL_PERCENT = 50
+# Corridor traps (traps.py): how many per floor, and what a hit costs.
+TRAPS_PER_FLOOR = 4        # on floor 1 ...
+TRAPS_PER_EXTRA_FLOOR = 1  # ... plus this per floor deeper
+TRAPS_MAX = 9
+TRAP_DAMAGE = {"tripwire": 9, "firepit": 5, "spikes": 7}          # per hit on floor 1
+TRAP_DAMAGE_PER_FLOOR = {"tripwire": 3, "firepit": 2, "spikes": 2}
+TRAP_ARMOUR_DIV = 3        # damage minus hero defense // this
 
 # --- Audio (audio.py synthesises everything; N mutes in game) ---
 # Defaults only: the settings screen changes them (settings.py).

@@ -19,6 +19,8 @@ from pathlib import Path
 import pygame
 from pygame import Rect
 
+from .. import hires
+
 # --- Palette (shared by all screens) ---
 BG_COLOR = (22, 22, 30)
 PANEL_COLOR = (38, 38, 52)
@@ -54,12 +56,14 @@ _FONTS = {}
 
 def font(size: int) -> pygame.font.Font:
     """Return a cached game font for the given pixel size (pygame's
-    default font if the font file is missing)."""
+    default font if the font file is missing), rendering at the full
+    resolution when ``hires`` is on."""
     if size not in _FONTS:
+        make = hires.HiFont if hires.active() else pygame.font.Font
         try:
-            _FONTS[size] = pygame.font.Font(FONT_FILE, max(1, round(size * FONT_SCALE)))
+            _FONTS[size] = make(FONT_FILE, max(1, round(size * FONT_SCALE)))
         except (OSError, pygame.error):
-            _FONTS[size] = pygame.font.Font(None, size)
+            _FONTS[size] = make(None, size)
     return _FONTS[size]
 
 
