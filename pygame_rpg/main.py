@@ -24,7 +24,9 @@ played while they are shown).  M toggles mute.
 
 Window: screens draw on a fixed 800 x 600 canvas; ``gui/display.py``
 scales it into a resizable window (F11: fullscreen) and maps the mouse
-back onto the canvas.
+back onto the canvas.  On desktops ``hires.py`` makes that canvas (and
+every surface) hold ``config.RENDER_SCALE`` x the pixels, so text and
+sprites are drawn at high resolution with the same layout.
 
 Settings (``settings.py``, ``gui/settings_screen.py``): brightness,
 volumes, fullscreen and the dungeon keys, saved in
@@ -39,7 +41,7 @@ background the screen's ``suspend`` saves and the sound pauses.
 
 import pygame
 
-from . import audio, config, settings
+from . import audio, config, device, hires, settings
 from .gui.display import Display
 from .gui.screen import QUIT
 from .gui.title_screen import TitleScreen
@@ -116,6 +118,8 @@ def main():
     pygame.init()
     audio.init()
     settings.load()
+    if not device.TOUCH:   # the phone keeps the 1x canvas (see hires.py)
+        hires.install(config.RENDER_SCALE)
     display = Display()
     screen = display.canvas
     pygame.display.set_caption("Dungeon Crawler")

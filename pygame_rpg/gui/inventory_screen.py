@@ -25,7 +25,7 @@ when opened mid-run (I in the dungeon).  Window close saves, then quits.
 
 import pygame
 
-from ..assets import AssetManager, upscale
+from ..assets import AssetManager
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from ..savegame import save_player
 from .screen import (
@@ -273,10 +273,7 @@ class InventoryScreen(Screen):
         """Item icon scaled to ``size`` pixels (cached per id+size)."""
         key = (item.id, size)
         if key not in self._icons:
-            surf = self.assets.item_icon(item)
-            if surf.get_size() != (size, size):
-                surf = upscale(surf, size)
-            self._icons[key] = surf
+            self._icons[key] = self.assets.item_icon(item, size)
         return self._icons[key]
 
     def _diffs(self):

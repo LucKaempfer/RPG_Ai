@@ -11,8 +11,10 @@ needs to know the window size.
 The scaling keeps the picture sharp: whenever the view is larger than
 the canvas shown, every canvas pixel becomes a solid block of window
 pixels (nearest-neighbour, no smoothing filter), so pixel art and text
-stay crisp.  Only a view smaller than the canvas (menus on a phone) is
-smoothed, as dropping whole rows there would make text unreadable.
+stay crisp.  Only a view smaller than the canvas (menus on a phone, or
+the high-resolution canvas of ``hires.py`` in a window smaller than
+it) is smoothed, as dropping whole rows there would make text
+unreadable.
 
 The brightness and the fullscreen flag come from ``settings.current``
 (the settings screen changes them; F11 flips fullscreen and saves).
@@ -32,7 +34,7 @@ Escape.
 
 import pygame
 
-from .. import config, device, settings
+from .. import config, device, hires, settings
 from .touch import TouchControls
 
 # Share of the desktop the window may take when it opens (the rest is
@@ -125,8 +127,9 @@ class Display:
             self.view = letterbox(self.laid_out_for, self.canvas.get_size(), side)
         if self.touch:
             self.touch.layout(self.laid_out_for, self.view, overlay=self.wide)
-        self.scaled = pygame.Surface(self.view.size)
-        self.boost = pygame.Surface(self.view.size)
+        # Window-sized, so plain surfaces even with ``hires`` on.
+        self.scaled = hires.Plain(self.view.size)
+        self.boost = hires.Plain(self.view.size)
 
     def canvas_for(self, screen):
         """The canvas ``screen`` draws on this frame: the wide one for a
@@ -193,15 +196,16 @@ class Display:
         pygame.display.flip()
 
     def _scale(self):
-        """The active canvas into ``self.scaled`` (the view's size):
-        hard pixel blocks when enlarging, smoothed only when shrinking."""
-        size = self.active.get_size()
+        """The active canvas's real pixels (``hires``: SCALE x per side)
+        into ``self.scaled`` (the view's size): hard pixel blocks when
+        enlarging, smoothed only when shrinking."""
+        size = hires.raw_size(self.active)
         if self.view.size == size:
-            self.scaled.blit(self.active, (0, 0))
+            hires.Plain.blit(self.scaled, self.active, (0, 0))
         elif self.view.w >= size[0] and self.view.h >= size[1]:
-            pygame.transform.scale(self.active, self.view.size, self.scaled)
+            hires.orig_scale(self.active, self.view.size, self.scaled)
         else:
-            pygame.transform.smoothscale(self.active, self.view.size, self.scaled)
+            hires.orig_smoothscale(self.active, self.view.size, self.scaled)
 
     def update(self, dt, screen_name):
         """Once per frame: which screen is shown (the touch buttons
