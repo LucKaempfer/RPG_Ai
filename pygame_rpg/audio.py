@@ -352,6 +352,29 @@ def _click(s):
     return s.gain(s.env(s.tone(1200, 900, 0.04, "square"), decay=60), 0.12)
 
 
+def _trip(s):
+    # A tripwire snapping taut: a dry tick, then a ratchet in the wall.
+    tick = s.env(s.highpass(s.noise(0.03), 0.5), attack=0.001, decay=80)
+    ratchet = [(s.gain(s.env(s.tone(700, 520, 0.03, "square"), decay=70), 0.25),
+                0.05 + 0.05 * i) for i in range(3)]
+    return s.mix(s.gain(tick, 0.7), *ratchet)
+
+
+def _flame(s):
+    # A fire pit flaring up: a rushing roar with some crackle.
+    roar = s.env(s.sweep_lowpass(s.noise(0.6), 0.04, 0.25), attack=0.05, decay=4)
+    pops = [(s.gain(s.env(s.highpass(s.noise(0.02), 0.5), decay=90), 0.4), t)
+            for t in (0.08, 0.2, 0.33, 0.41)]
+    return s.mix(s.gain(roar, 0.9), *pops)
+
+
+def _spikes(s):
+    # Iron spikes shooting out of the floor: a scrape and a clank.
+    scrape = s.env(s.highpass(s.noise(0.12), 0.25), attack=0.005, decay=25)
+    clank = s.env(s.tone(520, 480, 0.2, "square"), decay=20)
+    return s.mix(s.gain(scrape, 0.6), (s.gain(s.lowpass(clank, 0.3), 0.4), 0.03))
+
+
 def _drip(s, f):
     plink = s.env(s.tone(f, f * 1.9, 0.07), attack=0.001, decay=45)
     return s.echo(s.gain(plink, 0.5), 0.13, 0.45, 5)
@@ -437,6 +460,9 @@ _RECIPES = {
     "level_up": _level_up,
     "stairs": _stairs,
     "click": _click,
+    "trip": _trip,
+    "flame": _flame,
+    "spikes": _spikes,
     "drip0": lambda s: _drip(s, 900),
     "drip1": lambda s: _drip(s, 1150),
     "drip2": lambda s: _drip(s, 1400),
