@@ -54,6 +54,17 @@ Beating the floor-5 boss tells the epilogue once (`"epilogue"` in `Player.lore`)
 on without lore. The Base has a **Journal** button (`gui/journal_screen.py`) to reread the
 prologue, every writing found ("? ? ?" for the rest) and the epilogue. No `RUN_VERSION` change.
 
+**Minibosses (`miniboss.py`):** every floor has one more guarded room (own RNG
+`miniboss-{seed}`; never the entrance, the lair or a special room) with a named, tougher foe
+(`Enemy.miniboss`; between a normal enemy and the Rat King, guaranteed loot,
+`MINIBOSS_GOLD_MULT` gold, fleeing allowed). Floors 1-5 tie into the story: the Gutter Matron,
+a drowned watchman of Brenn's Drain Watch, Gnashtooth the goblin tithe-taker, Lord Aldric's
+Gnawed Steward and the Whispering Swarm (which leaves Hobb behind); floors 6+ get a Deep Warden.
+Beating a story miniboss opens its writing (`lore.MINIBOSS_LORE`, kept out of `lore_cells`) and
+files it in `Player.lore`; the journal lists it after its floor's writings and now scrolls. The
+miniboss is placed after everything else and appended to `all_enemies`, so placements and old
+run saves are unchanged (no `RUN_VERSION` change). The map marks its room in red until it falls.
+
 **Character customization:** the hero maker has a look stage between the name and the
 confirm (skin, hair style incl. helmet / hood, hair colour, tunic colour, with a walking preview
 and a Random button). The hero is drawn in code from `Player.look` (`AssetManager.hero_frames`),
@@ -212,7 +223,7 @@ wake up rested in the Base.
 | `pygame_rpg/player.py` | ✅ M3 | `Player` dataclass: base stats, XP/level-up, upgrade counts, backpack, 11 equipment slots, `bonus()`/`total()`, `max_hp`/`current_hp`/`heal()`, `look` (appearance indices, `LOOK_KEYS`), `gold`, `materials` (pouch, `MATERIALS`), `blueprints`, `max_mp`/`current_mp`/`restore_mp()`/`can_cast()`/`spend_mp()`/`equipped_abilities()`, `slot_for`/`can_equip`/`slot_of`/`equip`/`unequip`/`drop`, `can_use`/`use`, weight, `to_dict`/`from_dict` (with old-save migration). |
 | `pygame_rpg/items.py` | 🚧 M2 | `Item` dataclass; builders `_wp`/`_arm`/`_con`/`_trinket`/`_ab` + tier helpers `_tier`/`_arm_tier`/`_con_tier`/`_trinket_tier`/`_ab_tier`; `JUNK` (`_junk`, sell `value`), `CATALOG` (222 items), `LOOT_KINDS`, `roll_junk()`; `STARTER_INVENTORY = ["sword", "potion", "fireball"]`; `item_by_id()` returns a copy. |
 | `pygame_rpg/savegame.py` | ✅ M5 | `saves/<name>.json` per character + `saves/index.json`; runs in `saves/runs/<name>.json` (`save_run` / `load_run` / `delete_run`; a broken run file reads as no run); `_safe_name()` validates names (`^[\w .-]{1,20}$`), index self-prunes missing files; `_resolve()` turns saved item refs (id or `{"id", "charges"}`) into items. |
-| `pygame_rpg/hires.py` | ✅ | High-resolution rendering (desktop, `config.RENDER_SCALE` = 2): `install()` swaps `pygame.Surface` for `HiSurface` (2x the real pixels, same logical sizes and positions) and wraps `pygame.draw` / `pygame.transform`, so the whole game draws at 1600×1200 with the 800×600 layout. Text renders through `HiFont`; fractional widths/positions (0.5 = one real pixel) add finer sprite detail; `zoom()` + `rewrap()` let the AssetManager draw sprites at the size they are shown (`hero_frames(size=128)`, `load_sheet(..., size)`, `item_icon(item, size)`). Code-drawn art is generated in code rather than loaded from `assets/` while it is on. Not installed on touch screens (Android keeps the 1x canvas). |
+| `pygame_rpg/hires.py` | ✅ | High-resolution rendering (`config.RENDER_SCALE` = 2): `install()` swaps `pygame.Surface` for `HiSurface` (2x the real pixels, same logical sizes and positions) and wraps `pygame.draw` / `pygame.transform`, so the whole game draws at 1600×1200 with the 800×600 layout. Text renders through `HiFont`; fractional widths/positions (0.5 = one real pixel) add finer sprite detail; `zoom()` + `rewrap()` let the AssetManager draw sprites at the size they are shown (`hero_frames(size=128)`, `load_sheet(..., size)`, `item_icon(item, size)`). Code-drawn art is generated in code rather than loaded from `assets/` while it is on. On Android the window is 2× the canvas size (`android_size`), so the phone gets it too; the touch controls draw on the window with plain surfaces and `screen.window_font`. |
 | `pygame_rpg/gui/display.py` | ✅ | The window. Screens still draw on the fixed 800×600 canvas; `Display` opens a resizable window as large as fits the desktop (`fit_scale`, 0.25 steps), scales the canvas into it with hard pixel blocks and black bars (`letterbox`; nearest-neighbour, no smoothing filter, so text and pixel art stay crisp), maps mouse events back to canvas coordinates (`to_canvas`) and toggles fullscreen on F11. `main.py` passes every event through `display.handle_event` and ends each frame with `display.present()`. |
 | `pygame_rpg/settings.py` | ✅ | Player settings in one shared `settings.current`: `brightness` (0.5–2.0), `ambience_volume`, `effects_volume` (defaults from `config.py`), `fullscreen`, and `keys` (action → two key slots; actions up / down / left / right / attack / interact / inventory / map). `load()` at start-up, `save()` to `saves/settings.json` (bad values fall back to defaults). `bind()` takes a key off any other slot first; Esc, F11 and N (mute) are reserved. The dungeon asks `pressed(event, action)` / `held(keys, action)`; hints use `action_label()`. Menus keep their fixed arrows / Enter. |
 | `pygame_rpg/gui/settings_screen.py` | ✅ | Sliders, fullscreen toggle and the key table, plus Reset keys / Back; opened from the title screen and the Base with `return_to` (resumed on leaving), saves on leaving. Plays the sewer ambience so its volume can be heard. Brightness is applied by `Display` (colours multiplied, black stays black); volumes by `audio` (`refresh_volume()` for the running loop). |
@@ -277,6 +288,7 @@ pygame_rpg/
 ├── enemies.py         # enemy types, per-floor scaling, boss room, placement
 ├── props.py           # room clutter (barrels, crates, pots...) and its placement
 ├── special_rooms.py   # the floor's shop, forge and fountain rooms, keeper spots, fountain gifts
+├── miniboss.py        # one miniboss room per floor: types tied to the story, placement
 ├── shop.py            # prices, stock, buy / sell rules
 ├── crafting.py        # blueprints, crafting and upgrading weapons at the anvil
 ├── lore.py            # the story: prologue, lost writings per floor, epilogue, placement
@@ -312,6 +324,7 @@ tests/
 ├── test_props.py          # props on edges away from doors, nothing cut off, seeded, blocking
 ├── test_looks.py          # character customization: look stage, look in saves, frames per look
 ├── test_lore.py           # story: writings per floor, placement, pickup, journal, epilogue, saves
+├── test_miniboss.py       # miniboss room per floor, placement, saves, its writing, map, journal
 ├── test_smoke_scripts.py  # runs the two scripts below as pytest cases
 ├── m2_smoke_test.py       # end-to-end item / inventory checks (plain script)
 └── m4_smoke_test.py       # end-to-end dungeon / battle / run-save checks (plain script)

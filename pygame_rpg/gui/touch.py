@@ -27,7 +27,8 @@ import math
 import pygame
 
 from .. import settings
-from .screen import font
+from .. import hires
+from .screen import window_font
 
 DIRS = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
 ARROW_KEYS = {"up": pygame.K_UP, "down": pygame.K_DOWN,
@@ -252,7 +253,8 @@ class TouchControls:
             self._draw(surface)
             return
         if self._layer is None or self._layer.get_size() != surface.get_size():
-            self._layer = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+            # The window's real pixels: a plain surface even with hires.
+            self._layer = hires.Plain(surface.get_size(), pygame.SRCALPHA)
         self._layer.fill((0, 0, 0, 0))
         self._draw(self._layer)
         self._layer.set_alpha(OVERLAY_ALPHA)
@@ -281,6 +283,6 @@ class TouchControls:
                 label = "Back"
             elif name == "a" and self.context != "dungeon":
                 label = "OK"
-            text = font(max(12, int(br * (0.9 if len(label) == 1 else 0.6)))).render(
+            text = window_font(max(12, int(br * (0.9 if len(label) == 1 else 0.6)))).render(
                 label, True, LABEL_COLOR)
             surface.blit(text, text.get_rect(center=(bx, by)))

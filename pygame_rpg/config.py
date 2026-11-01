@@ -7,7 +7,7 @@ keeps the same stats, XP curve and weight limits.
 # --- Display (shared by all GUI screens) ---
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
 FPS = 60
-# Real pixels per canvas pixel on desktops (hires.py); 1 = off.
+# Real pixels per canvas pixel (hires.py); 1 = off.
 RENDER_SCALE = 2
 
 # --- Starting character stats ---
@@ -84,6 +84,7 @@ CHESTS_PER_FLOOR = 2
 # Money and junk (sold at the shop).  Gold amounts are x floor.
 ENEMY_GOLD = (3, 8)        # every won fight; the boss pays BOSS_GOLD_MULT x
 BOSS_GOLD_MULT = 5
+MINIBOSS_GOLD_MULT = 3    # a floor's miniboss (miniboss.py)
 ENEMY_JUNK_CHANCE = 25     # % a beaten enemy also drops a piece of junk
 PROP_GOLD = (1, 4)
 PROP_GOLD_CHANCE = 30      # % a smashed prop holds some coins

@@ -136,6 +136,21 @@ def draw_bar(surface, rect, value, maximum, color, radius=None,
     pygame.draw.rect(surface, border, rect, width=1, border_radius=radius)
 
 
+_WINDOW_FONTS = {}
+
+
+def window_font(size: int) -> pygame.font.Font:
+    """The game font for drawing straight onto the window (real pixels,
+    never ``hires``): the on-screen touch controls."""
+    if size not in _WINDOW_FONTS:
+        try:
+            _WINDOW_FONTS[size] = pygame.font.Font(
+                FONT_FILE, max(1, round(size * FONT_SCALE)))
+        except (OSError, pygame.error):
+            _WINDOW_FONTS[size] = pygame.font.Font(None, size)
+    return _WINDOW_FONTS[size]
+
+
 class Screen:
     """Base class for all GUI screens.
 

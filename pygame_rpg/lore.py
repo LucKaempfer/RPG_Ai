@@ -1,6 +1,7 @@
 """The story: a prologue after the hero is made, lost writings (books,
-notes, scrolls, letters) lying on floors 1-LORE_FLOORS, and an epilogue
-once the boss of floor LORE_FLOORS falls.
+notes, scrolls, letters) lying on floors 1-LORE_FLOORS, one more left by
+each floor's miniboss (``MINIBOSS_LORE``), and an epilogue once the boss
+of floor LORE_FLOORS falls.
 
 Pure data + placement, no drawing (the dungeon screen draws the
 pickups, ``gui/story_screen.py`` shows the text, ``gui/journal_screen.py``
@@ -238,7 +239,58 @@ LORE = (
     )),
 )
 
-BY_ID = {e.id: e for e in LORE}
+# What each floor's miniboss (miniboss.py) leaves behind: read on the
+# spot once it falls and filed in the journal.  Not lying on the floor,
+# so ``lore_cells`` never places these.
+MINIBOSS_LORE = {
+    1: LoreEntry("matron_nest", 1, "note", "The Matron's Nest", (
+        "The Gutter Matron's nest is woven from paper: Council bounty "
+        "notices, dozens of them, chewed soft. Every one offers silver for "
+        "the Rat King. Every name written on them has been gnawed away.",
+        "At the bottom lies a tally stick of Hobb Tanner's, notched 41, 66 "
+        "and 108 times. Someone has gnawed one more notch at the end, very "
+        "neatly. She led the lines down, you think. And she was keeping "
+        "count of who came after them.",
+    )),
+    2: LoreEntry("watchman_badge", 2, "letter", "A Watchman's Badge", (
+        "A tin badge of the Drain Watch, number 14, and a letter sealed in "
+        "wax inside a bottle.\n"
+        "\"Corporal Tam Fisk to Sergeant Brenn. We knocked for two days. "
+        "Then the water came up, and the rats came with it.\"",
+        "\"The alchemist went on down. She told us to wait for the gates. "
+        "I am still waiting, Sergeant. I am still on duty. Tell the "
+        "Council I followed the order too.\"\n"
+        "(The wax is unbroken. Brenn never read it.)",
+    )),
+    3: LoreEntry("tithe_purse", 3, "scroll", "The Tithe-Taker's Purse", (
+        "Gnashtooth's purse is heavy with the little king's pay: brass "
+        "buttons, fish hooks, a child's tin whistle, and a gold signet "
+        "ring with the boar of the house of Aldric.",
+        "Scratched on the leather in the goblin tongue: \"Little king "
+        "says: guard the cistern. Nobody wakes the old lord.\"\n"
+        "Below it, a tally of goblins. Many marks. Most crossed out.",
+    )),
+    4: LoreEntry("steward_keys", 4, "tablet", "The Steward's Keys", (
+        "A ring of iron keys on a belt the rats have chewed through. The "
+        "tag reads: Osric, steward to Lord Aldric, keeper of the cistern "
+        "doors.",
+        "Scratched on the back with a key: \"My lord bit me and I did not "
+        "die. I grew hungry too. His sons walled us both in. I keep his "
+        "doors still. If you have killed me, the way to the throne is "
+        "open. Do not let it sit on you.\"",
+    )),
+    5: LoreEntry("hobb_found", 5, "note", "Hobb, Found", (
+        "Where the swarm scattered lies Hobb Tanner, thin as a rake, bound "
+        "in fur and spit. He is alive. His eyes find your lantern and he "
+        "laughs, very softly.",
+        "\"I never said yes,\" he whispers. \"Tell Wren. Tell her I never "
+        "said yes.\" He presses a broken iron spike into your hand, still "
+        "warm: a point from the rim of the crown. \"It's afraid of you,\" "
+        "he says. Then he sleeps.",
+    )),
+}
+
+BY_ID = {e.id: e for e in (*LORE, *MINIBOSS_LORE.values())}
 
 
 def entries_for_floor(floor: int) -> list:
