@@ -161,8 +161,7 @@ def test_present_draws_the_controls(touch_display):
     d.present()
     (cx, cy), _ = d.touch.pad
     assert d.window.get_at((cx, cy))[:3] == touch.PAD_COLOR
-    r, g, b = d.window.get_at(d.view.center)[:3]
-    assert r >= 250 and g == b == 0      # sharp scaling may round a little
+    assert d.window.get_at(d.view.center)[:3] == (255, 0, 0)
 
 
 def test_dungeon_walks_on_the_pad_and_names_the_buttons(touch_display):

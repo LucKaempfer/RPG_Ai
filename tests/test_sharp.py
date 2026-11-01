@@ -1,4 +1,4 @@
-"""Sharp picture: the game font, Scale2x window scaling, big sprites and
+"""Sharp picture: the game font, unsmoothed window scaling, big sprites and
 the shared panel / bar / background drawing."""
 import pygame
 import pytest
@@ -38,14 +38,16 @@ def test_double_size_window_keeps_hard_pixels(display):
     assert display.window.get_at((22, 20))[:3] == (0, 0, 0)
 
 
-def test_odd_size_window_keeps_colours(display):
+def test_odd_size_window_has_no_smoothing(display):
     display.window = pygame.display.set_mode((1200, 900))
     display._layout()
-    for colour in ((0, 0, 0), (22, 22, 30), (230, 190, 90)):
-        display.canvas.fill(colour)
-        display.present()
-        shown = display.window.get_at(display.view.center)[:3]
-        assert all(abs(a - b) <= 3 for a, b in zip(shown, colour)), (colour, shown)
+    display.canvas.fill((22, 22, 30))
+    display.canvas.fill((255, 255, 255), (100, 100, 3, 3))
+    display.present()
+    # Only the two colours of the canvas reach the window: no blur.
+    seen = {tuple(display.window.get_at((x, y))[:3])
+            for x in range(140, 165) for y in range(140, 165)}
+    assert seen == {(22, 22, 30), (255, 255, 255)}
 
 
 def test_upscale_sizes_and_outline(display):

@@ -1,6 +1,7 @@
-# Builds the Android APK on every push and pull request, so a change to
-# main that breaks the Android build shows up as a red check.  The APK
-# is attached to each run under "Artifacts" (download, unzip, install).
+# Runs the tests on every push to main and every pull request.  The
+# Android APK is built only on request: Actions tab -> "Android APK" ->
+# "Run workflow" (pick the branch).  The APK is attached to that run
+# under "Artifacts" (download, unzip, install).
 name: Android APK
 
 on:
@@ -22,6 +23,7 @@ jobs:
         run: python -m pytest -q
 
   apk:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
