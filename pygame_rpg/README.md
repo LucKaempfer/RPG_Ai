@@ -22,14 +22,15 @@ python -m pytest
 * New hero: type a name, then pick a look (Up / Down choose, Left / Right change, R random).
 * Dungeon: arrows / WASD to walk, Space (or F) to swing your weapon or shoot your bow / wand at
   barrels, crates and other clutter (they break into crafting materials), E next to the merchant to trade or next to the anvil to craft and upgrade weapons (one shop and
-  one anvil room per floor), bump into an enemy to fight, Esc returns to the Base (the run
+  one anvil room per floor), bump into an enemy to fight, M opens the full map of the floor (the rooms and corridors you
+  have explored), Esc returns to the Base (the run
   is kept: *Continue (Floor N)*).
 * Battle: Attack / Abilities / Items / Run.
-* M: mute / unmute sound (effects and the sewer ambience).
+* N: mute / unmute sound (effects and the sewer ambience).
 * Window: drag the edges or maximise to resize (the picture keeps its shape); F11 toggles
   fullscreen.
 * Settings (title screen or Base): brightness, ambience and effects volume, fullscreen, and
   the dungeon keys (two per action; Enter on a slot, then press the new key). Saved in
-  `saves/settings.json`. Esc, F11 and M can't be rebound.
+  `saves/settings.json`. Esc, F11 and N can't be rebound.
 
 Everything else (architecture, rules, numbers, roadmap) is in `DEVELOPMENT.md` at the repo root.
