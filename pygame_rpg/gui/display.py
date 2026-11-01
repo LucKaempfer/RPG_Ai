@@ -9,10 +9,10 @@ mouse positions are mapped back to canvas coordinates, so no screen
 needs to know the window size.
 
 The scaling keeps the picture sharp: whenever the view is larger than
-the canvas shown, the canvas is first doubled with Scale2x (pixels stay hard,
-the stair steps of diagonal edges are rounded off) and only the rest is
-smoothed, instead of smoothing the whole way up, which made the old
-picture (text above all) look blurred.
+the canvas shown, every canvas pixel becomes a solid block of window
+pixels (nearest-neighbour, no smoothing filter), so pixel art and text
+stay crisp.  Only a view smaller than the canvas (menus on a phone) is
+smoothed, as dropping whole rows there would make text unreadable.
 
 The brightness and the fullscreen flag come from ``settings.current``
 (the settings screen changes them; F11 flips fullscreen and saves).
@@ -42,7 +42,6 @@ MOUSE_EVENTS = (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN,
                 pygame.MOUSEBUTTONUP)
 TOUCH_BAR = 0.28   # least width of each control bar, x window height
 WIDE_HEIGHT = 420  # canvas height of wide screens on a touch screen
-SHRINK_BIAS = 2
 
 
 def fit_scale(desktop, canvas=None):
@@ -128,9 +127,6 @@ class Display:
             self.touch.layout(self.laid_out_for, self.view, overlay=self.wide)
         self.scaled = pygame.Surface(self.view.size)
         self.boost = pygame.Surface(self.view.size)
-        cw, ch = self.active.get_size()
-        self.doubled = (pygame.Surface((cw * 2, ch * 2))
-                        if self.view.w > cw or self.view.h > ch else None)
 
     def canvas_for(self, screen):
         """The canvas ``screen`` draws on this frame: the wide one for a
@@ -197,23 +193,15 @@ class Display:
         pygame.display.flip()
 
     def _scale(self):
-        """The active canvas into ``self.scaled`` (the view's size), sharply."""
-        if not self.doubled:   # view no larger than the canvas
-            if self.view.size == self.active.get_size():
-                self.scaled.blit(self.active, (0, 0))
-            else:
-                pygame.transform.smoothscale(self.active, self.view.size, self.scaled)
-            return
-        pygame.transform.scale2x(self.active, self.doubled)
-        if self.doubled.get_size() == self.view.size:
-            self.scaled.blit(self.doubled, (0, 0))
-            return
-        if self.doubled.get_width() > self.view.w:
-            # Shrinking with smoothscale rounds every colour down by 2-3
-            # levels; lift them by SHRINK_BIAS first so the frame does not
-            # come out darker (black stays black).
-            self.doubled.fill((SHRINK_BIAS,) * 3, special_flags=pygame.BLEND_RGB_ADD)
-        pygame.transform.smoothscale(self.doubled, self.view.size, self.scaled)
+        """The active canvas into ``self.scaled`` (the view's size):
+        hard pixel blocks when enlarging, smoothed only when shrinking."""
+        size = self.active.get_size()
+        if self.view.size == size:
+            self.scaled.blit(self.active, (0, 0))
+        elif self.view.w >= size[0] and self.view.h >= size[1]:
+            pygame.transform.scale(self.active, self.view.size, self.scaled)
+        else:
+            pygame.transform.smoothscale(self.active, self.view.size, self.scaled)
 
     def update(self, dt, screen_name):
         """Once per frame: which screen is shown (the touch buttons
