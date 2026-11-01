@@ -35,7 +35,8 @@ The run is saved (``savegame.save_run``) on entering a floor, after
 every battle, on Esc and on window close: floor, seed, beaten enemies,
 opened chests, stairs, fog and the hero's spot.  Enemy and chest
 placement follow the seed, so the save only records what changed.
-I opens the inventory (equip, use potions) and comes back to the floor.
+I (or a tap on the HUD's gear strip) opens the inventory (equip, use
+potions) and comes back to the floor.
 Esc returns to the Base *without* resting; the Base's Continue picks
 the run up again, New Adventure (or a defeat) ends it.
 """
@@ -724,7 +725,10 @@ class DungeonScreen(Screen):
         if settings.pressed(event, "attack"):
             self.attack()
             return None
-        if settings.pressed(event, "inventory"):
+        if settings.pressed(event, "inventory") or (
+                event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
+                and self.hud.gear_rect.collidepoint(event.pos)):
+            # The HUD's gear strip opens the inventory too (tap or click).
             return ("inventory", {"player": self.player, "return_to": self})
         if settings.pressed(event, "map"):
             self.moving = False
