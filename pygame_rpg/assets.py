@@ -26,6 +26,8 @@ Layouts (all frames are 32x32 pixels):
 * ``objects/chest.png``    2 x 1 grid: 0 closed, 1 open
 * ``objects/merchant.png`` 2 x 1 grid: idle frames of the shop keeper
 * ``objects/anvil.png``    2 x 1 grid: the forge's anvil, coals flickering
+* ``objects/fountain.png`` 3 x 1 grid: the healing fountain, 0-1 water
+  flowing, 2 run dry (used up for the floor)
 * ``objects/props.png``    7 x 2 grid: one column per ``props.PROP_KINDS``,
   row 0 standing, row 1 broken
 """
@@ -175,6 +177,8 @@ class AssetManager:
             return _gen_merchant()
         if name == "objects/anvil.png":
             return _gen_anvil()
+        if name == "objects/fountain.png":
+            return _gen_fountain()
         if name.startswith("ui/"):
             return _gen_ui(name.rsplit("/", 1)[-1].removesuffix(".png"))
         raise FileNotFoundError(f"no generator for asset: {name}")
@@ -1025,6 +1029,39 @@ def _gen_anvil() -> pygame.Surface:
         pygame.draw.circle(f, hot[1], (27 if col == 0 else 28, 19), 1)
         pygame.draw.line(f, (130, 130, 136), (14, 9), (18, 5), 2)     # hammer
         pygame.draw.rect(f, iron_dark, (16, 3, 5, 3))
+        surf.blit(f, (col * FRAME_SIZE, 0))
+    return surf
+
+
+def _gen_fountain() -> pygame.Surface:
+    """The healing fountain: a round stone basin with a pillar spouting
+    glowing blue water.  Frames 0-1 ripple; frame 2 is the dry basin."""
+    surf = _new_sheet(3, 1)
+    stone, stone_dark, stone_light = (122, 124, 130), (70, 72, 80), (168, 170, 176)
+    for col in range(3):
+        f = pygame.Surface((FRAME_SIZE, FRAME_SIZE), pygame.SRCALPHA)
+        dry = col == 2
+        pygame.draw.ellipse(f, (0, 0, 0, 80), (2, 25, 28, 6))          # shadow
+        pygame.draw.ellipse(f, stone_dark, (2, 15, 28, 14))            # basin wall
+        pygame.draw.ellipse(f, stone, (2, 13, 28, 13))
+        pygame.draw.ellipse(f, stone_light, (2, 13, 28, 13), 1)
+        water = (44, 46, 52) if dry else ((70, 150, 230) if col == 0 else (84, 170, 240))
+        pygame.draw.ellipse(f, water, (5, 15, 22, 8))                  # pool
+        pygame.draw.rect(f, stone_dark, (14, 6, 5, 13))                # pillar
+        pygame.draw.rect(f, stone, (14, 6, 4, 13))
+        pygame.draw.rect(f, stone_light, (12, 4, 9, 3), border_radius=1)
+        if not dry:
+            hi = (200, 236, 255)
+            pygame.draw.line(f, hi, (16, 4), (16, 2), 1)               # spout
+            for side in (-1, 1):                                       # streams
+                x = 16 + side * (5 if col == 0 else 6)
+                pygame.draw.line(f, (150, 210, 250), (16, 3), (x, 9), 1)
+                pygame.draw.line(f, (150, 210, 250), (x, 9), (x + side, 17), 1)
+            ring = (8, 16, 16, 5) if col == 0 else (6, 16, 20, 6)
+            pygame.draw.ellipse(f, hi, ring, 1)                        # ripple
+        else:
+            pygame.draw.line(f, (40, 40, 44), (9, 18), (13, 20), 1)    # cracks
+            pygame.draw.line(f, (40, 40, 44), (20, 17), (23, 20), 1)
         surf.blit(f, (col * FRAME_SIZE, 0))
     return surf
 

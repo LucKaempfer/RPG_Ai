@@ -42,7 +42,7 @@ BASE_MAX_WEIGHT = 50
 SAVE_DIR = "saves"
 # Bumped whenever the same seed would build a different floor; run saves
 # from another version are dropped (the hero just starts a new run).
-RUN_VERSION = 5
+RUN_VERSION = 6
 
 # --- Rarity (M2 wiring; loot rolls in M4) ---
 # Relative spawn weights for a loot roll.  A rarity with no matching
@@ -92,6 +92,8 @@ BLUEPRINT_ENEMY_CHANCE = 10
 BLUEPRINT_CHEST_CHANCE = 30
 BLUEPRINT_PROP_CHANCE = 3
 PROPS_PER_ROOM = (1, 3)    # min, max scenery props per room (+1 per 30 cells)
+# The healing fountain (special_rooms.py): drinking heals this % of max HP.
+FOUNTAIN_HEAL_PERCENT = 50
 
 # --- Audio (audio.py synthesises everything; N mutes in game) ---
 # Defaults only: the settings screen changes them (settings.py).

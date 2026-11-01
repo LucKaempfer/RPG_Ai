@@ -78,6 +78,16 @@ way. Leather armour costs cloth 2 + bone 1, iron armour iron 2 + stone 1, times 
 weight (torso pieces cost double); upgrades are that × the new level plus 15 gold × the new
 level. Equipped armour stays in its slot when upgraded.
 
+**Healing fountain room:** each floor also has a third safe room (`SPECIAL_KINDS` gained
+`"fountain"`, same rules as the shop and forge) with a stone fountain near the top wall. E next to
+it opens `gui/fountain_screen.py` with one choice: *Fill a flask* (a Health Potion of the floor's
+tier, I on floor 1 to IV from floor 4, the one the shop sells; greyed out if too heavy) or *Drink*
+(heal `FOUNTAIN_HEAL_PERCENT` = 50 % of max HP, capped at full; greyed out at full HP); *Leave* /
+Esc / B keeps it for later. Rules: `fountain_potion()`, `fountain_heal()` in `special_rooms.py`,
+`DungeonScreen.use_fountain()`. One gift per floor: then the fountain is drawn dry and E only says
+so. Run saves keep `fountain_used`; the minimap and full map mark it in blue. `RUN_VERSION` went
+to 6 (the third safe room changes enemy, chest and prop placement).
+
 **Blueprints and the anvil room:** each floor also has a forge room (second special room,
 same rules as the shop) with an anvil; E next to it opens the forge screen
 (`gui/forge_screen.py`, rules in `crafting.py`). *Craft* makes the level-1 weapon of any known
@@ -199,7 +209,8 @@ wake up rested in the Base.
 | `pygame_rpg/gui/map_screen.py` | ✅ | Full map of the current floor, opened with the `map` action (M by default, the Map touch button) from the dungeon, which stays paused and is resumed on M / Esc / Back / a tap. Shows only what was found: seen floor (dim), visited rooms, walked corridors, the walls around them, merchant / forge marks, unopened chests seen, the stairs once open, and the hero blinking; title shows rooms explored / total. |
 | `pygame_rpg/gui/*.py` (8 screens) | ✅ M3 | `title_screen`, `tutorial_screen`, `hero_maker`, `hero_chooser`, `base_screen`, `inventory_screen`, `stats_screen`, `level_up_screen` (takes `return_to`: resume a dungeon floor instead of the Base). |
 | `pygame_rpg/dungeon.py` | ✅ M4 | Seeded generation (private `rng`, same seed = same floor): 60 × 44 tiles, up to 13 rooms with `ROOM_GAP` free tiles between them; rooms are linked by a minimum spanning tree over wall-to-wall gaps (shortest corridors that still reach every room) with A*-routed corridors from a door on the wall facing the target to a door on the target, never entering another room or the ring around it, so walls stay solid and every door is a single tile (one door per wall, reused). `door_outside()` gives the corridor cell outside a door. `visible_from()` (line of sight), `is_walkable()`, `spawn_point()`, sewer-tileset rendering (`sewer/tiles_v2.png`, doorways drawn as a thin gate on the corridor side, per-cell variants cached in `_tile_cache`) with camera offset, fog (`seen` cells + their walls), dimming outside `visible`, `overrides` for the manhole stairs, minimap of visited rooms + walked corridors. |
-| `pygame_rpg/special_rooms.py` | ✅ | `SPECIAL_KINDS`, `special_rooms(dungeon, seed)` (kind → room, own RNG), `keeper_cell(room)` (interior, clear of doors and the centre). |
+| `pygame_rpg/special_rooms.py` | ✅ | `SPECIAL_KINDS`, `special_rooms(dungeon, seed)` (kind → room, own RNG), `keeper_cell(room)` (interior, clear of doors and the centre), `fountain_potion(floor)`, `fountain_heal(player)`. |
+| `pygame_rpg/gui/fountain_screen.py` | ✅ | `FountainScreen(player, return_to)`: fill a flask or drink (50 % HP), once per floor; tap / mouse or Up / Down + Enter, Esc leaves. |
 | `pygame_rpg/crafting.py` | ✅ | `BLUEPRINTS` (weapon + armour bases), `RECIPES` by `family()` (incl. `leather` / `iron` armour), `base_id()`, `craft_cost` / `can_craft` / `craft`, `upgrade_cost` / `can_upgrade` / `upgrade` (in place), `upgradeable()`, `roll_blueprint()`; no drawing. |
 | `pygame_rpg/gui/forge_screen.py` | ✅ | `ForgeScreen(player, return_to)`: Craft / Upgrade tabs, cost panel (green / red per material), keyboard + mouse. |
 | `pygame_rpg/shop.py` | ✅ | `price()`, `sell_price()`, `roll_stock(seed, floor)`, `buy(player, stock, sold, index)`, `sell(player, item)`; no drawing. |
@@ -253,7 +264,7 @@ pygame_rpg/
 ├── dungeon.py         # seeded floor generation, walkability, rendering, fog, minimap
 ├── enemies.py         # enemy types, per-floor scaling, boss room, placement
 ├── props.py           # room clutter (barrels, crates, pots...) and its placement
-├── special_rooms.py   # the floor's shop room and where its keeper stands
+├── special_rooms.py   # the floor's shop, forge and fountain rooms, keeper spots, fountain gifts
 ├── shop.py            # prices, stock, buy / sell rules
 ├── crafting.py        # blueprints, crafting and upgrading weapons at the anvil
 ├── lore.py            # the story: prologue, lost writings per floor, epilogue, placement
@@ -283,6 +294,7 @@ tests/
 ├── test_saves.py          # player + run round trips, migration, broken run file
 ├── test_gui.py            # keyboard menus, particles, battle end animations, enemy sheets
 ├── test_crafting.py       # families, blueprints in saves / drops, craft, upgrade, anvil room, forge screen
+├── test_fountain.py       # fountain room, potion tier, 50 % heal, once per floor, screen, saves
 ├── test_shop.py           # safe shop room, merchant, prices, stock, buying / selling, saves
 ├── test_money.py          # gold per win / floor, junk drops, saves, coins and junk in props
 ├── test_props.py          # props on edges away from doors, nothing cut off, seeded, blocking
@@ -339,7 +351,7 @@ and saves are data, so items are always stored by id. `saves/index.json` is the 
 V3 `saved_chars.txt` equivalent).
 
 **Run saves** (`saves/runs/<name>.json`, M5): `version` (`RUN_VERSION`; a mismatch drops the run), `floor, seed, x, y, facing, beaten` (indices into
-the seeded enemy placement), `chests` (opened flags), `props` (indices of broken props), `shop_sold` (bought-out stock indices), `stairs`, `seen` (fog cells), `visited`
+the seeded enemy placement), `chests` (opened flags), `props` (indices of broken props), `shop_sold` (bought-out stock indices), `fountain_used`, `stairs`, `seen` (fog cells), `visited`
 (room indices), `corridors` (minimap). The seed rebuilds the floor, enemies and chests; the save
 only records what changed. Chest loot after a reload is rolled fresh.
 
