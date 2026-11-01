@@ -15,6 +15,8 @@ import math
 
 import pygame
 
+from . import hires
+
 SIZE = 32
 OUTLINE = (22, 18, 26)
 
@@ -48,8 +50,7 @@ def _base_id(item_id: str) -> str:
 
 def _outlined(surf: pygame.Surface) -> pygame.Surface:
     """``surf`` with a dark 1-pixel outline around everything drawn."""
-    sil = pygame.mask.from_surface(surf).to_surface(
-        setcolor=(*OUTLINE, 255), unsetcolor=(0, 0, 0, 0))
+    sil = hires.silhouette(surf, OUTLINE)
     out = pygame.Surface((SIZE, SIZE), pygame.SRCALPHA)
     for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
         out.blit(sil, (dx, dy))

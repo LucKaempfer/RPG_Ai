@@ -16,7 +16,7 @@ to the title screen.
 
 import pygame
 
-from ..assets import AssetManager, gear_of, upscale
+from ..assets import AssetManager, gear_of, outline
 from ..classes import class_name
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, RUN_VERSION, max_xp_for
 from ..savegame import save_player, load_run, delete_run
@@ -53,10 +53,10 @@ class BaseScreen(Screen):
         self.hot = None
         self.focus = None
 
-        # Portrait: first idle frame of the hero sheet, scaled up 4x.
+        # Portrait: first idle frame of the hero sheet, drawn at 128 px.
         frame = AssetManager().hero_frames(
-            player.look, gear_of(player.equipment))[0]
-        self.portrait = upscale(frame, 128, outline=True)
+            player.look, gear_of(player.equipment), 128)[0]
+        self.portrait = outline(frame)
 
         self.run = load_run(player.name)
         if self.run is not None and self.run.get("version") != RUN_VERSION:

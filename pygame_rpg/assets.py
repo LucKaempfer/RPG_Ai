@@ -34,6 +34,7 @@ import math
 import pygame
 from pathlib import Path
 
+from . import hires
 from .item_icons import draw_item_icon
 
 # All generated/loaded art lives here (sibling of this file).
@@ -121,7 +122,11 @@ class AssetManager:
         key = ("img", name)
         if key not in self._cache:
             p = self.path(name)
-            if p.exists():
+            if hires.active():
+                # Drawn in code at the full resolution (a file on disk
+                # would only hold the 1x picture); nothing is saved.
+                surf = self._generate(name)
+            elif p.exists():
                 surf = pygame.image.load(str(p))
                 # convert_alpha() needs a display; skip it in headless runs.
                 if pygame.display.get_init():
@@ -132,31 +137,60 @@ class AssetManager:
             self._cache[key] = surf
         return self._cache[key]
 
-    def load_sheet(self, name: str, cols: int, rows: int):
-        """Return a list of frames from a sheet, row-major."""
-        key = ("sheet", name, cols, rows)
+    def load_sheet(self, name: str, cols: int, rows: int, size=FRAME_SIZE):
+        """Return a list of frames from a sheet, row-major, each
+        ``size`` px (drawn at that size with ``hires`` on)."""
+        key = ("sheet", name, cols, rows, size)
         if key not in self._cache:
-            self._cache[key] = _slice(self.load_image(name), cols, rows)
+            if size == FRAME_SIZE:
+                self._cache[key] = _slice(self.load_image(name), cols, rows)
+            else:
+                self._cache[key] = self._sized(
+                    lambda: _slice(self._generate(name), cols, rows), size,
+                    lambda: self.load_sheet(name, cols, rows))
         return self._cache[key]
 
-    def hero_frames(self, look=None, gear=None):
+    def hero_frames(self, look=None, gear=None, size=FRAME_SIZE):
         """The hero's frames (HERO_COLS x HERO_ROWS, row-major) drawn in
         ``look`` (a ``Player.look`` dict) wearing ``gear`` (``gear_of``
-        the hero's equipment; None = nothing).  Drawn in code and cached
-        per look and gear; nothing is saved to disk."""
+        the hero's equipment; None = nothing), each ``size`` px.  Drawn
+        in code and cached per look, gear and size; nothing is saved to
+        disk."""
         gear = gear or NO_GEAR
-        key = ("hero", tuple(sorted((look or {}).items())), gear)
+        key = ("hero", tuple(sorted((look or {}).items())), gear, size)
         if key not in self._cache:
-            self._cache[key] = _slice(_gen_hero_sheet(look, gear), HERO_COLS, HERO_ROWS)
+            if size == FRAME_SIZE:
+                self._cache[key] = _slice(_gen_hero_sheet(look, gear), HERO_COLS, HERO_ROWS)
+            else:
+                self._cache[key] = self._sized(
+                    lambda: _slice(_gen_hero_sheet(look, gear), HERO_COLS, HERO_ROWS),
+                    size, lambda: self.hero_frames(look, gear))
         return self._cache[key]
 
-    def item_icon(self, item):
-        """32x32 icon of ``item`` (an ``items.Item``), drawn in code and
-        cached per id; nothing is saved to disk."""
-        key = ("icon", item.id)
+    def item_icon(self, item, size=FRAME_SIZE):
+        """``size`` px icon of ``item`` (an ``items.Item``), drawn in code
+        and cached per id and size; nothing is saved to disk."""
+        key = ("icon", item.id, size)
         if key not in self._cache:
-            self._cache[key] = draw_item_icon(item)
+            if size == FRAME_SIZE:
+                self._cache[key] = draw_item_icon(item)
+            else:
+                self._cache[key] = self._sized(
+                    lambda: [draw_item_icon(item)], size,
+                    lambda: [self.item_icon(item)])[0]
         return self._cache[key]
+
+    @staticmethod
+    def _sized(draw, size, small):
+        """Frames ``size`` px instead of 32: with ``hires`` on, ``draw()``
+        runs at that much more resolution, so the big sprite has real
+        detail; otherwise the 32 px ``small()`` frames are enlarged."""
+        if hires.active():
+            factor = size / FRAME_SIZE
+            with hires.zoom(factor):
+                frames = draw()
+            return [hires.rewrap(f, factor) for f in frames]
+        return [upscale(f, size) for f in small()]
 
     # -- placeholder generation ---------------------------------------
     def _generate(self, name: str) -> pygame.Surface:
@@ -191,25 +225,29 @@ def _slice(surf: pygame.Surface, cols: int, rows: int):
 SPRITE_OUTLINE = (14, 12, 18)
 
 
-def upscale(surf: pygame.Surface, size, outline=False) -> pygame.Surface:
-    """``surf`` enlarged to ``size`` (an int for a square, or (w, h))
-    for a large view of a 32 px sprite, every sprite pixel a solid
-    block (no smoothing).  ``outline`` adds a dark outline one sprite
-    pixel thick so a big character stands out from the background."""
+def upscale(surf: pygame.Surface, size) -> pygame.Surface:
+    """``surf`` enlarged to ``size`` (an int for a square, or (w, h)),
+    every sprite pixel a solid block (no smoothing).  For sprites drawn
+    in code ask the AssetManager for the size instead: with ``hires``
+    on it draws them at that size, with real detail."""
     w, h = (size, size) if isinstance(size, int) else size
-    if outline:
-        sw, sh = surf.get_size()
-        mask = pygame.mask.from_surface(surf)
-        line = mask.to_surface(setcolor=SPRITE_OUTLINE + (255,),
-                               unsetcolor=(0, 0, 0, 0))
-        out = pygame.Surface((sw, sh), pygame.SRCALPHA)
-        for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-            out.blit(line, (dx, dy))
-        out.blit(surf, (0, 0))
-        surf = out
     if surf.get_size() != (w, h):
         surf = pygame.transform.scale(surf, (w, h))
     return surf
+
+
+def outline(surf: pygame.Surface, width=None) -> pygame.Surface:
+    """``surf`` with a dark outline ``width`` px thick (default: half a
+    pixel of the 32 px sprite grid; fractions draw finer lines with
+    ``hires`` on) so a big character stands out from the background."""
+    w, h = surf.get_size()
+    d = width if width is not None else w / (2 * FRAME_SIZE)
+    line = hires.silhouette(surf, SPRITE_OUTLINE)
+    out = pygame.Surface((w, h), pygame.SRCALPHA)
+    for dx, dy in ((-d, 0), (d, 0), (0, -d), (0, d)):
+        out.blit(line, (dx, dy))
+    out.blit(surf, (0, 0))
+    return out
 
 
 # Module-level convenience instance.
@@ -576,6 +614,20 @@ def _draw_hero_frame(surf: pygame.Surface, px: int, py: int,
         pygame.draw.rect(surf, GEAR_COLORS["leather"][1], vest, 1, border_radius=2)
     pygame.draw.line(surf, (92, 62, 36), (body.left, body.bottom - 4),
                      (body.right - 1, body.bottom - 4), 2)
+    if hires.active():   # finer detail: light fold, collar, buckle
+        if torso is None:
+            pygame.draw.line(surf, _shade(tunic, 35), (body.left + 1.5, body.top + 2),
+                             (body.left + 1.5, body.bottom - 5.5), 1)
+            if direction == HERO_DIR_DOWN:
+                pygame.draw.lines(surf, _shade(tunic, -45), False, [
+                    (x - 2, body.top), (x - 0.5, body.top + 2), (x + 1, body.top)], 0.5)
+        if direction != HERO_DIR_UP:
+            pygame.draw.rect(surf, (214, 176, 86),
+                             (x - 1 if not side_view else x + ahead - 0.5,
+                              body.bottom - 4.5, 2, 2))
+            pygame.draw.rect(surf, (120, 90, 40),
+                             (x - 1 if not side_view else x + ahead - 0.5,
+                              body.bottom - 4.5, 2, 2), 0.5)
     # Arms swing against the legs.
     sleeve = _shade(tunic, -25)
     if side_view:
@@ -596,6 +648,10 @@ def _draw_hero_frame(surf: pygame.Surface, px: int, py: int,
     # Head (bobs with the body, a pixel less than the torso).
     hy = y - 10 + bob
     pygame.draw.circle(surf, skin, (x, hy), 6)
+    if hires.active():   # finer detail: shaded cheek, thin outline
+        pygame.draw.circle(surf, _shade(skin, -45), (x, hy), 6, 0.5)
+        lit = -1 if direction != HERO_DIR_LEFT else 1
+        pygame.draw.circle(surf, _shade(skin, 18), (x + lit * 1.5, hy - 2), 2.5)
     _draw_hair(surf, x, hy, direction, look, tunic, skin, covered=head is not None)
     if head == "iron":                          # an iron helmet over the hair
         steel = GEAR_COLORS["iron"][0]
@@ -607,7 +663,9 @@ def _draw_hero_frame(surf: pygame.Surface, px: int, py: int,
         cap, edge = GEAR_COLORS["leather"]
         pygame.draw.ellipse(surf, cap, (x - 6, hy - 8, 12, 7))
         pygame.draw.line(surf, edge, (x - 7, hy - 2), (x + 6, hy - 2), 2)
-    if direction == HERO_DIR_DOWN:
+    if hires.active():
+        _draw_hd_face(surf, x, hy, direction, skin)
+    elif direction == HERO_DIR_DOWN:
         for ex in (x - 2, x + 2):
             pygame.draw.rect(surf, (25, 20, 20), (ex, hy, 1, 2))
     elif side_view:
@@ -624,6 +682,33 @@ def _draw_hero_frame(surf: pygame.Surface, px: int, py: int,
             pygame.draw.line(surf, slash, (x - 6, y - 2), (x - 16, y - 6), 2)
         else:
             pygame.draw.line(surf, slash, (x + 6, y - 2), (x + 16, y - 6), 2)
+
+
+def _draw_hd_face(surf, x, hy, direction, skin):
+    """Eyes with whites and a glint, brows and a mouth, in half-pixel
+    detail (only drawn with ``hires`` on, where 0.5 px is a real
+    pixel)."""
+    dark, white, glint = (34, 26, 26), (246, 244, 238), (255, 255, 255)
+    if direction == HERO_DIR_DOWN:
+        for ex in (x - 2.5, x + 1.5):
+            pygame.draw.rect(surf, white, (ex - 0.5, hy - 0.5, 2, 2.5))
+            pygame.draw.rect(surf, dark, (ex, hy, 1.5, 2))
+            pygame.draw.rect(surf, glint, (ex + 0.5, hy, 0.5, 0.5))
+            pygame.draw.line(surf, _shade(skin, -55), (ex - 0.5, hy - 2),
+                             (ex + 1.5, hy - 2.5), 0.5)
+        pygame.draw.line(surf, _shade(skin, -60), (x - 1, hy + 3), (x + 0.5, hy + 3), 0.5)
+        for cx in (x - 3.5, x + 3):
+            pygame.draw.circle(surf, (236, 140, 130), (cx, hy + 2), 0.5)
+    elif direction in (HERO_DIR_LEFT, HERO_DIR_RIGHT):
+        ahead = 1 if direction == HERO_DIR_RIGHT else -1
+        ex = x + (2.5 if ahead > 0 else -4)
+        pygame.draw.rect(surf, white, (ex - 0.5, hy - 0.5, 2, 2.5))
+        pygame.draw.rect(surf, dark, (ex + (0.5 if ahead > 0 else 0), hy, 1, 2))
+        pygame.draw.rect(surf, glint, (ex + (1 if ahead > 0 else 0), hy, 0.5, 0.5))
+        pygame.draw.line(surf, _shade(skin, -55), (ex - 0.5, hy - 2),
+                         (ex + 1.5, hy - 2.5), 0.5)
+        mx = x + 3 * ahead
+        pygame.draw.line(surf, _shade(skin, -60), (mx, hy + 3), (mx + ahead, hy + 3), 0.5)
 
 
 # Spiky hair as pixel masks, one row per line from the top of the head
@@ -863,9 +948,72 @@ def _draw_enemy_frame(surf: pygame.Surface, px: int, py: int,
         # Slime (and any unknown name): a jelly blob.
         h = 18 if attack else 16
         pygame.draw.ellipse(surf, body, (x - 10, y - 8, 20, h))
+        if hires.active():   # a lighter core and a wet shine
+            pygame.draw.ellipse(surf, _shade(body, 25), (x - 7, y - 6, 14, h - 6))
+            pygame.draw.ellipse(surf, (235, 255, 235), (x - 7, y - 6, 5, 3))
+            pygame.draw.circle(surf, (235, 255, 235), (x + 6, y - 5), 0.5)
         pygame.draw.ellipse(surf, dark, (x - 10, y - 8, 20, h), 2)
         pygame.draw.circle(surf, eye, (x - 4, y - 2), 2)
         pygame.draw.circle(surf, eye, (x + 4, y - 2), 2)
+    if hires.active():
+        _draw_hd_enemy_details(surf, x, y, body, dark, name, attack, phase)
+
+
+def _draw_hd_enemy_details(surf, x, y, body, dark, name, attack, phase):
+    """Half-pixel detail on top of an enemy frame (only with ``hires``
+    on): eye glints, whiskers and fur, wing ribs, teeth, bone cracks."""
+    glint = (255, 255, 255)
+    fine = _shade(dark, -25)
+    if name in ("rat", "rat_king", "boss"):
+        big = name != "rat"
+        k = 1.35 if big else 1.0
+        bx, by = x - (7 if big else 2) + (3 if attack else 0), y + 2
+        bw, bh = int(20 * k), int(12 * k)
+        hx, hy = bx + bw // 2 - 1, by - int(3 * k)
+        # Lighter belly, fur strokes along the back, whiskers, eye glint.
+        pygame.draw.ellipse(surf, _shade(body, 22),
+                            (bx - bw // 2 + 3, by, bw - 6, bh // 2 - 1))
+        for i in range(4):
+            fx = bx - bw // 2 + 4 + i * (bw - 8) / 3
+            pygame.draw.line(surf, _shade(body, -22), (fx, by - bh / 2 + 2),
+                             (fx + 1.5, by - bh / 2 + 3.5), 0.5)
+        nx, ny = hx + int(8 * k), hy + 1
+        for dy in (-1, 0.5, 2):
+            pygame.draw.line(surf, (215, 210, 205), (nx - 2, ny), (nx + 3, ny + dy), 0.5)
+        pygame.draw.circle(surf, glint, (hx + 2.5, hy - 1.5), 0.5)
+        if big:   # gems on the crown catch the light
+            cx0, cy0 = hx - 6, hy - 10
+            pygame.draw.line(surf, (255, 236, 160), (cx0 + 0.5, cy0 + 5.5),
+                             (cx0 + 11.5, cy0 + 5.5), 0.5)
+            pygame.draw.circle(surf, glint, (cx0 + 5.5, cy0 + 3.5), 0.5)
+    elif name == "bat":
+        up = -5 if phase else 2
+        for side in (-1, 1):
+            root = (x + side * 4, y - 3)
+            for tip in ((x + side * 15, y + up - 4), (x + side * 11, y + 4)):
+                pygame.draw.line(surf, fine, root, tip, 0.5)
+        for ex in (x - 2, x + 2):
+            pygame.draw.circle(surf, glint, (ex + 0.5, y - 2.5), 0.5)
+        pygame.draw.line(surf, glint, (x - 1, y + 2), (x - 1, y + 3), 0.5)
+        pygame.draw.line(surf, glint, (x + 1, y + 2), (x + 1, y + 3), 0.5)
+    elif name == "goblin":
+        pygame.draw.line(surf, fine, (x - 5, y - 6.5), (x - 1.5, y - 5.5), 0.5)
+        pygame.draw.line(surf, fine, (x + 5, y - 6.5), (x + 1.5, y - 5.5), 0.5)
+        pygame.draw.line(surf, fine, (x - 3, y), (x + 3, y), 0.5)
+        for tx in (x - 2, x + 1.5):
+            pygame.draw.polygon(surf, (240, 236, 210), [(tx, y), (tx + 1, y), (tx + 0.5, y + 1.5)])
+        for ex in (x - 3, x + 3):
+            pygame.draw.circle(surf, glint, (ex + 0.5, y - 4.5), 0.5)
+        pygame.draw.ellipse(surf, _shade(body, 25), (x - 5, y - 9, 6, 3))
+    elif name == "skeleton":
+        pygame.draw.lines(surf, _shade(dark, -40), False,
+                          [(x + 1, y - 12), (x + 2, y - 10), (x + 1.5, y - 9)], 0.5)
+        for tx in range(-2, 3):
+            pygame.draw.line(surf, _shade(dark, -40), (x + tx, y - 2.5), (x + tx, y - 1.5), 0.5)
+        pygame.draw.line(surf, _shade(dark, -40), (x - 2.5, y - 2.5), (x + 2.5, y - 2.5), 0.5)
+    else:
+        for ex in (x - 4, x + 4):
+            pygame.draw.circle(surf, glint, (ex - 0.5, y - 2.5), 0.5)
 
 
 def _gen_chest() -> pygame.Surface:

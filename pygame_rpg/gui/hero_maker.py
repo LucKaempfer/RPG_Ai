@@ -23,7 +23,7 @@ import pygame
 from .. import device
 from ..assets import (
     AssetManager, LOOK_OPTIONS, LOOK_LABELS, look_choice,
-    HERO_COLS, HERO_WALK_COLS, gear_of, upscale,
+    HERO_COLS, HERO_WALK_COLS, gear_of, outline,
 )
 from ..classes import CLASSES, CLASS_ORDER, make_hero
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT, START_LEVEL, START_MP
@@ -327,13 +327,13 @@ class HeroMakerScreen(Screen):
         """The hero in the chosen look, walking; ``direction`` None turns
         through all four directions over time."""
         weapon = item_by_id(CLASSES[self.hero_class].kit[0])
-        frames = self.assets.hero_frames(self.look, gear_of({"weapon": weapon}))
+        frames = self.assets.hero_frames(self.look, gear_of({"weapon": weapon}), size)
         if direction is None:
             direction = (0, 3, 1, 2)[int(self.preview_t / TURN_TIME) % 4]
         col = HERO_WALK_COLS[int(self.preview_t / PREVIEW_FRAME)
                              % len(HERO_WALK_COLS)]
         frame = frames[direction * HERO_COLS + col]
-        return upscale(frame, size, outline=True)
+        return outline(frame)
 
     def _draw_class(self, surface):
         """Class cards across the top, the chosen class's details below:

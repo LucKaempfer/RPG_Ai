@@ -7,6 +7,8 @@ keeps the same stats, XP curve and weight limits.
 # --- Display (shared by all GUI screens) ---
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
 FPS = 60
+# Real pixels per canvas pixel on desktops (hires.py); 1 = off.
+RENDER_SCALE = 2
 
 # --- Starting character stats ---
 # V3 hero_maker writes: name / 1 / 0 / 100 / 5 / 5 / 5 / 5 / 5 / 5

@@ -14,7 +14,7 @@ indices, so purchases last for the floor (and its run save).
 import pygame
 
 from .. import audio
-from ..assets import AssetManager, upscale
+from ..assets import AssetManager
 from ..config import SCREEN_WIDTH, SCREEN_HEIGHT
 from ..savegame import save_player
 from ..shop import buy, sell, price, sell_price
@@ -155,8 +155,7 @@ class ShopScreen(Screen):
     def _icon(self, item, size=24):
         key = (item.id, size)
         if key not in self._icons:
-            surf = self.assets.item_icon(item)
-            self._icons[key] = upscale(surf, size)
+            self._icons[key] = self.assets.item_icon(item, size)
         return self._icons[key]
 
     def selected(self):
